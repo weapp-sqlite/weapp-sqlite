@@ -1,0 +1,54 @@
+{
+  "name": "@weapp-vite/sqlite-wasm",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "基于可注入 WASM SQLite 引擎的跨宿主 adapter",
+  "license": "MIT",
+  "keywords": [
+    "sqlite",
+    "wasm",
+    "weapp",
+    "weapp-vite",
+    "miniprogram"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsdown -w",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:dev": "vitest",
+    "release": "pnpm publish",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+  },
+  "dependencies": {
+    "@weapp-vite/sqlite-core": "workspace:*"
+  },
+  "publishConfig": {},
+  "devDependencies": {
+    "@types/sql.js": "^1.4.11",
+    "sql.js": "^1.14.2"
+  }
+}

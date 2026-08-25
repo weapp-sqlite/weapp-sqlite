@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  # push:
+  #   branches: ['main']
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Test
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [22, 24]
+    runs-on: ${{ matrix.os }}
+    # Remote Caching enabled - configure TURBO_TOKEN and TURBO_TEAM in repository settings
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Security Audit
+        run: pnpm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        if: ${{ matrix.os != 'windows-latest' || matrix.node-version != 22 }}
+        run: pnpm typecheck
+
+      - name: Typecheck (Windows Node 22)
+        if: ${{ matrix.os == 'windows-latest' && matrix.node-version == 22 }}
+        run: pnpm exec turbo run typecheck --concurrency=1
+
+      - name: TSD
+        run: pnpm tsd
+
+      - name: Test
+        run: pnpm test
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v7
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
