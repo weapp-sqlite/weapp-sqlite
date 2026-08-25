@@ -1,0 +1,40 @@
+{
+  "name": "@weapp-sqlite/docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "serve out",
+    "preview": "serve out",
+    "types:check": "next typegen && tsc --noEmit",
+    "lint": "eslint",
+    "deploy": "pnpm build && wrangler deploy",
+    "deploy:dry": "pnpm build && wrangler deploy --dry-run",
+    "wrangler:types": "wrangler types"
+  },
+  "dependencies": {
+    "cnfast": "^0.1.0",
+    "fumadocs-core": "16.15.1",
+    "fumadocs-mdx": "15.3.1",
+    "fumadocs-ui": "npm:@fumadocs/base-ui@16.15.1",
+    "lucide-react": "^1.31.0",
+    "next": "16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "postcss": "^8.5.26",
+    "serve": "^14.2.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.3.0",
+    "wrangler": "4.125.0"
+  }
+}

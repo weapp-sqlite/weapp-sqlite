@@ -1,0 +1,48 @@
+---
+title: 静态部署
+description: 将 Fumadocs 文档导出为静态文件并部署到 Cloudflare Worker
+---
+
+## 构建模型
+
+文档站使用 Next.js 的 `output: 'export'`。Fumadocs 在构建期读取 MDX、生成页面、搜索索引、Markdown 文本和 Open Graph 图片，部署产物位于 `apps/docs/out`。线上 Worker 只转发静态资产，不执行 React、Next SSR 或动态 API。
+
+```bash
+pnpm --filter @weapp-sqlite/docs build
+pnpm --filter @weapp-sqlite/docs preview
+```
+
+`trailingSlash: true` 会让文档页面输出为 `docs/getting-started/index.html`，Cloudflare Static Assets 可以直接按目录 URL 提供这些文件。
+
+## Cloudflare Worker
+
+`apps/docs/wrangler.jsonc` 将 `out` 绑定为 `ASSETS`，域名配置为 `sqlite.icebreaker.top`。Worker 的唯一职责是：
+
+```ts
+export default {
+  fetch(request, env) {
+    return env.ASSETS.fetch(request)
+  },
+}
+```
+
+部署前先确认 Cloudflare 登录状态，然后执行 dry-run：
+
+```bash
+pnpm --filter @weapp-sqlite/docs wrangler:types
+pnpm --filter @weapp-sqlite/docs run deploy:dry
+pnpm --filter @weapp-sqlite/docs run deploy
+```
+
+首次部署需要当前 Cloudflare 账号对 `icebreaker.top` 有 DNS / Custom Domain 权限。若账号未登录或域名不在当前账号，Wrangler 会在部署阶段明确报错；这不影响本地静态构建和预览。
+
+## 静态资源检查
+
+部署前应确认以下文件存在：
+
+- `apps/docs/out/index.html`
+- `apps/docs/out/docs/index.html`
+- `apps/docs/out/docs/getting-started/index.html`
+- `apps/docs/out/api/search.json`（搜索索引的实际路径以构建输出为准）
+
+这个站点不承载 SQLite 数据库，也不需要 Worker binding。应用中的 `sql-wasm.wasm` 仍由各个小程序或 Web demo 自己打包。

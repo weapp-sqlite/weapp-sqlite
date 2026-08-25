@@ -1,0 +1,42 @@
+---
+title: WASM API
+description: "@weapp-sqlite/wasm 的 sql.js adapter 与存储接口"
+---
+
+## `openSqliteWasmDatabase`
+
+```ts
+function openSqliteWasmDatabase(
+  initializer: SqlJsInitializer,
+  name: string,
+  options: SqliteWasmDriverOptions,
+): Promise<SqliteDatabase>
+```
+
+`initializer` 通常是 `sql.js` 的 `initSqlJs`。adapter 会缓存同一个 driver 的初始化 Promise，避免并发打开时重复加载 WASM 模块。
+
+## `SqliteWasmDriverOptions`
+
+```ts
+interface SqliteWasmDriverOptions {
+  readonly storage: SqliteWasmStorage
+  readonly locateFile?: (file: string) => string
+}
+```
+
+`locateFile` 负责把 `sql-wasm.wasm` 映射到实际资源路径。没有它时，sql.js 会使用自己的默认路径，通常不适合小程序构建产物。
+
+## `SqliteWasmStorage`
+
+```ts
+interface SqliteWasmStorage {
+  load(name: string): Promise<Uint8Array | undefined>
+  save(name: string, data: Uint8Array): Promise<void>
+}
+```
+
+首次 `load` 返回 `undefined` 会创建空数据库。每次写操作后，adapter 在 `flush` 阶段调用 `database.export()`，只有数据变脏时才会保存。
+
+## 参数转换
+
+adapter 将 `boolean` 转成 `0/1`，将 `bigint` 转成 number，将 `ArrayBuffer` 转成 `Uint8Array`，并保留位置数组与命名参数的形状。需要超出 JavaScript 安全整数范围的整数时，请在业务层评估 SQLite 和 sql.js 的数值精度边界。

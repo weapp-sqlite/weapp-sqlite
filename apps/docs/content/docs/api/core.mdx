@@ -1,0 +1,42 @@
+---
+title: Core API
+description: "@weapp-sqlite/core 的数据库、事务和迁移 API"
+---
+
+## `createSqliteDatabase`
+
+```ts
+function createSqliteDatabase(name: string, connection: SqliteConnection): SqliteDatabase
+```
+
+将底层连接包装成带队列、事务和关闭状态的数据库对象。`SqliteConnection` 必须提供 `exec`、`query`、`close`，可以选择提供 `flush`。
+
+## `SqliteDatabase`
+
+```ts
+interface SqliteDatabase {
+  readonly name: string
+  exec(sql: string, parameters?: SqliteParameters): Promise<SqliteExecResult>
+  query<Row extends SqliteRow = SqliteRow>(sql: string, parameters?: SqliteParameters): Promise<SqliteQueryResult<Row>>
+  transaction<T>(callback: (transaction: SqliteTransaction) => Promise<T>): Promise<T>
+  close(): Promise<void>
+}
+```
+
+`SqliteParameters` 支持位置数组或命名对象；标量包括字符串、数字、`bigint`、`boolean`、二进制数据和 `null`。
+
+## `migrate`
+
+```ts
+function migrate(
+  database: SqliteDatabase,
+  migrations: readonly SqliteMigration[],
+): Promise<number[]>
+```
+
+迁移按 `version` 升序执行，成功版本写入 `__weapp_sqlite_migrations`。版本号必须为正整数且唯一；重复或非法版本会立即抛错。
+
+## 错误类型
+
+- `SqliteClosedError`：数据库已关闭后仍有操作。
+- `SqliteTransactionError`：嵌套事务或回滚失败。

@@ -1,0 +1,76 @@
+---
+title: 快速开始
+description: 安装 core 与 WASM adapter，创建第一个 SQLite 数据库
+---
+
+## 安装
+
+项目只需要一个引擎和一个 adapter。下面的例子使用 `sql.js`：
+
+```bash
+pnpm add @weapp-sqlite/wasm sql.js
+```
+
+`@weapp-sqlite/wasm` 会依赖 `@weapp-sqlite/core`，不需要额外安装 core。
+
+## 打开数据库
+
+```ts
+import initSqlJs from 'sql.js'
+import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
+
+const database = await openSqliteWasmDatabase(
+  options => initSqlJs({ locateFile: options?.locateFile }),
+  'app.db',
+  {
+    locateFile: file => `/assets/${file}`,
+    storage: {
+      async load(name) {
+        // 从 IndexedDB、OPFS 或小程序文件系统读取 Uint8Array。
+        void name
+        return undefined
+      },
+      async save(name, data) {
+        // 将 database.export() 的结果写入宿主存储。
+        void name
+        void data
+      },
+    },
+  },
+)
+
+await database.exec('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)')
+await database.exec('INSERT INTO notes (body) VALUES (?)', ['hello'])
+const result = await database.query<{ id: number, body: string }>('SELECT id, body FROM notes')
+await database.close()
+```
+
+所有数据库方法都是异步的。`close()` 会先 flush 脏数据，再关闭 WASM 数据库。
+
+## 加载 WASM
+
+把 `sql.js` 包中的 `dist/sql-wasm.wasm` 复制为应用可访问的静态资源，例如 `/assets/sql-wasm.wasm`。`locateFile` 必须返回目标平台真正可以读取的 URL 或文件路径：
+
+```ts
+locateFile: file => `/assets/${file}`
+```
+
+小程序构建工具不会自动把 npm 包内的 WASM 文件变成业务资源，建议在各 demo 的构建流程中显式复制并检查该文件。
+
+## 加入迁移
+
+使用 core 提供的 `migrate` 管理版本。迁移版本必须是正整数且唯一，已应用的版本会记录在 `__weapp_sqlite_migrations` 表中：
+
+```ts
+import { migrate } from '@weapp-sqlite/core'
+
+const versions = await migrate(database, [
+  {
+    version: 1,
+    name: 'create_notes',
+    up: transaction => transaction.exec(
+      'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
+    ),
+  },
+])
+```

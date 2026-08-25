@@ -2,6 +2,8 @@
 
 一个面向小程序与 Web 宿主的可插拔 SQLite driver workspace。
 
+文档站：[`sqlite.icebreaker.top`](https://sqlite.icebreaker.top)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，并由 Cloudflare Worker 的 Static Assets 托管。
+
 当前实现刻意分成两层：
 
 - `@weapp-sqlite/core`：定义异步连接、查询、事务和迁移协议，不依赖具体 SQLite 引擎。
@@ -57,6 +59,15 @@ pnpm lint
 pnpm typecheck
 pnpm tsd
 pnpm test
+```
+
+文档站本地开发与部署：
+
+```bash
+pnpm --filter @weapp-sqlite/docs dev
+pnpm --filter @weapp-sqlite/docs build
+pnpm --filter @weapp-sqlite/docs run deploy:dry
+pnpm --filter @weapp-sqlite/docs run deploy
 ```
 
 当前测试使用 `sql.js` 验证 WASM adapter 的真实 SQL 链路；小程序真机 adapter 和 IndexedDB/OPFS 存储仍应在各自宿主中单独验收。

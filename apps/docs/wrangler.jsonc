@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "weapp-sqlite-docs",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-25",
+  "assets": {
+    "directory": "./out",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    {
+      "pattern": "sqlite.icebreaker.top",
+      "custom_domain": true
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+---
+title: weapp-sqlite 文档
+description: 面向小程序与 Web 的可插拔 SQLite driver
+---
+
+`weapp-sqlite` 把 SQLite 的数据库协议、WASM 引擎和宿主存储拆成三个边界，让同一套迁移与查询逻辑可以运行在微信小程序、其他小程序平台和 Web 中。
+
+## 包结构
+
+- `@weapp-sqlite/core`：异步连接、查询、事务、迁移和错误类型。
+- `@weapp-sqlite/wasm`：将 `sql.js` 这类 SQLite WASM 引擎接入 core，并通过回调持久化数据库文件。
+
+## 推荐阅读路径
+
+1. [快速开始](./getting-started) 安装依赖并跑通一次查询。
+2. [架构与生命周期](./architecture) 了解连接、事务和存储的职责边界。
+3. [多端接入](./multi-platform) 对照 weapp-vite、Taro、uni-app、MPX demo。
+4. [API 参考](./api/core) 查看稳定的类型与方法。
+
+## 运行时边界
+
+WASM 文件和数据库文件都属于应用资源，不由 `@weapp-sqlite/core` 自动下载或保存。调用方需要提供 `locateFile` 和 `storage`，并在目标平台验证文件访问权限、包体积限制及持久化策略。

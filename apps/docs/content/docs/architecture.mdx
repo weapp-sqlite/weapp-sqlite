@@ -1,0 +1,39 @@
+---
+title: 架构与生命周期
+description: 理解 core、WASM 引擎和宿主存储之间的职责边界
+---
+
+## 三层边界
+
+### core
+
+`@weapp-sqlite/core` 不知道 SQLite 引擎来自哪里，也不依赖任何平台 API。它提供 `SqliteDatabase`、`SqliteConnection`、`SqliteTransaction` 和 `migrate`，并负责串行化操作、事务提交回滚和关闭状态检查。
+
+### WASM adapter
+
+`@weapp-sqlite/wasm` 将一个符合 `SqlJsInitializer` 的初始化器包装成 `SqliteDriver`。它负责：
+
+- 将数组参数、命名参数和 `boolean`、`bigint`、`ArrayBuffer` 转成 sql.js 可接受的值。
+- 将 sql.js 的列数组和值数组还原成带列名的行对象。
+- 在连接变脏后调用 `storage.save` 保存 `database.export()`。
+
+### 宿主存储
+
+宿主只需要实现两个异步方法：
+
+```ts
+interface SqliteWasmStorage {
+  load: (name: string) => Promise<Uint8Array | undefined>
+  save: (name: string, data: Uint8Array) => Promise<void>
+}
+```
+
+微信小程序可以用 `wx.getFileSystemManager()`，Web 可以选择 IndexedDB 或 OPFS，其他框架则用各自的 storage API 保存编码后的数据库文件。
+
+## 操作与事务
+
+同一个数据库的 `exec`、`query`、`transaction` 和 `close` 会经过内部队列串行执行。事务回调成功时提交，回调抛错时回滚；嵌套事务会抛出 `SqliteTransactionError`。关闭后继续调用数据库方法会抛出 `SqliteClosedError`。
+
+## 数据持久化时机
+
+每次写操作完成后，core 会调用 connection 的可选 `flush`。WASM adapter 的 `flush` 只在有脏数据时导出数据库，因此读操作不会产生额外保存。应用退出或切后台前仍建议主动 `close()`，让最后一批数据及时落盘。

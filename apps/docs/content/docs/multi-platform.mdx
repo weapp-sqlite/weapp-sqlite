@@ -1,0 +1,34 @@
+---
+title: 多端接入
+description: 使用 weapp-vite、Taro、uni-app 和 MPX 运行同一个 SQLite 场景
+---
+
+仓库的 `examples/` 提供四套可以独立构建的 demo。共享层只包含迁移、查询和字符串存储适配，框架代码只负责把宿主 storage API 接到共享层。
+
+## Demo 矩阵
+
+| 目录 | 框架 | 小程序构建 | Web 构建 |
+| --- | --- | --- | --- |
+| `examples/weapp-vite-multi-platform` | weapp-vite `multiPlatform` | `pnpm --filter weapp-sqlite-demo-weapp-vite build:weapp` | `pnpm --filter weapp-sqlite-demo-weapp-vite build:web` |
+| `examples/taro` | Taro 4 + React | `pnpm --filter weapp-sqlite-demo-taro build:weapp` | `pnpm --filter weapp-sqlite-demo-taro build:h5` |
+| `examples/uni-app` | uni-app + Vue 3 | `pnpm --filter weapp-sqlite-demo-uni-app build:weapp` | `pnpm --filter weapp-sqlite-demo-uni-app build:h5` |
+| `examples/mpx` | MPX + Webpack 5 | `pnpm --filter weapp-sqlite-demo-mpx build:weapp` | - |
+
+## 验证流程
+
+先运行各 demo 的 wiring 测试和类型检查，再运行目标构建：
+
+```bash
+pnpm --filter weapp-sqlite-demo-weapp-vite test
+pnpm --filter weapp-sqlite-demo-taro test
+pnpm --filter weapp-sqlite-demo-uni-app test
+pnpm --filter weapp-sqlite-demo-mpx test
+```
+
+真实宿主验收时，点击 demo 的“运行 SQLite”按钮，确认迁移版本为 `[1, 2]`、查询结果包含 `SQLite works across frameworks`，并重新进入页面检查持久化结果。构建通过只代表编译链和宿主边界正确，不能代替开发者工具或真机验证。
+
+## 平台注意事项
+
+- 微信、Taro、uni-app 和 MPX 都需要把 `sql-wasm.wasm` 放进应用能访问的 `/assets/` 目录。
+- 小程序的存储 API 通常返回字符串或异步结果，使用 `examples/shared` 的 `createStringStorage` 可统一编码为 base64。
+- `weapp-vite` demo 的 `multiPlatform` 目标包括 `weapp`、`alipay`、`tt`、`swan`、`jd`、`xhs` 和 `web`；不同平台仍需分别检查文件 API 和包体积限制。
