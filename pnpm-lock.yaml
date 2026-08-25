@@ -87,13 +87,13 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
 
-  packages/sqlite-core: {}
+  packages/core: {}
 
-  packages/sqlite-wasm:
+  packages/wasm:
     dependencies:
-      '@weapp-sqlite/sqlite-core':
+      '@weapp-sqlite/core':
         specifier: workspace:*
-        version: link:../sqlite-core
+        version: link:../core
     devDependencies:
       '@types/sql.js':
         specifier: ^1.4.11

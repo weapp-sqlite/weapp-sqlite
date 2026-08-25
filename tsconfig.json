@@ -2,10 +2,10 @@
   "extends": "repoctl/tsconfig.json",
   "references": [
     {
-      "path": "./packages/sqlite-core"
+      "path": "./packages/core"
     },
     {
-      "path": "./packages/sqlite-wasm"
+      "path": "./packages/wasm"
     }
   ],
   "files": []

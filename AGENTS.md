@@ -4,11 +4,11 @@
 
 This repository contains the optional SQLite runtime for weapp-sqlite projects
 multi-platform projects. Keep the host-neutral protocol in
-`packages/sqlite-core` and host or engine-specific code in separate packages.
+`packages/core` and host or engine-specific code in separate packages.
 
-- `packages/sqlite-core`: async connections, serialized transactions, errors,
+- `packages/core`: async connections, serialized transactions, errors,
   and migrations. It must not import browser, mini-program, Node, or WASM APIs.
-- `packages/sqlite-wasm`: the injectable WASM engine adapter and persistence
+- `packages/wasm`: the injectable WASM engine adapter and persistence
   callback boundary. It must not assume a particular storage host.
 
 Do not add platform-specific behavior to core. Add a separate adapter package
@@ -21,8 +21,8 @@ Use Node.js 22.12+ and pnpm 11:
 ```bash
 pnpm install
 pnpm validate
-pnpm --filter @weapp-sqlite/sqlite-core test
-pnpm --filter @weapp-sqlite/sqlite-wasm test
+pnpm --filter @weapp-sqlite/core test
+pnpm --filter @weapp-sqlite/wasm test
 ```
 
 Run `pnpm change` for every user-visible package change. Changeset summaries

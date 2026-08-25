@@ -1,17 +1,11 @@
 {
-  "name": "@weapp-sqlite/sqlite-wasm",
+  "name": "@weapp-sqlite/core",
   "type": "module",
   "version": "0.0.0",
   "private": true,
-  "description": "基于可注入 WASM SQLite 引擎的跨宿主 adapter",
+  "description": "宿主无关的异步 SQLite driver 协议与事务边界",
   "license": "MIT",
-  "keywords": [
-    "sqlite",
-    "wasm",
-    "weapp",
-    "weapp-sqlite",
-    "miniprogram"
-  ],
+  "keywords": ["sqlite", "weapp", "weapp-sqlite", "driver", "miniprogram"],
   "sideEffects": false,
   "exports": {
     ".": {
@@ -43,12 +37,5 @@
     "typecheck": "tsc -p tsconfig.json",
     "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
   },
-  "dependencies": {
-    "@weapp-sqlite/sqlite-core": "workspace:*"
-  },
-  "publishConfig": {},
-  "devDependencies": {
-    "@types/sql.js": "^1.4.11",
-    "sql.js": "^1.14.2"
-  }
+  "publishConfig": {}
 }

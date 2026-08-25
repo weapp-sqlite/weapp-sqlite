@@ -1,4 +1,4 @@
-import type { SqliteParameters, SqliteScalar } from '@weapp-sqlite/sqlite-core'
+import type { SqliteParameters, SqliteScalar } from '@weapp-sqlite/core'
 
 export type SqlJsScalar = Exclude<SqliteScalar, bigint | boolean | ArrayBuffer>
 export type SqlJsParameters = SqlJsScalar[] | Record<string, SqlJsScalar> | null
