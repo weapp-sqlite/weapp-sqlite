@@ -91,7 +91,7 @@ importers:
 
   packages/sqlite-wasm:
     dependencies:
-      '@weapp-vite/sqlite-core':
+      '@weapp-sqlite/sqlite-core':
         specifier: workspace:*
         version: link:../sqlite-core
     devDependencies:

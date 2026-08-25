@@ -1,5 +1,5 @@
 {
-  "name": "@weapp-vite/sqlite-wasm",
+  "name": "@weapp-sqlite/sqlite-wasm",
   "type": "module",
   "version": "0.0.0",
   "private": true,
@@ -9,7 +9,7 @@
     "sqlite",
     "wasm",
     "weapp",
-    "weapp-vite",
+    "weapp-sqlite",
     "miniprogram"
   ],
   "sideEffects": false,
@@ -44,7 +44,7 @@
     "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
   },
   "dependencies": {
-    "@weapp-vite/sqlite-core": "workspace:*"
+    "@weapp-sqlite/sqlite-core": "workspace:*"
   },
   "publishConfig": {},
   "devDependencies": {

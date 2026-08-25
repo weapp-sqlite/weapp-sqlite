@@ -5,13 +5,13 @@
   "private": true,
   "packageManager": "pnpm@11.22.0",
   "description": "面向小程序与 Web 宿主的可插拔 SQLite driver workspace",
-  "author": "weapp-vite contributors",
+  "author": "weapp-sqlite contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/weapp-vite/weapp-sqlite.git"
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git"
   },
   "bugs": {
-    "url": "https://github.com/weapp-vite/weapp-sqlite/issues"
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
   "keywords": ["sqlite", "wasm", "weapp", "miniprogram", "driver"],
   "engines": {

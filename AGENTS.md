@@ -2,7 +2,7 @@
 
 ## Scope
 
-This repository contains the optional SQLite runtime for weapp-vite-style
+This repository contains the optional SQLite runtime for weapp-sqlite projects
 multi-platform projects. Keep the host-neutral protocol in
 `packages/sqlite-core` and host or engine-specific code in separate packages.
 
@@ -21,8 +21,8 @@ Use Node.js 22.12+ and pnpm 11:
 ```bash
 pnpm install
 pnpm validate
-pnpm --filter @weapp-vite/sqlite-core test
-pnpm --filter @weapp-vite/sqlite-wasm test
+pnpm --filter @weapp-sqlite/sqlite-core test
+pnpm --filter @weapp-sqlite/sqlite-wasm test
 ```
 
 Run `pnpm change` for every user-visible package change. Changeset summaries

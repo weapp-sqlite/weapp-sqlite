@@ -1,6 +1,6 @@
-import type { SqliteConnection, SqliteDriver, SqliteExecResult, SqliteParameters, SqliteQueryResult, SqliteRow, SqliteScalar } from '@weapp-vite/sqlite-core'
+import type { SqliteConnection, SqliteDriver, SqliteExecResult, SqliteParameters, SqliteQueryResult, SqliteRow, SqliteScalar } from '@weapp-sqlite/sqlite-core'
 import type { SqliteWasmDriverOptions, SqliteWasmParameters, SqlJsDatabase, SqlJsInitializer, SqlJsParameters, SqlJsScalar } from './types'
-import { createSqliteDatabase } from '@weapp-vite/sqlite-core'
+import { createSqliteDatabase } from '@weapp-sqlite/sqlite-core'
 
 function normalizeScalar(value: SqliteScalar): SqlJsScalar {
   if (typeof value === 'bigint') {
