@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">weapp-sqlite</title>
+  <desc id="desc">A mini program window combined with a SQLite database cylinder</desc>
+  <defs>
+    <linearGradient id="background" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#102a43"/>
+      <stop offset="1" stop-color="#071521"/>
+    </linearGradient>
+    <linearGradient id="window" x1="106" y1="90" x2="416" y2="414" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#65e6c2"/>
+      <stop offset="1" stop-color="#29b6c9"/>
+    </linearGradient>
+    <linearGradient id="database" x1="177" y1="154" x2="346" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a8f36b"/>
+      <stop offset="1" stop-color="#36c875"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+  <path d="M128 112h256c17.7 0 32 14.3 32 32v206c0 17.7-14.3 32-32 32H128c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32Z" fill="#071b29" stroke="url(#window)" stroke-width="18"/>
+  <path d="M104 175h304" stroke="url(#window)" stroke-width="14"/>
+  <circle cx="132" cy="143" r="9" fill="#65e6c2"/>
+  <circle cx="164" cy="143" r="9" fill="#65e6c2" opacity=".7"/>
+  <circle cx="196" cy="143" r="9" fill="#65e6c2" opacity=".45"/>
+
+  <g>
+    <path d="M174 221c0-22 37-40 82-40s82 18 82 40v133c0 22-37 40-82 40s-82-18-82-40V221Z" fill="#36c875"/>
+    <ellipse cx="256" cy="221" rx="82" ry="40" fill="#c4ff85"/>
+    <ellipse cx="256" cy="221" rx="58" ry="24" fill="#3f9e68" opacity=".58"/>
+    <path d="M174 266c0 22 37 40 82 40s82-18 82-40M174 310c0 22 37 40 82 40s82-18 82-40" fill="none" stroke="#157b63" stroke-width="11" opacity=".72"/>
+    <path d="M214 221h84" stroke="#e5ffc1" stroke-width="10" stroke-linecap="round" opacity=".86"/>
+  </g>
+
+  <path d="m127 356 30 30m228-30-30 30" stroke="#65e6c2" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="127" cy="356" r="8" fill="#65e6c2"/>
+  <circle cx="385" cy="356" r="8" fill="#65e6c2"/>
+</svg>
