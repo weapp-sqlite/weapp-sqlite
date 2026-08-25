@@ -1,0 +1,6 @@
+{
+  "smartProgramRoot": "dist",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "setting": { "urlCheck": false }
+}

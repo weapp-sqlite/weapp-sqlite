@@ -1,4 +1,4 @@
-import type { SqliteConnection, SqliteDriver, SqliteExecResult, SqliteParameters, SqliteQueryResult, SqliteRow, SqliteScalar } from '@weapp-sqlite/core'
+import type { SqliteConnection, SqliteDatabase, SqliteDriver, SqliteExecResult, SqliteParameters, SqliteQueryResult, SqliteRow, SqliteScalar } from '@weapp-sqlite/core'
 import type { SqliteWasmDriverOptions, SqliteWasmParameters, SqlJsDatabase, SqlJsInitializer, SqlJsParameters, SqlJsScalar } from './types'
 import { createSqliteDatabase } from '@weapp-sqlite/core'
 
@@ -84,7 +84,7 @@ export function createSqliteWasmDriver(initializer: SqlJsInitializer, options: S
   }
 }
 
-export async function openSqliteWasmDatabase(initializer: SqlJsInitializer, name: string, options: SqliteWasmDriverOptions) {
+export async function openSqliteWasmDatabase(initializer: SqlJsInitializer, name: string, options: SqliteWasmDriverOptions): Promise<SqliteDatabase> {
   const driver = createSqliteWasmDriver(initializer, options)
   const connection = await driver.open(name)
   return createSqliteDatabase(name, connection)

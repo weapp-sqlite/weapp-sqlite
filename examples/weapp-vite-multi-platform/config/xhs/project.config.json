@@ -1,0 +1,7 @@
+{
+  "description": "weapp-sqlite weapp-vite demo",
+  "miniprogramRoot": "dist",
+  "compileType": "miniprogram",
+  "setting": { "es6": true },
+  "appid": "touristappid"
+}

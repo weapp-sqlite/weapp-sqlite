@@ -1,0 +1,32 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 48rpx;
+  color: #102a43;
+  background: #f4f7f9;
+}
+
+.eyebrow {
+  font-size: 26rpx;
+  color: #168f7a;
+}
+
+.title {
+  margin: 18rpx 0;
+  font-size: 52rpx;
+  font-weight: 700;
+}
+
+.platform,
+.status,
+.result {
+  padding: 24rpx;
+  margin: 18rpx 0;
+  background: #fff;
+  border-radius: 12rpx;
+}
+
+button {
+  margin-top: 28rpx;
+  color: #fff;
+  background: #168f7a;
+}

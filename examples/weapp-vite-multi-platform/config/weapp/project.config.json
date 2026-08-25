@@ -1,0 +1,12 @@
+{
+  "description": "weapp-sqlite weapp-vite demo",
+  "miniprogramRoot": "dist",
+  "srcMiniprogramRoot": "dist",
+  "compileType": "miniprogram",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "compileHotReLoad": false
+  },
+  "appid": "wxb3d842a4a7e3440d"
+}

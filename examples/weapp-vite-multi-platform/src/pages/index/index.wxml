@@ -1,0 +1,8 @@
+<view class="page-shell">
+  <view class="eyebrow">weapp-vite multiPlatform</view>
+  <view class="title">SQLite 跨端 demo</view>
+  <view class="platform">目标平台：{{platform}}</view>
+  <view id="sqlite-status" class="status">状态：{{status}}</view>
+  <view id="sqlite-result" class="result">{{result}}</view>
+  <button id="run-sqlite" bind:tap="runDemo">运行 SQLite</button>
+</view>

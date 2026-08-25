@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "weapp-sqlite · uni-app",
+        "navigationBarBackgroundColor": "#102a43",
+        "navigationBarTextStyle": "white"
+      }
+    }
+  ]
+}

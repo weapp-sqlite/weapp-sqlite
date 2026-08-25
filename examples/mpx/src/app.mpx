@@ -1,0 +1,16 @@
+<script type="application/json">
+{
+  "pages": ["./pages/index"],
+  "window": {
+    "navigationBarTitleText": "weapp-sqlite · MPX",
+    "navigationBarBackgroundColor": "#102a43",
+    "navigationBarTextStyle": "white"
+  }
+}
+</script>
+
+<script>
+import { createApp } from '@mpxjs/core'
+
+createApp({})
+</script>

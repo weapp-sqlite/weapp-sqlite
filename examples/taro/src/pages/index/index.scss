@@ -1,0 +1,30 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 48px;
+  color: #102a43;
+  background: #f4f7f9;
+}
+
+.eyebrow,
+.title,
+.status,
+.result {
+  display: block;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  color: #168f7a;
+}
+
+.title {
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.status,
+.result {
+  padding: 24px;
+  background: #fff;
+  border-radius: 12px;
+}
