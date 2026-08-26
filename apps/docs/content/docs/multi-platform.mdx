@@ -41,6 +41,7 @@ pnpm acceptance:verify
 ## 平台注意事项
 
 - Web 使用 `@weapp-sqlite/web` 的 IndexedDB 二进制持久化，不回退到内存。
-- 微信使用 `@weapp-sqlite/miniprogram` 内置文件系统 driver，数据库位于 `USER_DATA_PATH`。
+- 微信使用 `@weapp-sqlite/miniprogram` 内置文件系统 driver，数据库位于 `USER_DATA_PATH`，sql.js 通过显式注入的 `WXWebAssembly` 加载代码包资源。
+- Web 产物只包含 `sql-wasm-browser.wasm`，小程序产物只包含 `sql-wasm.wasm`，避免重复资源占用主包。
 - `weapp-vite` demo 的小程序目标包括 `weapp`、`alipay`、`tt`、`swan`、`jd` 和 `xhs`。后五个平台当前只要求构建成功，运行时应返回稳定 `MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED`。
 - Headless 结果只是逻辑预检。微信支持证据以真实 DevTools 和四组真机报告为准。

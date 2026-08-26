@@ -334,6 +334,13 @@ importers:
       '@weapp-sqlite/wasm':
         specifier: workspace:*
         version: link:../wasm
+    devDependencies:
+      '@types/sql.js':
+        specifier: ^1.4.11
+        version: 1.4.11
+      sql.js:
+        specifier: ^1.14.2
+        version: 1.14.2
 
   packages/wasm:
     dependencies:

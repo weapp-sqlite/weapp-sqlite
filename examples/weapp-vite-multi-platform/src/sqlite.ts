@@ -8,7 +8,7 @@ import {
 } from '@weapp-sqlite/demo-shared'
 import {
   createMiniProgramSqliteWasmStorage,
-  loadMiniProgramPackageBinary,
+  createMiniProgramSqlJsInitializer,
   MiniProgramSqliteUnsupportedError,
   probeMiniProgramSqliteCapabilities,
 } from '@weapp-sqlite/miniprogram'
@@ -16,7 +16,10 @@ import { createIndexedDbSqliteWasmStorage } from '@weapp-sqlite/web'
 import initSqlJs from 'sql.js'
 
 const DATABASE_NAME = 'weapp-sqlite-acceptance-v1'
-const WASM_PATH = 'assets/sql-wasm.wasm'
+declare const WXWebAssembly: unknown
+
+const MINIPROGRAM_WASM_PATH = '/assets/sql-wasm.wasm'
+const WEB_WASM_PATH = '/assets/sql-wasm-browser.wasm'
 const miniProgramPlatforms: readonly MiniProgramPlatform[] = ['weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs']
 
 interface MiniProgramSystemInfo {
@@ -29,6 +32,8 @@ interface MiniProgramSystemInfo {
 }
 
 interface MiniProgramRuntime {
+  getAppBaseInfo?: () => Pick<MiniProgramSystemInfo, 'SDKVersion' | 'version'>
+  getDeviceInfo?: () => Pick<MiniProgramSystemInfo, 'brand' | 'model' | 'platform' | 'system'>
   getSystemInfoSync?: () => MiniProgramSystemInfo
   setClipboardData?: (options: { data: string, success?: () => void, fail?: (error: unknown) => void }) => void
 }
@@ -57,15 +62,17 @@ function isMiniProgramPlatform(value: string): value is MiniProgramPlatform {
 }
 
 function runtimeEnvironment(target: string, runtime: MiniProgramRuntime): AcceptanceEnvironment {
-  const system = runtime.getSystemInfoSync?.() ?? {}
+  const legacy = !runtime.getDeviceInfo || !runtime.getAppBaseInfo ? runtime.getSystemInfoSync?.() ?? {} : {}
+  const device = runtime.getDeviceInfo?.() ?? legacy
+  const application = runtime.getAppBaseInfo?.() ?? legacy
   return {
     target,
-    ...(system.brand === undefined ? {} : { brand: system.brand }),
-    ...(system.model === undefined ? {} : { model: system.model }),
-    ...(system.platform === undefined ? {} : { platform: system.platform }),
-    ...(system.system === undefined ? {} : { system: system.system }),
-    ...(system.version === undefined ? {} : { clientVersion: system.version }),
-    ...(system.SDKVersion === undefined ? {} : { sdkVersion: system.SDKVersion }),
+    ...(device.brand === undefined ? {} : { brand: device.brand }),
+    ...(device.model === undefined ? {} : { model: device.model }),
+    ...(device.platform === undefined ? {} : { platform: device.platform }),
+    ...(device.system === undefined ? {} : { system: device.system }),
+    ...(application.version === undefined ? {} : { clientVersion: application.version }),
+    ...(application.SDKVersion === undefined ? {} : { sdkVersion: application.SDKVersion }),
   }
 }
 
@@ -87,7 +94,7 @@ export function prepareAcceptanceHost(): Promise<AcceptanceHost> {
       return {
         environment: { target, userAgent: globalThis.navigator?.userAgent },
         storage: createIndexedDbSqliteWasmStorage({ databaseName: 'weapp-sqlite-acceptance' }),
-        initializer: options => initSqlJs({ locateFile: options?.locateFile ?? (() => `/${WASM_PATH}`) }),
+        initializer: options => initSqlJs({ locateFile: options?.locateFile ?? (() => WEB_WASM_PATH) }),
         capability: { platform: 'web', supported: true },
         copyText: value => globalThis.navigator.clipboard.writeText(value),
       }
@@ -100,8 +107,8 @@ export function prepareAcceptanceHost(): Promise<AcceptanceHost> {
     const options = {
       platform: target,
       runtime,
-      packageBinaryPath: WASM_PATH,
-      webAssembly: globalThis.WebAssembly,
+      packageBinaryPath: MINIPROGRAM_WASM_PATH,
+      webAssembly: target === 'weapp' && typeof WXWebAssembly !== 'undefined' ? WXWebAssembly : undefined,
     }
     const capability = await probeMiniProgramSqliteCapabilities(options)
     if (!capability.supported) {
@@ -112,11 +119,10 @@ export function prepareAcceptanceHost(): Promise<AcceptanceHost> {
         capability.message ?? `SQLite is unsupported on ${target}.`,
       )
     }
-    const wasmBinary = await loadMiniProgramPackageBinary(WASM_PATH, options)
     return {
       environment: runtimeEnvironment(target, runtime),
       storage: createMiniProgramSqliteWasmStorage(options),
-      initializer: () => initSqlJs({ wasmBinary: Uint8Array.from(wasmBinary).buffer }),
+      initializer: createMiniProgramSqlJsInitializer({ ...options, initializer: initSqlJs }),
       capability,
       copyText: value => copyWithMiniProgram(runtime, value),
     }
@@ -131,7 +137,7 @@ async function acceptanceOptions() {
       storage: host.storage,
       initializer: host.initializer,
       databaseName: DATABASE_NAME,
-      locateFile: (file: string) => `/assets/${file}`,
+      locateFile: host.environment.target === 'web' ? () => WEB_WASM_PATH : () => MINIPROGRAM_WASM_PATH,
     },
   }
 }

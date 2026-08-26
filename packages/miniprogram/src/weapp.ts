@@ -3,6 +3,8 @@ import type {
   MiniProgramHostAdapterOptions,
   MiniProgramSqliteCapabilityReport,
   MiniProgramSqliteErrorCode,
+  MiniProgramWebAssemblyInstance,
+  MiniProgramWebAssemblyRuntime,
 } from './types'
 import { MiniProgramSqliteUnsupportedError } from './errors'
 
@@ -27,9 +29,21 @@ const ERROR_CODES: Record<Exclude<MiniProgramSqliteErrorCode, 'MINIPROGRAM_SQLIT
   MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE: 'The mini-program filesystem API is unavailable.',
   MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE: 'The mini-program user data path is unavailable.',
   MINIPROGRAM_SQLITE_TYPED_ARRAY_UNAVAILABLE: 'Uint8Array and ArrayBuffer are required.',
-  MINIPROGRAM_SQLITE_WEBASSEMBLY_UNAVAILABLE: 'Standard WebAssembly is unavailable.',
+  MINIPROGRAM_SQLITE_WEBASSEMBLY_UNAVAILABLE: 'A mini-program WebAssembly runtime is unavailable.',
+  MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE: 'The mini-program WebAssembly runtime is incompatible with sql.js.',
+  MINIPROGRAM_SQLITE_WASM_INSTANTIATION_FAILED: 'The SQLite WASM package asset could not be instantiated.',
   MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE: 'The SQLite WASM package asset is unavailable.',
 }
+
+const REQUIRED_WEBASSEMBLY_MEMBERS = [
+  'instantiate',
+  'Module',
+  'Instance',
+  'Memory',
+  'Table',
+] as const
+
+const compatibilityRuntimes = new WeakMap<object, MiniProgramWebAssemblyRuntime>()
 
 function failure(
   options: MiniProgramHostAdapterOptions,
@@ -61,8 +75,96 @@ function resolveFileSystem(options: MiniProgramHostAdapterOptions) {
   return { fileSystem: runtime.getFileSystemManager(), runtime }
 }
 
+function resolveWebAssembly(options: MiniProgramHostAdapterOptions): MiniProgramWebAssemblyRuntime {
+  if (!options.webAssembly || (typeof options.webAssembly !== 'object' && typeof options.webAssembly !== 'function')) {
+    throw failure(options, 'webassembly', 'MINIPROGRAM_SQLITE_WEBASSEMBLY_UNAVAILABLE')
+  }
+  const webAssembly = options.webAssembly as unknown as Record<string, unknown>
+  const missingMembers = REQUIRED_WEBASSEMBLY_MEMBERS.filter(member => typeof webAssembly[member] !== 'function')
+  if (missingMembers.length > 0) {
+    throw new MiniProgramSqliteUnsupportedError(
+      options.platform,
+      'webassembly',
+      'MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE',
+      `${ERROR_CODES.MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE} Missing: ${missingMembers.join(', ')}.`,
+    )
+  }
+  if (typeof webAssembly['RuntimeError'] === 'function') {
+    return options.webAssembly as MiniProgramWebAssemblyRuntime
+  }
+  const key = options.webAssembly as object
+  const cached = compatibilityRuntimes.get(key)
+  if (cached) {
+    return cached
+  }
+  const compatible = {
+    instantiate: (webAssembly['instantiate'] as MiniProgramWebAssemblyRuntime['instantiate']).bind(options.webAssembly),
+    Module: webAssembly['Module'],
+    Instance: webAssembly['Instance'],
+    Memory: webAssembly['Memory'],
+    Table: webAssembly['Table'],
+    RuntimeError: Error,
+  }
+  compatibilityRuntimes.set(key, compatible)
+  return compatible
+}
+
+function installWebAssemblyCompatibility(
+  options: MiniProgramHostAdapterOptions,
+  webAssembly: MiniProgramWebAssemblyRuntime,
+) {
+  const scope = globalThis as unknown as { WebAssembly?: unknown }
+  if (scope.WebAssembly === webAssembly) {
+    return
+  }
+  if (scope.WebAssembly !== undefined) {
+    throw failure(options, 'webassembly', 'MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE')
+  }
+  try {
+    Object.defineProperty(scope, 'WebAssembly', {
+      configurable: true,
+      value: webAssembly,
+      writable: true,
+    })
+  }
+  catch (error) {
+    throw failure(options, 'webassembly', 'MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE', error)
+  }
+}
+
+function normalizePackagePath(path: string) {
+  const normalizedPath = path.replace(/^\/+/, '')
+  if (!normalizedPath || normalizedPath.split('/').includes('..')) {
+    throw new TypeError('Mini-program package asset paths must be relative to the package root and may not contain parent traversal.')
+  }
+  return `/${normalizedPath}`
+}
+
+function normalizeInstantiationResult(
+  result: MiniProgramWebAssemblyInstance | { readonly instance?: unknown, readonly module?: unknown },
+  options: MiniProgramHostAdapterOptions,
+) {
+  if (result && typeof result === 'object' && 'exports' in result) {
+    return { instance: result as MiniProgramWebAssemblyInstance }
+  }
+  if (result && typeof result === 'object' && 'instance' in result) {
+    const instance = result.instance
+    if (instance && typeof instance === 'object' && 'exports' in instance) {
+      return {
+        instance: instance as MiniProgramWebAssemblyInstance,
+        ...(!('module' in result) || result.module === undefined ? {} : { module: result.module }),
+      }
+    }
+  }
+  throw failure(options, 'wasm-instantiation', 'MINIPROGRAM_SQLITE_WASM_INSTANTIATION_FAILED')
+}
+
 function isMissingFile(error: FileSystemError) {
   return /no such file|not found/i.test(error.errMsg ?? '')
+}
+
+function isExistingDirectory(error: FileSystemError) {
+  return /file already exists/i.test(error.errMsg ?? '')
 }
 
 function readFile(fileSystem: MiniProgramFileSystemManager, filePath: string): Promise<Uint8Array> {
@@ -95,13 +197,15 @@ export const weappHostAdapter: MiniProgramHostAdapter = {
       if (!runtime.env?.USER_DATA_PATH) {
         throw failure(options, 'user-data-path', 'MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE')
       }
-      if (typeof Uint8Array === 'undefined' || typeof ArrayBuffer === 'undefined') {
+      if (
+        typeof Uint8Array === 'undefined'
+        || typeof ArrayBuffer === 'undefined'
+        || typeof BigInt64Array === 'undefined'
+        || typeof BigUint64Array === 'undefined'
+      ) {
         throw failure(options, 'typed-array', 'MINIPROGRAM_SQLITE_TYPED_ARRAY_UNAVAILABLE')
       }
-      const webAssembly = options.webAssembly ?? globalThis.WebAssembly
-      if (!webAssembly || typeof webAssembly !== 'object') {
-        throw failure(options, 'webassembly', 'MINIPROGRAM_SQLITE_WEBASSEMBLY_UNAVAILABLE')
-      }
+      resolveWebAssembly(options)
       if (options.packageBinaryPath) {
         await this.loadPackageBinary(options.packageBinaryPath, options)
       }
@@ -136,7 +240,12 @@ export const weappHostAdapter: MiniProgramHostAdapter = {
     const directory = `${userDataPath}/${options.directoryName ?? 'weapp-sqlite'}`
     let directoryPromise: Promise<void> | undefined
     const ensureDirectory = () => directoryPromise ??= new Promise((resolve, reject) => {
-      fileSystem.mkdir({ dirPath: directory, recursive: true, success: resolve, fail: reject })
+      fileSystem.mkdir({
+        dirPath: directory,
+        recursive: true,
+        success: resolve,
+        fail: error => isExistingDirectory(error) ? resolve() : reject(error),
+      })
     })
     const databasePath = (name: string) => `${directory}/${databaseFileName(name)}`
 
@@ -178,15 +287,26 @@ export const weappHostAdapter: MiniProgramHostAdapter = {
   },
   async loadPackageBinary(path, options) {
     const { fileSystem } = resolveFileSystem(options)
-    const normalizedPath = path.replace(/^\/+/, '')
-    if (!normalizedPath || normalizedPath.split('/').includes('..')) {
-      throw new TypeError('Mini-program package asset paths must be relative and may not contain parent traversal.')
-    }
+    const normalizedPath = normalizePackagePath(path).slice(1)
     try {
       return await readFile(fileSystem, normalizedPath)
     }
     catch (error) {
       throw failure(options, 'package-binary', 'MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE', error)
+    }
+  },
+  async instantiatePackageWasm(path, imports, options) {
+    const webAssembly = resolveWebAssembly(options)
+    installWebAssemblyCompatibility(options, webAssembly)
+    try {
+      const result = await webAssembly.instantiate(normalizePackagePath(path), imports)
+      return normalizeInstantiationResult(result, options)
+    }
+    catch (error) {
+      if (error instanceof MiniProgramSqliteUnsupportedError) {
+        throw error
+      }
+      throw failure(options, 'wasm-instantiation', 'MINIPROGRAM_SQLITE_WASM_INSTANTIATION_FAILED', error)
     }
   },
 }

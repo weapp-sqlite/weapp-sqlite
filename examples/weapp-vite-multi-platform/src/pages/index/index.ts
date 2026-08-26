@@ -39,11 +39,26 @@ function serializeError(error: unknown) {
   if (error instanceof MiniProgramSqliteUnsupportedError) {
     return { phase: 'unsupported' as const, error: { code: error.code, message: error.message } }
   }
+  let message: string
+  if (error instanceof Error) {
+    message = error.message
+  }
+  else if (error && typeof error === 'object') {
+    try {
+      message = JSON.stringify(error)
+    }
+    catch {
+      message = String(error)
+    }
+  }
+  else {
+    message = String(error)
+  }
   return {
     phase: 'failed' as const,
     error: {
       code: 'SQLITE_ACCEPTANCE_FAILED',
-      message: error instanceof Error ? error.message : String(error),
+      message,
     },
   }
 }

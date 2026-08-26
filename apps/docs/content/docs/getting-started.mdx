@@ -45,7 +45,7 @@ await database.close()
 
 ## 加载 WASM
 
-构建时确定性复制 `sql.js` 发布包中的 WASM 文件。Web 的浏览器入口会请求 `sql-wasm-browser.wasm`，微信小程序从代码包读取 `sql-wasm.wasm`。不要依赖开发服务器从 `node_modules` 临时解析资源。
+构建时确定性复制 `sql.js` 发布包中当前目标需要的 WASM 文件。Web 的浏览器入口会请求 `sql-wasm-browser.wasm`，微信小程序通过 `WXWebAssembly.instantiate()` 加载代码包中的 `sql-wasm.wasm`。不要依赖开发服务器从 `node_modules` 临时解析资源。
 
 Web 的 `locateFile` 必须返回实际静态 URL：
 
@@ -53,7 +53,7 @@ Web 的 `locateFile` 必须返回实际静态 URL：
 locateFile: file => `/assets/${file}`
 ```
 
-小程序构建工具不会自动把 npm 包内的 WASM 文件变成业务资源。`examples/weapp-vite-multi-platform/scripts/sync-sql-wasm.ts` 展示了复制方式，`pnpm acceptance:build` 会检查每个目标产物中的资源。
+小程序构建工具不会自动把 npm 包内的 WASM 文件变成业务资源。`examples/weapp-vite-multi-platform/scripts/sync-sql-wasm.ts` 展示了按目标复制方式，`pnpm acceptance:build` 会同时检查必需资源存在、另一目标的 WASM 不会混入产物。
 
 ## 加入迁移
 

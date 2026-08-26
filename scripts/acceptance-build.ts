@@ -51,6 +51,23 @@ for (const target of targets) {
   if (!wasmFound) {
     throw new Error(`Missing ${asset} in the ${target} build output.`)
   }
+
+  const unexpectedAsset = target === 'web' ? 'sql-wasm.wasm' : 'sql-wasm-browser.wasm'
+  const unexpectedCandidates = [
+    path.join(targetRoot, 'assets', unexpectedAsset),
+    path.join(targetRoot, 'dist/assets', unexpectedAsset),
+  ]
+  for (const candidate of unexpectedCandidates) {
+    try {
+      await access(candidate)
+      throw new Error(`Unexpected ${unexpectedAsset} in the ${target} build output.`)
+    }
+    catch (error) {
+      if (error instanceof Error && error.message.startsWith('Unexpected ')) {
+        throw error
+      }
+    }
+  }
 }
 
 const weappMainPackage = path.join(demoRoot, 'dist/weapp/dist')

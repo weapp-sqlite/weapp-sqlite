@@ -4,6 +4,9 @@ import type {
   MiniProgramSqliteCapabilityReport,
   MiniProgramSqliteOptions,
   MiniProgramSqliteWasmStorage,
+  MiniProgramSqlJsFactoryOptions,
+  MiniProgramSqlJsInitializer,
+  MiniProgramSqlJsInitializerOptions,
 } from './types'
 import { MiniProgramSqliteUnsupportedError } from './errors'
 import { weappHostAdapter } from './weapp'
@@ -18,6 +21,14 @@ export type {
   MiniProgramSqliteErrorCode,
   MiniProgramSqliteOptions,
   MiniProgramSqliteWasmStorage,
+  MiniProgramSqlJsFactory,
+  MiniProgramSqlJsFactoryOptions,
+  MiniProgramSqlJsInitializer,
+  MiniProgramSqlJsInitializerOptions,
+  MiniProgramWebAssemblyImports,
+  MiniProgramWebAssemblyInstance,
+  MiniProgramWebAssemblyInstantiationResult,
+  MiniProgramWebAssemblyRuntime,
 } from './types'
 
 const builtInAdapters: Partial<Record<MiniProgramPlatform, MiniProgramHostAdapter>> = {
@@ -68,4 +79,45 @@ export async function probeMiniProgramSqliteCapabilities(
     }
   }
   return adapter.probe(options)
+}
+
+export function createMiniProgramSqlJsInitializer(
+  options: MiniProgramSqlJsInitializerOptions,
+): MiniProgramSqlJsInitializer {
+  const adapter = resolveAdapter(options)
+  if (!adapter) {
+    throw platformUnsupported(options.platform)
+  }
+  if (!adapter.instantiatePackageWasm) {
+    throw new MiniProgramSqliteUnsupportedError(
+      options.platform,
+      'wasm-instantiation',
+      'MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE',
+      `SQLite WASM instantiation is not implemented for the ${options.platform} mini-program platform.`,
+    )
+  }
+
+  return async (initializerOptions) => {
+    let rejectInstantiation: (error: unknown) => void = () => undefined
+    const instantiationFailure = new Promise<never>((_resolve, reject) => {
+      rejectInstantiation = reject
+    })
+    const factoryOptions: MiniProgramSqlJsFactoryOptions = {
+      ...(initializerOptions?.locateFile === undefined ? {} : { locateFile: initializerOptions.locateFile }),
+      instantiateWasm(imports, successCallback) {
+        void adapter.instantiatePackageWasm?.(options.packageBinaryPath, imports, options).then(
+          result => successCallback(result.instance, result.module),
+          rejectInstantiation,
+        )
+        return {}
+      },
+    }
+    const initialize = options.initializer as unknown as (
+      factoryOptions: MiniProgramSqlJsFactoryOptions,
+    ) => ReturnType<MiniProgramSqlJsInitializer>
+    return Promise.race([
+      initialize(factoryOptions),
+      instantiationFailure,
+    ])
+  }
 }
