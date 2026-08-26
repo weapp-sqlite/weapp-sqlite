@@ -5,25 +5,31 @@
   "private": true,
   "description": "weapp-vite multiPlatform SQLite demo",
   "scripts": {
-    "dev": "wv dev -p weapp",
-    "dev:web": "wv dev -p web --host",
-    "build": "wv build -p weapp",
-    "build:weapp": "wv build -p weapp",
-    "build:alipay": "wv build -p alipay",
-    "build:tt": "wv build -p tt",
-    "build:swan": "wv build -p swan",
-    "build:jd": "wv build -p jd",
-    "build:xhs": "wv build -p xhs",
-    "build:web": "wv build -p web",
+    "sync:wasm": "tsx scripts/sync-sql-wasm.ts",
+    "dev": "pnpm sync:wasm && wv dev -p weapp",
+    "dev:web": "pnpm sync:wasm && wv dev -p web --host",
+    "build": "pnpm build:weapp",
+    "build:weapp": "pnpm sync:wasm && wv build -p weapp",
+    "build:alipay": "pnpm sync:wasm && wv build -p alipay",
+    "build:tt": "pnpm sync:wasm && wv build -p tt",
+    "build:swan": "pnpm sync:wasm && wv build -p swan",
+    "build:jd": "pnpm sync:wasm && wv build -p jd",
+    "build:xhs": "pnpm sync:wasm && wv build -p xhs",
+    "build:web": "pnpm sync:wasm && wv build -p web",
     "test": "vitest run test/index.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "postinstall": "wv prepare"
   },
   "dependencies": {
     "@weapp-sqlite/demo-shared": "workspace:*",
-    "lit": "^3.3.3"
+    "@weapp-sqlite/miniprogram": "workspace:*",
+    "@weapp-sqlite/wasm": "workspace:*",
+    "@weapp-sqlite/web": "workspace:*",
+    "lit": "^3.3.3",
+    "sql.js": "^1.14.2"
   },
   "devDependencies": {
+    "@types/sql.js": "^1.4.11",
     "weapp-vite": "^6.22.0"
   }
 }

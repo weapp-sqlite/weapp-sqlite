@@ -4,23 +4,26 @@
 
 文档站：[`sqlite.icebreaker.top`](https://sqlite.icebreaker.top)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，并由 Cloudflare Worker 的 Static Assets 托管。
 
-当前实现刻意分成两层：
+当前实现刻意分成四个边界：
 
 - `@weapp-sqlite/core`：定义异步连接、查询、事务和迁移协议，不依赖具体 SQLite 引擎。
 - `@weapp-sqlite/wasm`：把可注入的 SQLite WASM 引擎（例如 `sql.js`）接到 core，并通过存储回调持久化数据库文件。
+- `@weapp-sqlite/web`：使用 IndexedDB 持久化 Web 二进制数据库，不回退到内存。
+- `@weapp-sqlite/miniprogram`：通用小程序宿主协议，首期只内置微信文件系统 driver。
 
-这不是把所有宿主都伪装成同一种原生数据库 API。微信小程序、Web 和其他小程序平台可以分别提供 `SqliteWasmStorage` 或原生 adapter；没有能力的平台应明确报告不支持。
+这不是把所有宿主都伪装成同一种原生数据库 API。支付宝、抖音、百度、京东和小红书当前可以构建，但没有内置 driver，运行时会明确报告 `unsupported`，不宣称已经支持。
 
 ## 快速开始
 
-安装 WASM 引擎和 adapter：
+Web 安装 WASM 引擎和 IndexedDB adapter：
 
 ```bash
-pnpm add @weapp-sqlite/wasm sql.js
+pnpm add @weapp-sqlite/wasm @weapp-sqlite/web sql.js
 ```
 
 ```ts
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
+import { createIndexedDbSqliteWasmStorage } from '@weapp-sqlite/web'
 import initSqlJs from 'sql.js'
 
 const database = await openSqliteWasmDatabase(
@@ -28,17 +31,7 @@ const database = await openSqliteWasmDatabase(
   'app.db',
   {
     locateFile: file => `/assets/${file}`,
-    storage: {
-      async load(name) {
-        // 从 IndexedDB、OPFS 或 wx.getFileSystemManager() 读取 Uint8Array。
-        return undefined
-      },
-      async save(name, data) {
-        // 将导出的 SQLite 文件写回宿主持久化层。
-        void name
-        void data
-      },
-    },
+    storage: createIndexedDbSqliteWasmStorage(),
   },
 )
 
@@ -48,7 +41,7 @@ const result = await database.query<{ id: number, body: string }>('SELECT id, bo
 await database.close()
 ```
 
-所有数据库操作都是异步的。事务会串行执行，并在回调成功后提交；回调抛错时自动回滚。WASM 引擎和宿主存储由调用方注入，避免把某个平台的文件 API 固定到核心包。
+所有数据库操作都是异步的。事务会串行执行，并在回调成功后提交；回调抛错时自动回滚。微信接入使用 `@weapp-sqlite/miniprogram`，显式传入 `platform: 'weapp'` 和顶层 `wx` runtime。
 
 ## 开发
 
@@ -70,13 +63,13 @@ pnpm --filter @weapp-sqlite/docs run deploy:dry
 pnpm --filter @weapp-sqlite/docs run deploy
 ```
 
-当前测试使用 `sql.js` 验证 WASM adapter 的真实 SQL 链路；小程序真机 adapter 和 IndexedDB/OPFS 存储仍应在各自宿主中单独验收。
+当前测试使用 `sql.js` 验证 WASM adapter 的真实 SQL 链路，并使用 Playwright 对 Web 生产产物执行 IndexedDB 持久化验收。微信支持仍必须经过真实 DevTools 与 iOS/Android 真机门禁。
 
 ## 多端 demo
 
 `examples/` 提供同一个 migration + transaction 场景的四套实现，共享层只负责 SQLite 业务流程，各框架只负责宿主存储 API：
 
-- `examples/weapp-vite-multi-platform`：使用 `weapp.multiPlatform`，支持 `weapp`、`alipay`、`tt`、`swan`、`jd`、`xhs`，并提供 Web 构建。
+- `examples/weapp-vite-multi-platform`：正式验收应用，可构建 `weapp`、`alipay`、`tt`、`swan`、`jd`、`xhs` 和 Web；Web 已通过自动验收，微信 driver 当前因 DevTools 缺少标准 WebAssembly 而未通过。
 - `examples/taro`：Taro 4 + React。
 - `examples/uni-app`：uni-app Vue 3。
 - `examples/mpx`：MPX + Webpack 5。
@@ -112,6 +105,6 @@ pnpm --filter weapp-sqlite-demo-mpx typecheck
 pnpm --filter weapp-sqlite-demo-mpx build:weapp
 ```
 
-真实宿主运行前，需要把 `sql.js` 发布包中的 `dist/sql-wasm.wasm` 作为静态资源放到目标项目的 `/assets/sql-wasm.wasm`。demo 中的 `locateFile` 已统一指向该路径；数据库文件则通过各框架的 storage API 持久化。构建完成后，将对应产物目录导入开发者工具：weapp-vite 使用 `dist/<platform>`，Taro 使用 `dist`，uni-app 使用 `dist/build/mp-weixin`，MPX 使用 `dist`。Web 目标直接运行 `examples/weapp-vite-multi-platform/dist/web` 的静态服务即可。
+weapp-vite 验收应用会从 `sql.js` 发布包确定性复制 `sql-wasm.wasm` 和 `sql-wasm-browser.wasm` 到忽略提交的生成资源目录。Web 使用静态 URL 和 IndexedDB；微信从代码包读取二进制，并把数据库文件保存到 `USER_DATA_PATH`。
 
-开发者工具和真机验证仍需在各平台本地完成，重点验收“运行 SQLite”按钮、迁移版本 `[1, 2]`、查询结果和重新进入页面后的持久化状态。Taro、uni-app、MPX 的构建测试只验证编译链和宿主边界，不能替代对应平台开发者工具的运行时验证。
+完整门禁命令为 `pnpm acceptance:build`、`pnpm acceptance:web`、`pnpm acceptance:devtools:doctor`、`pnpm acceptance:devtools`、`pnpm acceptance:mobile:prepare` 和 `pnpm acceptance:verify`。只有 Web、真实 DevTools、iOS 下限/最新、Android 下限/最新六份当前 commit 证据全部通过，才可发布微信多端支持结论。

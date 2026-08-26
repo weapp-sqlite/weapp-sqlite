@@ -2,8 +2,13 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@weapp-sqlite/core": ["../../packages/core/src/index.ts"],
+      "@weapp-sqlite/wasm": ["../../packages/wasm/src/index.ts"],
+      "@weapp-sqlite/web": ["../../packages/web/src/index.ts"],
+      "@weapp-sqlite/miniprogram": ["../../packages/miniprogram/src/index.ts"],
+      "@weapp-sqlite/demo-shared": ["../shared/src/index.ts"]
     }
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "scripts", "vite.config.ts"]
 }

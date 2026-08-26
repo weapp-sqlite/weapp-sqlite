@@ -1,0 +1,28 @@
+---
+title: Web API
+description: "@weapp-sqlite/web 的 IndexedDB 二进制持久化 adapter"
+---
+
+## `createIndexedDbSqliteWasmStorage`
+
+```ts
+function createIndexedDbSqliteWasmStorage(
+  options?: IndexedDbSqliteWasmStorageOptions,
+): IndexedDbSqliteWasmStorage
+```
+
+返回可直接传给 `openSqliteWasmDatabase` 的 storage，并额外提供 `remove(name)` 用于删除真实数据库记录。
+
+```ts
+interface IndexedDbSqliteWasmStorageOptions {
+  readonly indexedDB?: IDBFactory
+  readonly databaseName?: string
+  readonly storeName?: string
+}
+```
+
+默认 IndexedDB 数据库名为 `weapp-sqlite`，object store 名为 `databases`。可注入 `IDBFactory` 以便测试或隔离宿主。
+
+## 错误契约
+
+当前 runtime 没有 IndexedDB 时，factory 同步抛出 `SqliteWebStorageUnavailableError`，错误码固定为 `WEB_SQLITE_INDEXEDDB_UNAVAILABLE`。adapter 不会创建内存数据库作为降级。

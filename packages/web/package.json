@@ -1,0 +1,45 @@
+{
+  "name": "@weapp-sqlite/web",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "基于 IndexedDB 的 Web SQLite WASM 持久化 adapter",
+  "license": "MIT",
+  "keywords": ["sqlite", "wasm", "web", "indexeddb", "weapp-sqlite"],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": ["dist"],
+  "scripts": {
+    "dev": "tsdown -w",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:dev": "vitest",
+    "release": "pnpm publish",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+  },
+  "dependencies": {
+    "@weapp-sqlite/wasm": "workspace:*"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.4"
+  },
+  "publishConfig": {}
+}

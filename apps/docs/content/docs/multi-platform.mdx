@@ -1,9 +1,9 @@
 ---
 title: 多端接入
-description: 使用 weapp-vite、Taro、uni-app 和 MPX 运行同一个 SQLite 场景
+description: 区分 weapp-vite 多目标构建与经过真实宿主验证的平台支持
 ---
 
-仓库的 `examples/` 提供四套可以独立构建的 demo。共享层只包含迁移、查询和字符串存储适配，框架代码只负责把宿主 storage API 接到共享层。
+`examples/weapp-vite-multi-platform` 是 Web 与微信多端的正式验收应用。Web 单独构建；微信只生成一份产物，由开发者工具、iOS 微信和 Android 微信共同验收。
 
 ## Demo 矩阵
 
@@ -25,10 +25,22 @@ pnpm --filter weapp-sqlite-demo-uni-app test
 pnpm --filter weapp-sqlite-demo-mpx test
 ```
 
-真实宿主验收时，点击 demo 的“运行 SQLite”按钮，确认迁移版本为 `[1, 2]`、查询结果包含 `SQLite works across frameworks`，并重新进入页面检查持久化结果。构建通过只代表编译链和宿主边界正确，不能代替开发者工具或真机验证。
+正式链路使用根目录命令构建 Web 和六个小程序目标：
+
+```bash
+pnpm acceptance:build
+pnpm acceptance:web
+pnpm acceptance:devtools:doctor
+pnpm acceptance:devtools
+pnpm acceptance:mobile:prepare
+pnpm acceptance:verify
+```
+
+`acceptance:verify` 只接受当前 commit 的 Web、DevTools、iOS 下限/最新和 Android 下限/最新报告，并要求所有功能检查、设备字段和截图完整。正式准备与汇总必须在干净工作区运行。
 
 ## 平台注意事项
 
-- 微信、Taro、uni-app 和 MPX 都需要把 `sql-wasm.wasm` 放进应用能访问的 `/assets/` 目录。
-- 小程序的存储 API 通常返回字符串或异步结果，使用 `examples/shared` 的 `createStringStorage` 可统一编码为 base64。
-- `weapp-vite` demo 的 `multiPlatform` 目标包括 `weapp`、`alipay`、`tt`、`swan`、`jd`、`xhs` 和 `web`；不同平台仍需分别检查文件 API 和包体积限制。
+- Web 使用 `@weapp-sqlite/web` 的 IndexedDB 二进制持久化，不回退到内存。
+- 微信使用 `@weapp-sqlite/miniprogram` 内置文件系统 driver，数据库位于 `USER_DATA_PATH`。
+- `weapp-vite` demo 的小程序目标包括 `weapp`、`alipay`、`tt`、`swan`、`jd` 和 `xhs`。后五个平台当前只要求构建成功，运行时应返回稳定 `MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED`。
+- Headless 结果只是逻辑预检。微信支持证据以真实 DevTools 和四组真机报告为准。

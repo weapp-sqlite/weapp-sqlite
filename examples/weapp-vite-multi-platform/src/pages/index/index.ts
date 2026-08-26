@@ -1,19 +1,108 @@
-import { runPlatformSqliteDemo } from '../../sqlite'
+import type { SqliteAcceptanceCheck } from '@weapp-sqlite/demo-shared'
+import type { AcceptanceEnvironment } from '../../sqlite'
+import { MiniProgramSqliteUnsupportedError } from '@weapp-sqlite/miniprogram'
+import {
+  copyAcceptanceReport,
+  resetPlatformSqliteAcceptance,
+  runPlatformSqliteAcceptance,
+  verifyPlatformSqliteAcceptance,
+} from '../../sqlite'
 
-Page({
+type AcceptancePhase = 'ready' | 'running' | 'first-pass' | 'persisted-pass' | 'failed' | 'unsupported'
+const targetPlatform = import.meta.env.PLATFORM ?? 'weapp'
+
+interface AcceptancePageData {
+  [key: string]: unknown
+  platform: string
+  acceptance: {
+    schemaVersion: 1
+    phase: AcceptancePhase
+    passed: boolean
+    environment: AcceptanceEnvironment
+    checks: readonly SqliteAcceptanceCheck[]
+    error?: { code: string, message: string } | undefined
+  }
+  report: string
+}
+
+function initialAcceptance(): AcceptancePageData['acceptance'] {
+  return {
+    schemaVersion: 1,
+    phase: 'ready',
+    passed: false,
+    environment: { target: targetPlatform },
+    checks: [],
+  }
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof MiniProgramSqliteUnsupportedError) {
+    return { phase: 'unsupported' as const, error: { code: error.code, message: error.message } }
+  }
+  return {
+    phase: 'failed' as const,
+    error: {
+      code: 'SQLITE_ACCEPTANCE_FAILED',
+      message: error instanceof Error ? error.message : String(error),
+    },
+  }
+}
+
+Page<AcceptancePageData>({
   data: {
-    platform: import.meta.env.PLATFORM,
-    status: 'ready',
-    result: '点击按钮运行 SQLite migration + transaction',
+    platform: targetPlatform,
+    acceptance: initialAcceptance(),
+    report: '',
   },
-  async runDemo() {
-    this.setData({ status: 'running' })
+  async resetAcceptance() {
+    this.setData({ acceptance: { ...initialAcceptance(), phase: 'running' }, report: '' })
     try {
-      const result = await runPlatformSqliteDemo()
-      this.setData({ status: 'ready', result: JSON.stringify(result.rows) })
+      const environment = await resetPlatformSqliteAcceptance()
+      const acceptance = { ...initialAcceptance(), environment }
+      this.setData({ acceptance, report: JSON.stringify(acceptance) })
     }
     catch (error) {
-      this.setData({ status: 'error', result: error instanceof Error ? error.message : String(error) })
+      const failed = { ...initialAcceptance(), ...serializeError(error) }
+      this.setData({ acceptance: failed, report: JSON.stringify(failed) })
     }
+  },
+  async runAcceptance() {
+    this.setData({ acceptance: { ...this.data.acceptance, phase: 'running', error: undefined } })
+    try {
+      const { environment, result } = await runPlatformSqliteAcceptance()
+      const acceptance = {
+        schemaVersion: 1 as const,
+        phase: result.passed ? 'first-pass' as const : 'failed' as const,
+        passed: result.passed,
+        environment,
+        checks: result.checks,
+      }
+      this.setData({ acceptance, report: JSON.stringify(acceptance) })
+    }
+    catch (error) {
+      const failed = { ...initialAcceptance(), ...serializeError(error) }
+      this.setData({ acceptance: failed, report: JSON.stringify(failed) })
+    }
+  },
+  async verifyAcceptance() {
+    this.setData({ acceptance: { ...this.data.acceptance, phase: 'running', error: undefined } })
+    try {
+      const { environment, result } = await verifyPlatformSqliteAcceptance()
+      const acceptance = {
+        schemaVersion: 1 as const,
+        phase: result.passed ? 'persisted-pass' as const : 'failed' as const,
+        passed: result.passed,
+        environment,
+        checks: result.checks,
+      }
+      this.setData({ acceptance, report: JSON.stringify(acceptance) })
+    }
+    catch (error) {
+      const failed = { ...initialAcceptance(), ...serializeError(error) }
+      this.setData({ acceptance: failed, report: JSON.stringify(failed) })
+    }
+  },
+  async copyReport() {
+    await copyAcceptanceReport(this.data.report)
   },
 })

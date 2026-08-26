@@ -3,7 +3,7 @@ title: 架构与生命周期
 description: 理解 core、WASM 引擎和宿主存储之间的职责边界
 ---
 
-## 三层边界
+## 四层边界
 
 ### core
 
@@ -17,7 +17,17 @@ description: 理解 core、WASM 引擎和宿主存储之间的职责边界
 - 将 sql.js 的列数组和值数组还原成带列名的行对象。
 - 在连接变脏后调用 `storage.save` 保存 `database.export()`。
 
-### 宿主存储
+### Web 宿主 adapter
+
+`@weapp-sqlite/web` 使用 IndexedDB 持久化二进制数据库，提供 `load`、`save` 和 `remove`。IndexedDB 不可用时会抛出稳定的 `SqliteWebStorageUnavailableError`，不会退回内存数据库。
+
+### 小程序宿主 adapter
+
+`@weapp-sqlite/miniprogram` 定义统一的平台、runtime、能力探测、数据库文件和包内资源读取协议。应用显式传入 `platform` 和顶层 runtime，包本身不依赖 weapp-vite 的 AST API 重写。
+
+首期只内置微信文件系统 driver，使用 `getFileSystemManager()` 和 `env.USER_DATA_PATH`。支付宝、抖音、百度、京东和小红书目标可以构建，但在没有自定义 adapter 时返回结构化 `unsupported`，不会静默切换到内存。
+
+### 自定义宿主存储
 
 宿主只需要实现两个异步方法：
 
@@ -28,7 +38,7 @@ interface SqliteWasmStorage {
 }
 ```
 
-微信小程序可以用 `wx.getFileSystemManager()`，Web 可以选择 IndexedDB 或 OPFS，其他框架则用各自的 storage API 保存编码后的数据库文件。
+尚未内置的平台可以实现 `MiniProgramHostAdapter`，或者直接向 WASM adapter 提供自己的 `SqliteWasmStorage`。平台行为留在宿主包，`@weapp-sqlite/core` 和 `@weapp-sqlite/wasm` 始终不导入 Web 或小程序 API。
 
 ## 操作与事务
 

@@ -71,3 +71,45 @@ jobs:
         uses: codecov/codecov-action@v7
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  web-acceptance:
+    name: Web Acceptance
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build acceptance targets
+        run: pnpm acceptance:build
+
+      - name: Run Web acceptance
+        run: pnpm acceptance:web
+
+      - name: Upload Web acceptance evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-acceptance-${{ github.sha }}
+          path: |
+            artifacts/acceptance/**
+            test-results/**
+          if-no-files-found: warn

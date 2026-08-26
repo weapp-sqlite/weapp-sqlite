@@ -9,6 +9,10 @@ export default defineProject(await defineVitestProjectConfig({
         find: '@',
         replacement: path.resolve(import.meta.dirname, './src'),
       },
+      {
+        find: '@weapp-sqlite/core',
+        replacement: path.resolve(import.meta.dirname, '../core/src/index.ts'),
+      },
     ],
   },
 }))

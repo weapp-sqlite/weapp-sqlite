@@ -1,8 +1,39 @@
 <view class="page-shell">
-  <view class="eyebrow">weapp-vite multiPlatform</view>
-  <view class="title">SQLite 跨端 demo</view>
-  <view class="platform">目标平台：{{platform}}</view>
-  <view id="sqlite-status" class="status">状态：{{status}}</view>
-  <view id="sqlite-result" class="result">{{result}}</view>
-  <button id="run-sqlite" bind:tap="runDemo">运行 SQLite</button>
+  <view class="header">
+    <view class="eyebrow">weapp-vite SQLite acceptance</view>
+    <view class="title">运行时验收</view>
+    <view class="platform">目标平台：{{platform}}</view>
+  </view>
+
+  <view class="status-panel">
+    <view class="status-row">
+      <text>状态</text>
+      <text id="acceptance-status" class="status-value status-{{acceptance.phase}}">{{acceptance.phase}}</text>
+    </view>
+    <view wx:if="{{acceptance.environment}}" id="acceptance-environment" class="environment">
+      {{acceptance.environment.system || acceptance.environment.userAgent || acceptance.environment.target}}
+    </view>
+    <view wx:if="{{acceptance.error}}" id="acceptance-error" class="error">
+      {{acceptance.error.code}}：{{acceptance.error.message}}
+    </view>
+  </view>
+
+  <view id="acceptance-checks" class="checks">
+    <view wx:for="{{acceptance.checks}}" wx:key="id" class="check-row">
+      <text class="check-state">{{item.passed ? 'PASS' : 'FAIL'}}</text>
+      <view class="check-copy">
+        <text class="check-id">{{item.id}}</text>
+        <text class="check-detail">{{item.detail}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="actions">
+    <button id="reset-acceptance" bind:tap="resetAcceptance">重置数据库</button>
+    <button id="run-acceptance" type="primary" bind:tap="runAcceptance">首次验收</button>
+    <button id="verify-acceptance" bind:tap="verifyAcceptance">验证持久化</button>
+    <button id="copy-report" bind:tap="copyReport" disabled="{{!report}}">复制报告</button>
+  </view>
+
+  <text id="acceptance-report" class="report" selectable="true">{{report}}</text>
 </view>

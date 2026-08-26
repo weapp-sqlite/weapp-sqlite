@@ -6,6 +6,12 @@
     },
     {
       "path": "./packages/wasm"
+    },
+    {
+      "path": "./packages/web"
+    },
+    {
+      "path": "./packages/miniprogram"
     }
   ],
   "files": []

@@ -1,4 +1,12 @@
-import { createMemoryStorage, createStringStorage, runSqliteDemo } from '../src'
+import type { AcceptanceSqliteStorage } from '../src'
+import {
+  createMemoryStorage,
+  createStringStorage,
+  resetSqliteAcceptance,
+  runSqliteAcceptance,
+  runSqliteDemo,
+  verifySqliteAcceptance,
+} from '../src'
 
 describe('shared framework demo service', () => {
   it('runs migrations and persists the result through injected storage', async () => {
@@ -21,5 +29,23 @@ describe('shared framework demo service', () => {
     await expect(runSqliteDemo({ storage: createMemoryStorage() })).resolves.toMatchObject({
       migrationVersions: [1, 2],
     })
+  })
+
+  it('verifies migration, transactions, and persisted reopen state', async () => {
+    const files = new Map<string, Uint8Array>()
+    const storage: AcceptanceSqliteStorage = {
+      load: async name => files.get(name),
+      save: async (name, data) => {
+        files.set(name, Uint8Array.from(data))
+      },
+      remove: async (name) => {
+        files.delete(name)
+      },
+    }
+    const options = { storage, databaseName: 'acceptance-test' }
+
+    await resetSqliteAcceptance(options)
+    await expect(runSqliteAcceptance(options)).resolves.toMatchObject({ passed: true, migrationVersions: [1, 2] })
+    await expect(verifySqliteAcceptance(options)).resolves.toMatchObject({ passed: true, migrationVersions: [1, 2] })
   })
 })

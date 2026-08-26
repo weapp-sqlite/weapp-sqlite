@@ -1,0 +1,53 @@
+---
+title: 小程序 API
+description: "@weapp-sqlite/miniprogram 的通用宿主协议与微信文件系统 driver"
+---
+
+包名是 `@weapp-sqlite/miniprogram`，协议面向通用小程序平台。首期只内置微信 driver；其他目标需要注入自定义 `MiniProgramHostAdapter`，否则返回明确的不支持结果。
+
+## 平台与入口
+
+```ts
+type MiniProgramPlatform = 'weapp' | 'alipay' | 'tt' | 'swan' | 'jd' | 'xhs'
+
+createMiniProgramSqliteWasmStorage(options)
+loadMiniProgramPackageBinary(path, options)
+probeMiniProgramSqliteCapabilities(options)
+```
+
+`options` 必须显式提供 `platform` 和 `runtime`，可选 `adapter`、`directoryName`、`packageBinaryPath` 和 `webAssembly`。微信应用应把顶层 `wx` runtime 交给 factory，包内部不引用或重写全局平台 API。
+
+## 微信接入
+
+```ts
+import initSqlJs from 'sql.js'
+import {
+  createMiniProgramSqliteWasmStorage,
+  loadMiniProgramPackageBinary,
+  probeMiniProgramSqliteCapabilities,
+} from '@weapp-sqlite/miniprogram'
+
+const options = {
+  platform: 'weapp' as const,
+  runtime: wx,
+  packageBinaryPath: 'assets/sql-wasm.wasm',
+  webAssembly: globalThis.WebAssembly,
+}
+
+const capability = await probeMiniProgramSqliteCapabilities(options)
+if (!capability.supported) {
+  throw new Error(`${capability.code}: ${capability.message}`)
+}
+
+const wasmBinary = await loadMiniProgramPackageBinary('assets/sql-wasm.wasm', options)
+const storage = createMiniProgramSqliteWasmStorage(options)
+const initializer = () => initSqlJs({ wasmBinary })
+```
+
+storage 使用 `getFileSystemManager()` 在 `env.USER_DATA_PATH` 下保存数据库，提供 `load`、`save` 和 `remove`。包内 WASM 资源以二进制读取后传给 `initSqlJs`。
+
+## 不支持契约
+
+能力探测返回平台、`supported`、失败 capability、稳定错误码和消息。缺少 runtime、文件系统、用户目录、TypedArray、标准 WebAssembly 或包内资源时返回对应失败；未内置 driver 的平台使用 `MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED`。
+
+创建 storage 或读取包资源时，不支持状态会抛出 `MiniProgramSqliteUnsupportedError`。没有 asm.js 或内存数据库降级。

@@ -5,37 +5,33 @@ description: 安装 core 与 WASM adapter，创建第一个 SQLite 数据库
 
 ## 安装
 
-项目只需要一个引擎和一个 adapter。下面的例子使用 `sql.js`：
+项目需要 WASM 引擎和目标宿主 adapter。Web 项目使用：
 
 ```bash
-pnpm add @weapp-sqlite/wasm sql.js
+pnpm add @weapp-sqlite/wasm @weapp-sqlite/web sql.js
 ```
 
-`@weapp-sqlite/wasm` 会依赖 `@weapp-sqlite/core`，不需要额外安装 core。
+微信小程序使用：
+
+```bash
+pnpm add @weapp-sqlite/wasm @weapp-sqlite/miniprogram sql.js
+```
+
+这些 adapter 会依赖下层包，不需要额外安装 core。
 
 ## 打开数据库
 
 ```ts
 import initSqlJs from 'sql.js'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
+import { createIndexedDbSqliteWasmStorage } from '@weapp-sqlite/web'
 
 const database = await openSqliteWasmDatabase(
   options => initSqlJs({ locateFile: options?.locateFile }),
   'app.db',
   {
     locateFile: file => `/assets/${file}`,
-    storage: {
-      async load(name) {
-        // 从 IndexedDB、OPFS 或小程序文件系统读取 Uint8Array。
-        void name
-        return undefined
-      },
-      async save(name, data) {
-        // 将 database.export() 的结果写入宿主存储。
-        void name
-        void data
-      },
-    },
+    storage: createIndexedDbSqliteWasmStorage(),
   },
 )
 
@@ -49,13 +45,15 @@ await database.close()
 
 ## 加载 WASM
 
-把 `sql.js` 包中的 `dist/sql-wasm.wasm` 复制为应用可访问的静态资源，例如 `/assets/sql-wasm.wasm`。`locateFile` 必须返回目标平台真正可以读取的 URL 或文件路径：
+构建时确定性复制 `sql.js` 发布包中的 WASM 文件。Web 的浏览器入口会请求 `sql-wasm-browser.wasm`，微信小程序从代码包读取 `sql-wasm.wasm`。不要依赖开发服务器从 `node_modules` 临时解析资源。
+
+Web 的 `locateFile` 必须返回实际静态 URL：
 
 ```ts
 locateFile: file => `/assets/${file}`
 ```
 
-小程序构建工具不会自动把 npm 包内的 WASM 文件变成业务资源，建议在各 demo 的构建流程中显式复制并检查该文件。
+小程序构建工具不会自动把 npm 包内的 WASM 文件变成业务资源。`examples/weapp-vite-multi-platform/scripts/sync-sql-wasm.ts` 展示了复制方式，`pnpm acceptance:build` 会检查每个目标产物中的资源。
 
 ## 加入迁移
 

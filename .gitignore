@@ -38,3 +38,9 @@ vite.config.ts.timestamp-*.mjs
 config.ts.timestamp-*.mjs
 .vite-inspect
 .playwright-cli
+
+# generated acceptance assets and evidence
+examples/weapp-vite-multi-platform/.generated
+artifacts/acceptance
+playwright-report
+test-results

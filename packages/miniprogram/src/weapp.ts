@@ -1,0 +1,192 @@
+import type {
+  MiniProgramHostAdapter,
+  MiniProgramHostAdapterOptions,
+  MiniProgramSqliteCapabilityReport,
+  MiniProgramSqliteErrorCode,
+} from './types'
+import { MiniProgramSqliteUnsupportedError } from './errors'
+
+interface FileSystemError {
+  readonly errMsg?: string
+}
+
+interface MiniProgramFileSystemManager {
+  mkdir: (options: { dirPath: string, recursive: boolean, success: () => void, fail: (error: FileSystemError) => void }) => void
+  readFile: (options: { filePath: string, success: (result: { data: string | ArrayBuffer }) => void, fail: (error: FileSystemError) => void }) => void
+  writeFile: (options: { filePath: string, data: ArrayBuffer, success: () => void, fail: (error: FileSystemError) => void }) => void
+  unlink: (options: { filePath: string, success: () => void, fail: (error: FileSystemError) => void }) => void
+}
+
+interface WeappRuntime {
+  readonly env?: { readonly USER_DATA_PATH?: string }
+  readonly getFileSystemManager?: () => MiniProgramFileSystemManager
+}
+
+const ERROR_CODES: Record<Exclude<MiniProgramSqliteErrorCode, 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED'>, string> = {
+  MINIPROGRAM_SQLITE_RUNTIME_UNAVAILABLE: 'The mini-program runtime is unavailable.',
+  MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE: 'The mini-program filesystem API is unavailable.',
+  MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE: 'The mini-program user data path is unavailable.',
+  MINIPROGRAM_SQLITE_TYPED_ARRAY_UNAVAILABLE: 'Uint8Array and ArrayBuffer are required.',
+  MINIPROGRAM_SQLITE_WEBASSEMBLY_UNAVAILABLE: 'Standard WebAssembly is unavailable.',
+  MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE: 'The SQLite WASM package asset is unavailable.',
+}
+
+function failure(
+  options: MiniProgramHostAdapterOptions,
+  capability: MiniProgramSqliteCapabilityReport['capability'],
+  code: Exclude<MiniProgramSqliteErrorCode, 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED'>,
+  cause?: unknown,
+) {
+  return new MiniProgramSqliteUnsupportedError(
+    options.platform,
+    capability ?? 'runtime',
+    code,
+    ERROR_CODES[code],
+    cause === undefined ? undefined : { cause },
+  )
+}
+
+function resolveRuntime(options: MiniProgramHostAdapterOptions): WeappRuntime {
+  if (!options.runtime || typeof options.runtime !== 'object') {
+    throw failure(options, 'runtime', 'MINIPROGRAM_SQLITE_RUNTIME_UNAVAILABLE')
+  }
+  return options.runtime as WeappRuntime
+}
+
+function resolveFileSystem(options: MiniProgramHostAdapterOptions) {
+  const runtime = resolveRuntime(options)
+  if (typeof runtime.getFileSystemManager !== 'function') {
+    throw failure(options, 'filesystem', 'MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE')
+  }
+  return { fileSystem: runtime.getFileSystemManager(), runtime }
+}
+
+function isMissingFile(error: FileSystemError) {
+  return /no such file|not found/i.test(error.errMsg ?? '')
+}
+
+function readFile(fileSystem: MiniProgramFileSystemManager, filePath: string): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    fileSystem.readFile({
+      filePath,
+      success: ({ data }) => {
+        if (typeof data === 'string') {
+          reject(new TypeError(`Expected binary data from ${filePath}.`))
+          return
+        }
+        resolve(Uint8Array.from(new Uint8Array(data)))
+      },
+      fail: reject,
+    })
+  })
+}
+
+function databaseFileName(name: string) {
+  if (!name || !/^[\w.-]+$/.test(name) || name === '.' || name === '..') {
+    throw new TypeError('SQLite database names may only contain letters, numbers, dots, underscores, and hyphens.')
+  }
+  return `${name}.sqlite`
+}
+
+export const weappHostAdapter: MiniProgramHostAdapter = {
+  async probe(options) {
+    try {
+      const { runtime } = resolveFileSystem(options)
+      if (!runtime.env?.USER_DATA_PATH) {
+        throw failure(options, 'user-data-path', 'MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE')
+      }
+      if (typeof Uint8Array === 'undefined' || typeof ArrayBuffer === 'undefined') {
+        throw failure(options, 'typed-array', 'MINIPROGRAM_SQLITE_TYPED_ARRAY_UNAVAILABLE')
+      }
+      const webAssembly = options.webAssembly ?? globalThis.WebAssembly
+      if (!webAssembly || typeof webAssembly !== 'object') {
+        throw failure(options, 'webassembly', 'MINIPROGRAM_SQLITE_WEBASSEMBLY_UNAVAILABLE')
+      }
+      if (options.packageBinaryPath) {
+        await this.loadPackageBinary(options.packageBinaryPath, options)
+      }
+      return { platform: options.platform, supported: true }
+    }
+    catch (error) {
+      if (error instanceof MiniProgramSqliteUnsupportedError) {
+        return {
+          platform: options.platform,
+          supported: false,
+          capability: error.capability,
+          code: error.code,
+          message: error.message,
+        }
+      }
+      const unsupported = failure(options, 'package-binary', 'MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE', error)
+      return {
+        platform: options.platform,
+        supported: false,
+        capability: unsupported.capability,
+        code: unsupported.code,
+        message: unsupported.message,
+      }
+    }
+  },
+  createStorage(options) {
+    const { fileSystem, runtime } = resolveFileSystem(options)
+    const userDataPath = runtime.env?.USER_DATA_PATH
+    if (!userDataPath) {
+      throw failure(options, 'user-data-path', 'MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE')
+    }
+    const directory = `${userDataPath}/${options.directoryName ?? 'weapp-sqlite'}`
+    let directoryPromise: Promise<void> | undefined
+    const ensureDirectory = () => directoryPromise ??= new Promise((resolve, reject) => {
+      fileSystem.mkdir({ dirPath: directory, recursive: true, success: resolve, fail: reject })
+    })
+    const databasePath = (name: string) => `${directory}/${databaseFileName(name)}`
+
+    return {
+      async load(name) {
+        await ensureDirectory()
+        try {
+          return await readFile(fileSystem, databasePath(name))
+        }
+        catch (error) {
+          if (isMissingFile(error as FileSystemError)) {
+            return undefined
+          }
+          throw error
+        }
+      },
+      async save(name, data) {
+        await ensureDirectory()
+        await new Promise<void>((resolve, reject) => {
+          fileSystem.writeFile({
+            filePath: databasePath(name),
+            data: Uint8Array.from(data).buffer,
+            success: resolve,
+            fail: reject,
+          })
+        })
+      },
+      async remove(name) {
+        await ensureDirectory()
+        await new Promise<void>((resolve, reject) => {
+          fileSystem.unlink({
+            filePath: databasePath(name),
+            success: resolve,
+            fail: error => isMissingFile(error) ? resolve() : reject(error),
+          })
+        })
+      },
+    }
+  },
+  async loadPackageBinary(path, options) {
+    const { fileSystem } = resolveFileSystem(options)
+    const normalizedPath = path.replace(/^\/+/, '')
+    if (!normalizedPath || normalizedPath.split('/').includes('..')) {
+      throw new TypeError('Mini-program package asset paths must be relative and may not contain parent traversal.')
+    }
+    try {
+      return await readFile(fileSystem, normalizedPath)
+    }
+    catch (error) {
+      throw failure(options, 'package-binary', 'MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE', error)
+    }
+  },
+}

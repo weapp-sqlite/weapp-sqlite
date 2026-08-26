@@ -11,7 +11,14 @@ describe('weapp-vite multiPlatform demo', () => {
 
   it('wires the page to the injected SQLite service', async () => {
     const page = await readFile(new URL('../src/pages/index/index.ts', import.meta.url), 'utf8')
-    expect(page).toContain('runPlatformSqliteDemo')
-    expect(page).toContain('runDemo')
+    expect(page).toContain('runPlatformSqliteAcceptance')
+    expect(page).toContain('verifyPlatformSqliteAcceptance')
+    expect(page).toContain('resetPlatformSqliteAcceptance')
+  })
+
+  it('never silently enables unverified mini-program hosts', async () => {
+    const service = await readFile(new URL('../../../packages/miniprogram/src/index.ts', import.meta.url), 'utf8')
+    expect(service).toContain('weapp: weappHostAdapter')
+    expect(service).toContain('MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED')
   })
 })

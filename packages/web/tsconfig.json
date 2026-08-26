@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@weapp-sqlite/wasm": ["../wasm/src/index.ts"],
+      "@weapp-sqlite/core": ["../core/src/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}
