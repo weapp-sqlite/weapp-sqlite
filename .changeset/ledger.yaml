@@ -1,0 +1,33 @@
+"@weapp-sqlite/core@0.1.0":
+  dir: packages/core
+  intents:
+    - bright-sqlite-debug
+    - dry-candles-dig
+"@weapp-sqlite/debug@0.1.0":
+  dir: packages/debug
+  intents:
+    - bright-sqlite-debug
+    - calm-sqlite-workspace
+"@weapp-sqlite/miniprogram@0.1.0":
+  dir: packages/miniprogram
+  intents:
+    - bright-sqlite-debug
+    - calm-sqlite-workspace
+    - green-sqlite-hosts
+    - quiet-wasms-run
+    - unified-sqlite-runtime
+"@weapp-sqlite/wasm@0.1.0":
+  dir: packages/wasm
+  intents:
+    - bright-sqlite-demos
+    - dry-candles-dig
+"@weapp-sqlite/weapp-vite@0.1.0":
+  dir: packages/weapp-vite
+  intents:
+    - calm-sqlite-workspace
+    - unified-sqlite-runtime
+"@weapp-sqlite/web@0.1.0":
+  dir: packages/web
+  intents:
+    - calm-sqlite-workspace
+    - green-sqlite-hosts
