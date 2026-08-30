@@ -2,9 +2,18 @@
   "name": "@weapp-sqlite/debug",
   "type": "module",
   "version": "0.0.0",
-  "private": true,
   "description": "开发期 SQLite 数据预览、调试和快照管理控制器",
+  "author": "weapp-sqlite contributors",
   "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/debug"
+  },
+  "bugs": {
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
+  },
   "sideEffects": false,
   "exports": {
     ".": {
@@ -23,6 +32,9 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "files": ["dist"],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "tsdown -w",
     "build": "tsdown",
@@ -42,5 +54,8 @@
     "@types/sql.js": "^1.4.11",
     "sql.js": "^1.14.2"
   },
-  "publishConfig": {}
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

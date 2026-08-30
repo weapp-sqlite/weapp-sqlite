@@ -2,9 +2,18 @@
   "name": "@weapp-sqlite/core",
   "type": "module",
   "version": "0.0.0",
-  "private": true,
   "description": "宿主无关的异步 SQLite driver 协议与事务边界",
+  "author": "weapp-sqlite contributors",
   "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
+  },
   "keywords": ["sqlite", "weapp", "weapp-sqlite", "driver", "miniprogram"],
   "sideEffects": false,
   "exports": {
@@ -26,6 +35,9 @@
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "tsdown -w",
     "build": "tsdown",
@@ -37,5 +49,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
   },
-  "publishConfig": {}
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -2,6 +2,10 @@
 
 weapp-vite 的全端统一 SQLite 构建插件与运行时。
 
+```bash
+pnpm add @weapp-sqlite/weapp-vite sql.js
+```
+
 ```ts
 // vite.config.ts
 import { weappSqlite } from '@weapp-sqlite/weapp-vite'

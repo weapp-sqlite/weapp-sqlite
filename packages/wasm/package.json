@@ -2,9 +2,18 @@
   "name": "@weapp-sqlite/wasm",
   "type": "module",
   "version": "0.0.0",
-  "private": true,
   "description": "基于可注入 WASM SQLite 引擎的跨宿主 adapter",
+  "author": "weapp-sqlite contributors",
   "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
+  },
   "keywords": [
     "sqlite",
     "wasm",
@@ -32,6 +41,9 @@
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "tsdown -w",
     "build": "tsdown",
@@ -46,7 +58,10 @@
   "dependencies": {
     "@weapp-sqlite/core": "workspace:*"
   },
-  "publishConfig": {},
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "devDependencies": {
     "@types/sql.js": "^1.4.11",
     "sql.js": "^1.14.2"

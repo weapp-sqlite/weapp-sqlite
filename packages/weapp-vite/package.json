@@ -2,9 +2,18 @@
   "name": "@weapp-sqlite/weapp-vite",
   "type": "module",
   "version": "0.0.0",
-  "private": true,
   "description": "weapp-vite 全端统一 SQLite runtime 与构建插件",
+  "author": "weapp-sqlite contributors",
   "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/weapp-vite"
+  },
+  "bugs": {
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
+  },
   "keywords": ["sqlite", "weapp-vite", "miniprogram", "web", "wasm"],
   "sideEffects": false,
   "exports": {
@@ -38,6 +47,9 @@
   "module": "./dist/plugin.mjs",
   "types": "./dist/plugin.d.mts",
   "files": ["dist"],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "tsdown -w",
     "build": "tsdown",
@@ -64,5 +76,8 @@
     "@types/sql.js": "^1.4.11",
     "weapp-vite": "^6.25.1"
   },
-  "publishConfig": {}
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }
