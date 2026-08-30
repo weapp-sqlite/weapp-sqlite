@@ -12,6 +12,9 @@
     },
     {
       "path": "./packages/miniprogram"
+    },
+    {
+      "path": "./packages/debug"
     }
   ],
   "files": []

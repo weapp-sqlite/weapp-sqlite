@@ -2,6 +2,8 @@ interface ImportMetaEnv {
   readonly PLATFORM?: string
 }
 
+declare const __WEAPP_SQLITE_DEBUG__: boolean
+
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }

@@ -25,6 +25,8 @@ description: 理解 core、WASM 引擎和宿主存储之间的职责边界
 
 `@weapp-sqlite/miniprogram` 定义统一的平台、runtime、能力探测、数据库文件和包内资源读取协议。应用显式传入 `platform` 和顶层 runtime，包本身不依赖 weapp-vite 的 AST API 重写。
 
+`@weapp-sqlite/debug` 位于业务 UI 与数据库宿主之间，只通过 `SqliteDatabase` 和 `load/save/remove` 管理快照；它不进入 core，也不直接访问 IndexedDB、微信文件系统或 sql.js 实例。
+
 首期只内置微信 driver：使用 `getFileSystemManager()` 和 `env.USER_DATA_PATH` 持久化数据库，并通过显式注入的 `WXWebAssembly` 按代码包路径初始化 sql.js。支付宝、抖音、百度、京东和小红书目标可以构建，但在没有自定义 adapter 时返回结构化 `unsupported`，不会静默切换到内存。
 
 `MiniProgramHostAdapter` 的 `instantiatePackageWasm` 是宿主 WebAssembly 边界。微信实现验证 sql.js 所需的构造器和 BigInt TypedArray，并为部分 DevTools 未暴露的 `RuntimeError` 提供等价 `Error` 构造器；它只在标准 `WebAssembly` 缺失时安装兼容命名空间，已有不同实现时明确失败，不覆盖全局对象。
@@ -39,6 +41,8 @@ interface SqliteWasmStorage {
   save: (name: string, data: Uint8Array) => Promise<void>
 }
 ```
+
+调试控制器使用扩展的 `SqliteDebugStorage`，额外要求 `remove(name)`，用于真实删除数据库快照。导入仍通过同一组 `load/save/remove` 边界替换文件，不让控制器感知 IndexedDB 或微信用户目录。
 
 尚未内置的平台可以实现 `MiniProgramHostAdapter`，或者直接向 WASM adapter 提供自己的 `SqliteWasmStorage`。平台行为留在宿主包，`@weapp-sqlite/core` 和 `@weapp-sqlite/wasm` 始终不导入 Web 或小程序 API。
 

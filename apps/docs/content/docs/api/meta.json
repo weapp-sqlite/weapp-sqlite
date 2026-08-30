@@ -1,4 +1,4 @@
 {
   "title": "API 参考",
-  "pages": ["core", "wasm", "web", "miniprogram"]
+  "pages": ["core", "wasm", "web", "miniprogram", "debug"]
 }

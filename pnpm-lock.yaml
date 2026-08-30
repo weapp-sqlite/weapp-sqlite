@@ -301,6 +301,9 @@ importers:
 
   examples/weapp-vite-multi-platform:
     dependencies:
+      '@weapp-sqlite/debug':
+        specifier: workspace:*
+        version: link:../../packages/debug
       '@weapp-sqlite/demo-shared':
         specifier: workspace:*
         version: link:../shared
@@ -328,6 +331,22 @@ importers:
         version: 6.22.0(@babel/core@8.0.1)(@types/node@26.3.0)(esbuild@0.28.2)(eslint@10.9.1(jiti@2.7.0)(supports-color@10.2.2))(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(miniprogram-api-typings@5.2.3)(rollup@4.62.5)(sass@1.103.1)(stylus@0.64.0(supports-color@10.2.2))(supports-color@10.2.2)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
 
   packages/core: {}
+
+  packages/debug:
+    dependencies:
+      '@weapp-sqlite/core':
+        specifier: workspace:*
+        version: link:../core
+      '@weapp-sqlite/wasm':
+        specifier: workspace:*
+        version: link:../wasm
+    devDependencies:
+      '@types/sql.js':
+        specifier: ^1.4.11
+        version: 1.4.11
+      sql.js:
+        specifier: ^1.14.2
+        version: 1.14.2
 
   packages/miniprogram:
     dependencies:

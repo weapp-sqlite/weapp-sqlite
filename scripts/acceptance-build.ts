@@ -1,4 +1,4 @@
-import { access, readdir, stat } from 'node:fs/promises'
+import { access, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { execa } from 'execa'
 import { acceptanceArtifactRoot, demoRoot, repositoryRoot } from './acceptance-paths'
@@ -8,6 +8,7 @@ const packageBuilds = [
   '@weapp-sqlite/wasm',
   '@weapp-sqlite/web',
   '@weapp-sqlite/miniprogram',
+  '@weapp-sqlite/debug',
 ]
 const targets = ['web', 'weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'] as const
 
@@ -29,6 +30,27 @@ for (const packageName of packageBuilds) {
 }
 for (const target of targets) {
   await runPnpm(['--filter', 'weapp-sqlite-demo-weapp-vite', `build:${target}`])
+}
+
+for (const target of ['web', 'weapp'] as const) {
+  const output = path.join(demoRoot, 'dist', target)
+  const files: string[] = []
+  async function collect(directory: string) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name)
+      if (entry.isDirectory()) {
+        await collect(entryPath)
+      }
+      else { files.push(entryPath) }
+    }
+  }
+  await collect(output)
+  for (const file of files.filter(file => /\.(?:js|wxml|html|css|wxss)$/.test(file))) {
+    const content = await readFile(file, 'utf8')
+    if (/SQLite 数据面板|debug-sql|createSqliteDebugController|SQLITE_DEBUG_/.test(content)) {
+      throw new Error(`Production ${target} output contains SQLite debug capability: ${file}`)
+    }
+  }
 }
 
 for (const target of targets) {

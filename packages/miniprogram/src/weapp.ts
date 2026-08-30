@@ -250,6 +250,9 @@ export const weappHostAdapter: MiniProgramHostAdapter = {
     const databasePath = (name: string) => `${directory}/${databaseFileName(name)}`
 
     return {
+      getDatabasePath(name) {
+        return databasePath(name)
+      },
       async load(name) {
         await ensureDirectory()
         try {

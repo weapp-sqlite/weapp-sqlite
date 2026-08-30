@@ -129,7 +129,7 @@ export function prepareAcceptanceHost(): Promise<AcceptanceHost> {
   })()
 }
 
-async function acceptanceOptions() {
+export async function acceptanceOptions() {
   const host = await prepareAcceptanceHost()
   return {
     host,

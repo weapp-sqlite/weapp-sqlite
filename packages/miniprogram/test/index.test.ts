@@ -75,6 +75,7 @@ describe('mini-program storage', () => {
     const { runtime } = createRuntime()
     const storage = createMiniProgramSqliteWasmStorage({ platform: 'weapp', runtime })
 
+    expect(storage.getDatabasePath?.('demo')).toBe('/user/weapp-sqlite/demo.sqlite')
     await expect(storage.load('demo')).resolves.toBeUndefined()
     await storage.save('demo', new Uint8Array([1, 2, 3]))
     await expect(storage.load('demo')).resolves.toEqual(new Uint8Array([1, 2, 3]))

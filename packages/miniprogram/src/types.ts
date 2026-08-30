@@ -58,6 +58,7 @@ export type MiniProgramSqlJsFactory = SqlJsInitializer
 
 export interface MiniProgramSqliteWasmStorage extends SqliteWasmStorage {
   remove: (name: string) => Promise<void>
+  getDatabasePath?: (name: string) => string
 }
 
 export interface MiniProgramSqliteCapabilityReport {

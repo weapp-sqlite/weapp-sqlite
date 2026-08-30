@@ -89,6 +89,12 @@ export function createSqliteDatabase(name: string, connection: SqliteConnection)
         }
       })
     },
+    flush() {
+      return runExclusive(async () => {
+        assertOpen()
+        await connection.flush?.()
+      })
+    },
     close() {
       return runExclusive(async () => {
         if (closed) {

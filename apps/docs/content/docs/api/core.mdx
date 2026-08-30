@@ -19,9 +19,12 @@ interface SqliteDatabase {
   exec(sql: string, parameters?: SqliteParameters): Promise<SqliteExecResult>
   query<Row extends SqliteRow = SqliteRow>(sql: string, parameters?: SqliteParameters): Promise<SqliteQueryResult<Row>>
   transaction<T>(callback: (transaction: SqliteTransaction) => Promise<T>): Promise<T>
+  flush(): Promise<void>
   close(): Promise<void>
 }
 ```
+
+`flush()` 会在内部队列中等待所有已提交写入落到宿主 storage，适合调试导出或应用退出前建立快照。
 
 `SqliteParameters` 支持位置数组或命名对象；标量包括字符串、数字、`bigint`、`boolean`、二进制数据和 `null`。
 

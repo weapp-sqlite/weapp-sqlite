@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@weapp-sqlite/core": ["../core/src/index.ts"],
+      "@weapp-sqlite/wasm": ["../wasm/src/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

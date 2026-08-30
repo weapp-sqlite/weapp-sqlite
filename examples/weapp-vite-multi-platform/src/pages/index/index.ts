@@ -1,6 +1,8 @@
+import type { SqliteDebugColumn, SqliteDebugPage, SqliteDebugSnapshotMetadata, SqliteDebugTable } from '@weapp-sqlite/debug'
 import type { SqliteAcceptanceCheck } from '@weapp-sqlite/demo-shared'
 import type { AcceptanceEnvironment } from '../../sqlite'
 import { MiniProgramSqliteUnsupportedError } from '@weapp-sqlite/miniprogram'
+import { closeDebugPageController, createDebugPageMethods } from '../../debug-page'
 import {
   copyAcceptanceReport,
   resetPlatformSqliteAcceptance,
@@ -23,6 +25,19 @@ interface AcceptancePageData {
     error?: { code: string, message: string } | undefined
   }
   report: string
+  debugEnabled?: boolean
+  debug?: {
+    tables: readonly SqliteDebugTable[]
+    selectedTable: string
+    columns: readonly SqliteDebugColumn[]
+    page: SqliteDebugPage | undefined
+    pageLabel: string
+    displayRows: readonly string[]
+    sql: string
+    result: string
+    snapshot: SqliteDebugSnapshotMetadata | undefined
+    error?: { code: string, message: string } | undefined
+  }
 }
 
 function initialAcceptance(): AcceptancePageData['acceptance'] {
@@ -63,13 +78,34 @@ function serializeError(error: unknown) {
   }
 }
 
+const debugInitialData = __WEAPP_SQLITE_DEBUG__
+  ? {
+      debugEnabled: true,
+      debug: {
+        tables: [] as readonly SqliteDebugTable[],
+        selectedTable: '',
+        columns: [] as readonly SqliteDebugColumn[],
+        page: undefined as SqliteDebugPage | undefined,
+        pageLabel: '0 / 0',
+        displayRows: [],
+        sql: 'SELECT * FROM notes ORDER BY id',
+        result: '',
+        snapshot: undefined as SqliteDebugSnapshotMetadata | undefined,
+      },
+    }
+  : {}
+
 Page<AcceptancePageData>({
   data: {
     platform: targetPlatform,
     acceptance: initialAcceptance(),
     report: '',
+    ...debugInitialData,
   },
   async resetAcceptance() {
+    if (__WEAPP_SQLITE_DEBUG__) {
+      await closeDebugPageController()
+    }
     this.setData({ acceptance: { ...initialAcceptance(), phase: 'running' }, report: '' })
     try {
       const environment = await resetPlatformSqliteAcceptance()
@@ -82,6 +118,9 @@ Page<AcceptancePageData>({
     }
   },
   async runAcceptance() {
+    if (__WEAPP_SQLITE_DEBUG__) {
+      await closeDebugPageController()
+    }
     this.setData({ acceptance: { ...this.data.acceptance, phase: 'running', error: undefined } })
     try {
       const { environment, result } = await runPlatformSqliteAcceptance()
@@ -100,6 +139,9 @@ Page<AcceptancePageData>({
     }
   },
   async verifyAcceptance() {
+    if (__WEAPP_SQLITE_DEBUG__) {
+      await closeDebugPageController()
+    }
     this.setData({ acceptance: { ...this.data.acceptance, phase: 'running', error: undefined } })
     try {
       const { environment, result } = await verifyPlatformSqliteAcceptance()
@@ -120,4 +162,10 @@ Page<AcceptancePageData>({
   async copyReport() {
     await copyAcceptanceReport(this.data.report)
   },
+  onUnload() {
+    if (__WEAPP_SQLITE_DEBUG__) {
+      void closeDebugPageController()
+    }
+  },
+  ...(__WEAPP_SQLITE_DEBUG__ ? createDebugPageMethods() : {}),
 })

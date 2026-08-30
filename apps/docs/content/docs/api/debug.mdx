@@ -1,0 +1,31 @@
+---
+title: Debug API
+description: "开发期 SQLite 数据预览、SQL 调试和快照管理"
+---
+
+`@weapp-sqlite/debug` 是宿主无关的开发期控制器。它不连接远程数据库，也不应被默认生产构建暴露。
+
+```bash
+pnpm add -D @weapp-sqlite/debug
+WEAPP_SQLITE_DEBUG=1 pnpm build:web
+```
+
+## 创建控制器
+
+```ts
+const debug = createSqliteDebugController({
+  databaseName: 'app.db',
+  openDatabase: () => openDatabase(),
+  storage, // load/save/remove
+  enabled: import.meta.env.DEV, // 只有 true 才启用，省略时默认拒绝
+  runtime: { platform: 'web' },
+})
+```
+
+控制器提供 `listTables()`、`describeTable()`、`readTable()`、`query()`、`execute()`、`getMigrationStatus()`、`exportDatabase()`、`importDatabase()`、`resetDatabase()` 和 `close()`。
+
+控制器只有在 `enabled: true` 时才执行操作，省略或传入 `false` 都返回 `SQLITE_DEBUG_DISABLED`。`query()` 只允许 `SELECT`、`EXPLAIN` 和明确列入安全白名单的只读 `PRAGMA`；写入必须同时传入 `{ allowWrite: true }`。`ATTACH`、`DETACH`、`load_extension`、`writable_schema` 和 `VACUUM INTO` 始终拒绝。参数必须通过绑定参数传入，表名和列名由控制器转义。
+
+默认返回上限为 500 行、1 MiB，导入上限为 16 MiB。导出会先调用 `SqliteDatabase.flush()`，返回 SQLite 二进制快照、SHA-256、迁移版本和运行时元数据。导入只接受 SQLite magic header，并在打开新快照失败时恢复旧快照。
+
+调试面板应由编译期开关控制。生产构建不应注册调试路由、SQL 写入口或导入接口。

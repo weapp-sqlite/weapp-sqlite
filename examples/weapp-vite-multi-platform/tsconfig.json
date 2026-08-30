@@ -7,6 +7,7 @@
       "@weapp-sqlite/wasm": ["../../packages/wasm/src/index.ts"],
       "@weapp-sqlite/web": ["../../packages/web/src/index.ts"],
       "@weapp-sqlite/miniprogram": ["../../packages/miniprogram/src/index.ts"],
+      "@weapp-sqlite/debug": ["../../packages/debug/src/index.ts"],
       "@weapp-sqlite/demo-shared": ["../shared/src/index.ts"]
     }
   },

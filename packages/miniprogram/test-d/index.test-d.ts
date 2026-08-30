@@ -13,7 +13,9 @@ import {
 } from '..'
 
 const platform: MiniProgramPlatform = 'weapp'
-expectType<MiniProgramSqliteWasmStorage>(createMiniProgramSqliteWasmStorage({ platform, runtime: {} }))
+const storage = createMiniProgramSqliteWasmStorage({ platform, runtime: {} })
+expectType<MiniProgramSqliteWasmStorage>(storage)
+expectType<string | undefined>(storage.getDatabasePath?.('demo'))
 expectType<Promise<MiniProgramSqliteCapabilityReport>>(probeMiniProgramSqliteCapabilities({ platform, runtime: {} }))
 
 declare const webAssembly: MiniProgramWebAssemblyRuntime

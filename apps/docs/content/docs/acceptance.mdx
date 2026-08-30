@@ -17,6 +17,8 @@ description: Web、微信开发者工具和 iOS/Android 微信的发布门禁
 
 ## 自动验收
 
+开发调试面板只在 `WEAPP_SQLITE_DEBUG=1` 的构建中启用。Web 面板可下载和选择 `.sqlite` 快照；微信面板的二进制导出通过 DevTools bridge 保存为验收 artifact。`pnpm acceptance:debug:web` 和 `pnpm acceptance:debug:devtools` 分别验证两端的数据预览、分页、查询、写入、导出、导入和持久化。生产 Web/微信构建必须确认调试页面、写 SQL 和导入 API 不在产物中。
+
 Web suite 对生产静态产物执行重置、首次运行、刷新和持久化验证，并把 console error、资源失败和未捕获异常作为硬失败。DevTools suite 在整个文件中只启动一次 automator，使用 `reLaunch('/pages/index/index')` 和 Page data 中版本化的 `acceptance` 对象断言。
 
 Headless 只用于逻辑预检，不计入微信支持证据。截图用于保存证据，不做跨系统像素比较。

@@ -74,6 +74,15 @@ describe('sqlite core', () => {
     await expect(database.query('SELECT 1')).rejects.toBeInstanceOf(SqliteClosedError)
   })
 
+  it('exposes a serialized flush boundary', async () => {
+    const fake = createFakeConnection()
+    const database = createSqliteDatabase('test', fake.connection)
+
+    await database.flush()
+    expect(fake.flushCount).toBe(1)
+    await database.close()
+  })
+
   it('applies pending migrations once and preserves order', async () => {
     const fake = createFakeConnection()
     const database = createSqliteDatabase('test', fake.connection)

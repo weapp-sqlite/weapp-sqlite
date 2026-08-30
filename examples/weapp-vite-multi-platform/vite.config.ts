@@ -1,7 +1,13 @@
 import path from 'node:path'
+import process from 'node:process'
 import { defineConfig } from 'weapp-vite'
 
+const debugEnabled = process.env['WEAPP_SQLITE_DEBUG'] === '1'
+
 export default defineConfig({
+  define: {
+    __WEAPP_SQLITE_DEBUG__: JSON.stringify(debugEnabled),
+  },
   publicDir: '.generated/public',
   resolve: {
     alias: {
@@ -9,6 +15,7 @@ export default defineConfig({
       '@weapp-sqlite/wasm': path.resolve(import.meta.dirname, '../../packages/wasm/src/index.ts'),
       '@weapp-sqlite/web': path.resolve(import.meta.dirname, '../../packages/web/src/index.ts'),
       '@weapp-sqlite/miniprogram': path.resolve(import.meta.dirname, '../../packages/miniprogram/src/index.ts'),
+      '@weapp-sqlite/debug': path.resolve(import.meta.dirname, '../../packages/debug/src/index.ts'),
     },
   },
   weapp: {

@@ -33,6 +33,8 @@ export interface SqliteDatabase {
   exec: (sql: string, parameters?: SqliteParameters) => Promise<SqliteExecResult>
   query: <Row extends SqliteRow = SqliteRow>(sql: string, parameters?: SqliteParameters) => Promise<SqliteQueryResult<Row>>
   transaction: <T>(callback: (transaction: SqliteTransaction) => Promise<T>) => Promise<T>
+  /** Flushes pending writes to the injected persistence boundary. */
+  flush: () => Promise<void>
   close: () => Promise<void>
 }
 
