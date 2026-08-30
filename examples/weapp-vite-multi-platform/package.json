@@ -5,17 +5,16 @@
   "private": true,
   "description": "weapp-vite multiPlatform SQLite demo",
   "scripts": {
-    "sync:wasm": "tsx scripts/sync-sql-wasm.ts",
-    "dev": "pnpm sync:wasm weapp && wv dev -p weapp",
-    "dev:web": "pnpm sync:wasm web && wv dev -p web --host",
+    "dev": "wv dev -p weapp",
+    "dev:web": "wv dev -p web --host",
     "build": "pnpm build:weapp",
-    "build:weapp": "pnpm sync:wasm weapp && tsx scripts/build-platform.ts weapp",
-    "build:alipay": "pnpm sync:wasm alipay && tsx scripts/build-platform.ts alipay",
-    "build:tt": "pnpm sync:wasm tt && tsx scripts/build-platform.ts tt",
-    "build:swan": "pnpm sync:wasm swan && tsx scripts/build-platform.ts swan",
-    "build:jd": "pnpm sync:wasm jd && tsx scripts/build-platform.ts jd",
-    "build:xhs": "pnpm sync:wasm xhs && tsx scripts/build-platform.ts xhs",
-    "build:web": "pnpm sync:wasm web && tsx scripts/build-platform.ts web",
+    "build:weapp": "tsx scripts/build-platform.ts weapp",
+    "build:alipay": "tsx scripts/build-platform.ts alipay",
+    "build:tt": "tsx scripts/build-platform.ts tt",
+    "build:swan": "tsx scripts/build-platform.ts swan",
+    "build:jd": "tsx scripts/build-platform.ts jd",
+    "build:xhs": "tsx scripts/build-platform.ts xhs",
+    "build:web": "tsx scripts/build-platform.ts web",
     "test": "vitest run test/index.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "postinstall": "wv prepare"
@@ -23,14 +22,10 @@
   "dependencies": {
     "@weapp-sqlite/debug": "workspace:*",
     "@weapp-sqlite/demo-shared": "workspace:*",
-    "@weapp-sqlite/miniprogram": "workspace:*",
-    "@weapp-sqlite/wasm": "workspace:*",
-    "@weapp-sqlite/web": "workspace:*",
-    "lit": "^3.3.3",
-    "sql.js": "^1.14.2"
+    "@weapp-sqlite/weapp-vite": "workspace:*",
+    "lit": "^3.3.3"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11",
     "weapp-vite": "^6.22.0"
   }
 }

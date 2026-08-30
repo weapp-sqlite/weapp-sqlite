@@ -1,0 +1,63 @@
+{
+  "name": "@weapp-sqlite/weapp-vite",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "weapp-vite 全端统一 SQLite runtime 与构建插件",
+  "license": "MIT",
+  "keywords": ["sqlite", "weapp-vite", "miniprogram", "web", "wasm"],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.mts",
+      "import": "./dist/plugin.mjs",
+      "require": "./dist/plugin.cjs"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.mts",
+      "import": "./dist/runtime.mjs",
+      "require": "./dist/runtime.cjs"
+    },
+    "./debug": {
+      "types": "./dist/debug.d.mts",
+      "import": "./dist/debug.mjs",
+      "require": "./dist/debug.cjs"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.mts",
+      "import": "./dist/adapter.mjs",
+      "require": "./dist/adapter.cjs"
+    }
+  },
+  "main": "./dist/plugin.cjs",
+  "module": "./dist/plugin.mjs",
+  "types": "./dist/plugin.d.mts",
+  "files": ["dist"],
+  "scripts": {
+    "dev": "tsdown -w",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:dev": "vitest",
+    "release": "pnpm publish",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+  },
+  "peerDependencies": {
+    "weapp-vite": ">=6.22.0"
+  },
+  "dependencies": {
+    "@weapp-sqlite/core": "workspace:*",
+    "@weapp-sqlite/debug": "workspace:*",
+    "@weapp-sqlite/miniprogram": "workspace:*",
+    "@weapp-sqlite/wasm": "workspace:*",
+    "@weapp-sqlite/web": "workspace:*",
+    "sql.js": "^1.14.2"
+  },
+  "devDependencies": {
+    "@types/sql.js": "^1.4.11",
+    "weapp-vite": "^6.22.0"
+  },
+  "publishConfig": {}
+}

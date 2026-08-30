@@ -16,9 +16,12 @@ describe('weapp-vite multiPlatform demo', () => {
     expect(page).toContain('resetPlatformSqliteAcceptance')
   })
 
-  it('never silently enables unverified mini-program hosts', async () => {
-    const service = await readFile(new URL('../../../packages/miniprogram/src/index.ts', import.meta.url), 'utf8')
-    expect(service).toContain('weapp: weappHostAdapter')
-    expect(service).toContain('MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED')
+  it('uses one SQLite initialization path without host globals or platform branches', async () => {
+    const service = await readFile(new URL('../src/sqlite.ts', import.meta.url), 'utf8')
+    expect(service).toContain('from \'@weapp-sqlite/weapp-vite/runtime\'')
+    expect(service).toContain('openSqlite({')
+    expect(service).not.toContain('import.meta.env.PLATFORM')
+    expect(service).not.toContain('WXWebAssembly')
+    expect(service).not.toMatch(/\b(?:wx|my|tt|swan|jd|xhs)\b/)
   })
 })

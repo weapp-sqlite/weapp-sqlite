@@ -102,7 +102,9 @@ afterAll(async () => {
 
 it('runs provider-compatible SQLite acceptance', async () => {
   const { commit, root } = await acceptanceArtifactRoot()
-  const output = path.join(root, runtimeProvider)
+  const output = runtimeProvider === 'devtools'
+    ? path.join(root, 'devtools', 'weapp')
+    : path.join(root, 'headless', 'weapp')
   await mkdir(output, { recursive: true })
 
   let page: Page | undefined
@@ -116,7 +118,7 @@ it('runs provider-compatible SQLite acceptance', async () => {
         await writeFile(path.join(output, 'report.json'), `${JSON.stringify({
           schemaVersion: 1,
           commit,
-          target: runtimeProvider,
+          target: 'headless',
           passed: true,
           checks: { unsupportedContract: preflight },
           supportEvidence: false,
@@ -144,7 +146,7 @@ it('runs provider-compatible SQLite acceptance', async () => {
     await writeFile(path.join(output, 'report.json'), `${JSON.stringify({
       schemaVersion: 1,
       commit,
-      target: runtimeProvider,
+      target: 'weapp',
       passed: true,
       checks: { first, persisted, runtimeFailures },
       screenshots: { first: 'first.png', persisted: 'persisted.png' },
@@ -173,7 +175,7 @@ it('runs provider-compatible SQLite acceptance', async () => {
     await writeFile(path.join(output, 'report.json'), `${JSON.stringify({
       schemaVersion: 1,
       commit,
-      target: runtimeProvider,
+      target: runtimeProvider === 'devtools' ? 'weapp' : 'headless',
       passed: false,
       checks: { acceptance },
       error: message,

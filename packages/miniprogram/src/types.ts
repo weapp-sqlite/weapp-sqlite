@@ -36,7 +36,7 @@ export interface MiniProgramWebAssemblyInstantiationResult {
 
 export interface MiniProgramWebAssemblyRuntime {
   readonly instantiate: (
-    path: string,
+    source: string | Uint8Array,
     imports: MiniProgramWebAssemblyImports,
   ) => Promise<MiniProgramWebAssemblyInstance | MiniProgramWebAssemblyInstantiationResult>
   readonly Module: unknown

@@ -15,6 +15,9 @@
     },
     {
       "path": "./packages/debug"
+    },
+    {
+      "path": "./packages/weapp-vite"
     }
   ],
   "files": []

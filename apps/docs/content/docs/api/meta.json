@@ -1,4 +1,4 @@
 {
   "title": "API 参考",
-  "pages": ["core", "wasm", "web", "miniprogram", "debug"]
+  "pages": ["core", "wasm", "web", "miniprogram", "weapp-vite", "debug"]
 }

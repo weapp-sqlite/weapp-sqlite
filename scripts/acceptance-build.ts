@@ -9,6 +9,7 @@ const packageBuilds = [
   '@weapp-sqlite/web',
   '@weapp-sqlite/miniprogram',
   '@weapp-sqlite/debug',
+  '@weapp-sqlite/weapp-vite',
 ]
 const targets = ['web', 'weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'] as const
 
@@ -32,7 +33,7 @@ for (const target of targets) {
   await runPnpm(['--filter', 'weapp-sqlite-demo-weapp-vite', `build:${target}`])
 }
 
-for (const target of ['web', 'weapp'] as const) {
+for (const target of targets) {
   const output = path.join(demoRoot, 'dist', target)
   const files: string[] = []
   async function collect(directory: string) {

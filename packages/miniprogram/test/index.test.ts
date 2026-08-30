@@ -103,14 +103,37 @@ describe('mini-program storage', () => {
     await expect(probeMiniProgramSqliteCapabilities(options)).resolves.toEqual({ platform: 'weapp', supported: true })
   })
 
-  it('reports unimplemented platforms without falling back', async () => {
+  it('probes built-in platform adapters without falling back', async () => {
     const options = { platform: 'alipay' as const, runtime: {} }
     expect(() => createMiniProgramSqliteWasmStorage(options)).toThrow(MiniProgramSqliteUnsupportedError)
     await expect(probeMiniProgramSqliteCapabilities(options)).resolves.toMatchObject({
       supported: false,
-      capability: 'platform',
-      code: 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED',
+      capability: 'filesystem',
+      code: 'MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE',
     })
+  })
+
+  it('instantiates portable mini-program WASM from package bytes', async () => {
+    vi.stubGlobal('WebAssembly', undefined)
+    const { runtime } = createRuntime()
+    const instance = { exports: {} }
+    let instantiatedSource: string | Uint8Array | undefined
+    const instantiate: MiniProgramWebAssemblyRuntime['instantiate'] = async (source) => {
+      instantiatedSource = source
+      return instance
+    }
+    const initializer = createMiniProgramSqlJsInitializer({
+      platform: 'tt',
+      runtime,
+      packageBinaryPath: '/assets/sql-wasm.wasm',
+      webAssembly: createWebAssemblyRuntime(instantiate),
+      initializer: async options => new Promise((resolve) => {
+        invokeMiniProgramWasm(options, () => resolve({ Database: class {} as never }))
+      }),
+    })
+
+    await expect(initializer()).resolves.toHaveProperty('Database')
+    expect(instantiatedSource).toEqual(new Uint8Array([0, 97, 115, 109]))
   })
 
   it('accepts a custom host adapter for future platforms', async () => {

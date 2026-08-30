@@ -1,39 +1,38 @@
 ---
 title: 快速开始
-description: 安装 core 与 WASM adapter，创建第一个 SQLite 数据库
+description: 使用统一 openSqlite API 创建跨端 SQLite 数据库
 ---
 
 ## 安装
 
-项目需要 WASM 引擎和目标宿主 adapter。Web 项目使用：
+weapp-vite 项目只需要安装统一集成包：
 
 ```bash
-pnpm add @weapp-sqlite/wasm @weapp-sqlite/web sql.js
+pnpm add @weapp-sqlite/weapp-vite
 ```
 
-微信小程序使用：
+在 Vite 配置中注册插件：
 
 ```bash
-pnpm add @weapp-sqlite/wasm @weapp-sqlite/miniprogram sql.js
+import { weappSqlite } from '@weapp-sqlite/weapp-vite'
+import { defineConfig } from 'weapp-vite'
+
+export default defineConfig({
+  plugins: [weappSqlite()],
+})
 ```
 
-这些 adapter 会依赖下层包，不需要额外安装 core。
+底层的 core、WASM、Web 和小程序 adapter 仍可供高级集成直接使用。
 
 ## 打开数据库
 
 ```ts
-import initSqlJs from 'sql.js'
-import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
-import { createIndexedDbSqliteWasmStorage } from '@weapp-sqlite/web'
+import { openSqlite } from '@weapp-sqlite/weapp-vite/runtime'
 
-const database = await openSqliteWasmDatabase(
-  options => initSqlJs({ locateFile: options?.locateFile }),
-  'app.db',
-  {
-    locateFile: file => `/assets/${file}`,
-    storage: createIndexedDbSqliteWasmStorage(),
-  },
-)
+const database = await openSqlite({
+  name: 'app.sqlite',
+  migrations,
+})
 
 await database.exec('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)')
 await database.exec('INSERT INTO notes (body) VALUES (?)', ['hello'])
@@ -41,28 +40,18 @@ const result = await database.query<{ id: number, body: string }>('SELECT id, bo
 await database.close()
 ```
 
-所有数据库方法都是异步的。`close()` 会先 flush 脏数据，再关闭 WASM 数据库。
+所有数据库方法都是异步的。`openSqlite()` 在返回前完成迁移；`close()` 会先 flush 脏数据，再关闭数据库并释放同名连接注册。
 
 ## 加载 WASM
 
-构建时确定性复制 `sql.js` 发布包中当前目标需要的 WASM 文件。Web 的浏览器入口会请求 `sql-wasm-browser.wasm`，微信小程序通过 `WXWebAssembly.instantiate()` 加载代码包中的 `sql-wasm.wasm`。不要依赖开发服务器从 `node_modules` 临时解析资源。
-
-Web 的 `locateFile` 必须返回实际静态 URL：
-
-```ts
-locateFile: file => `/assets/${file}`
-```
-
-小程序构建工具不会自动把 npm 包内的 WASM 文件变成业务资源。`examples/weapp-vite-multi-platform/scripts/sync-sql-wasm.ts` 展示了按目标复制方式，`pnpm acceptance:build` 会同时检查必需资源存在、另一目标的 WASM 不会混入产物。
+`weappSqlite()` 在构建时读取 weapp-vite 的单目标元数据并发射 WASM。Web 只包含 `sql-wasm-browser.wasm`，小程序只包含 `sql-wasm.wasm`；应用不需要维护资源路径、平台 runtime 或复制脚本。
 
 ## 加入迁移
 
-使用 core 提供的 `migrate` 管理版本。迁移版本必须是正整数且唯一，已应用的版本会记录在 `__weapp_sqlite_migrations` 表中：
+迁移版本必须是正整数且唯一，已应用的版本会记录在 `__weapp_sqlite_migrations` 表中：
 
 ```ts
-import { migrate } from '@weapp-sqlite/core'
-
-const versions = await migrate(database, [
+const database = await openSqlite({ name: 'app.sqlite', migrations: [
   {
     version: 1,
     name: 'create_notes',
@@ -70,5 +59,5 @@ const versions = await migrate(database, [
       'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
     ),
   },
-])
+] })
 ```

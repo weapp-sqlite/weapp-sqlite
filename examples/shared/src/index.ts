@@ -1,4 +1,4 @@
-import type { SqliteMigration } from '@weapp-sqlite/core'
+import type { SqliteDatabase, SqliteMigration } from '@weapp-sqlite/core'
 import type { SqliteWasmDriverOptions, SqliteWasmStorage, SqlJsInitializer } from '@weapp-sqlite/wasm'
 import { migrate } from '@weapp-sqlite/core'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
@@ -24,10 +24,12 @@ export interface AcceptanceSqliteStorage extends SqliteWasmStorage {
 }
 
 export interface SqliteAcceptanceOptions {
-  readonly storage: AcceptanceSqliteStorage
+  readonly storage?: AcceptanceSqliteStorage
   readonly initializer?: SqlJsInitializer
   readonly databaseName?: string
   readonly locateFile?: (file: string) => string
+  readonly openDatabase?: () => Promise<SqliteDatabase>
+  readonly removeDatabase?: () => Promise<void>
 }
 
 export interface SqliteAcceptanceCheck {
@@ -49,7 +51,7 @@ const COMMITTED_BODY = 'parameter-bound value with \'quotes\''
 const ROLLED_BACK_BODY = 'this row must be rolled back'
 const SEED_BODY = 'SQLite works across frameworks'
 
-const migrations: readonly SqliteMigration[] = [
+export const sqliteAcceptanceMigrations: readonly SqliteMigration[] = [
   {
     version: 1,
     name: 'create_notes',
@@ -119,7 +121,7 @@ export async function runSqliteDemo(options: DemoSqliteOptions = {}): Promise<De
   )
 
   try {
-    const migrationVersions = await migrate(database, migrations)
+    const migrationVersions = await migrate(database, sqliteAcceptanceMigrations)
     const rows = await database.query<{ id: number, body: string }>('SELECT id, body FROM notes ORDER BY id')
     return { migrationVersions, rows: rows.rows }
   }
@@ -129,12 +131,18 @@ export async function runSqliteDemo(options: DemoSqliteOptions = {}): Promise<De
 }
 
 function createAcceptanceDriverOptions(options: SqliteAcceptanceOptions): SqliteWasmDriverOptions {
+  if (!options.storage) {
+    throw new TypeError('SQLite acceptance requires storage when openDatabase is not provided.')
+  }
   return options.locateFile
     ? { storage: options.storage, locateFile: options.locateFile }
     : { storage: options.storage }
 }
 
 async function openAcceptanceDatabase(options: SqliteAcceptanceOptions) {
+  if (options.openDatabase) {
+    return options.openDatabase()
+  }
   return openSqliteWasmDatabase(
     options.initializer ?? initSqlJs,
     options.databaseName ?? ACCEPTANCE_DATABASE_NAME,
@@ -147,6 +155,13 @@ function check(id: string, passed: boolean, detail: string): SqliteAcceptanceChe
 }
 
 export async function resetSqliteAcceptance(options: SqliteAcceptanceOptions): Promise<void> {
+  if (options.removeDatabase) {
+    await options.removeDatabase()
+    return
+  }
+  if (!options.storage) {
+    throw new TypeError('SQLite acceptance requires storage or removeDatabase.')
+  }
   await options.storage.remove(options.databaseName ?? ACCEPTANCE_DATABASE_NAME)
 }
 
@@ -158,7 +173,7 @@ export async function runSqliteAcceptance(options: SqliteAcceptanceOptions): Pro
   let closed = false
 
   try {
-    migrationVersions = await migrate(database, migrations)
+    migrationVersions = await migrate(database, sqliteAcceptanceMigrations)
     await database.transaction(async (transaction) => {
       await transaction.exec('INSERT INTO notes (body) VALUES (?)', [COMMITTED_BODY])
     })
@@ -199,7 +214,7 @@ export async function verifySqliteAcceptance(options: SqliteAcceptanceOptions): 
   let closed = false
 
   try {
-    migrationVersions = await migrate(database, migrations)
+    migrationVersions = await migrate(database, sqliteAcceptanceMigrations)
     rows = (await database.query<{ id: number, body: string }>('SELECT id, body FROM notes ORDER BY id')).rows
   }
   finally {

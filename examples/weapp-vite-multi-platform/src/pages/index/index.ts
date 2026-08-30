@@ -1,7 +1,7 @@
 import type { SqliteDebugColumn, SqliteDebugPage, SqliteDebugSnapshotMetadata, SqliteDebugTable } from '@weapp-sqlite/debug'
 import type { SqliteAcceptanceCheck } from '@weapp-sqlite/demo-shared'
 import type { AcceptanceEnvironment } from '../../sqlite'
-import { MiniProgramSqliteUnsupportedError } from '@weapp-sqlite/miniprogram'
+import { getSqliteTarget, SqliteRuntimeError } from '@weapp-sqlite/weapp-vite/runtime'
 import { closeDebugPageController, createDebugPageMethods } from '../../debug-page'
 import {
   copyAcceptanceReport,
@@ -11,7 +11,7 @@ import {
 } from '../../sqlite'
 
 type AcceptancePhase = 'ready' | 'running' | 'first-pass' | 'persisted-pass' | 'failed' | 'unsupported'
-const targetPlatform = import.meta.env.PLATFORM ?? 'weapp'
+const targetPlatform = getSqliteTarget()
 
 interface AcceptancePageData {
   [key: string]: unknown
@@ -51,7 +51,7 @@ function initialAcceptance(): AcceptancePageData['acceptance'] {
 }
 
 function serializeError(error: unknown) {
-  if (error instanceof MiniProgramSqliteUnsupportedError) {
+  if (error instanceof SqliteRuntimeError && error.code === 'SQLITE_RUNTIME_UNSUPPORTED') {
     return { phase: 'unsupported' as const, error: { code: error.code, message: error.message } }
   }
   let message: string

@@ -1,0 +1,44 @@
+---
+title: weapp-vite API
+description: "全端统一 SQLite 构建插件与运行时"
+---
+
+`@weapp-sqlite/weapp-vite` 将平台差异留在构建和 adapter 层。应用配置一次插件，业务代码在 Web、微信、支付宝、抖音、百度、京东和小红书保持一致。
+
+```ts
+import { weappSqlite } from '@weapp-sqlite/weapp-vite'
+
+export default defineConfig({
+  plugins: [weappSqlite({ debug: process.env.WEAPP_SQLITE_DEBUG === '1' })],
+})
+```
+
+## Runtime
+
+```ts
+import { openSqlite, removeSqlite } from '@weapp-sqlite/weapp-vite/runtime'
+
+const database = await openSqlite({ name: 'app.sqlite', migrations })
+await database.query('SELECT * FROM notes')
+await database.close()
+
+await removeSqlite({ name: 'app.sqlite' })
+```
+
+同名并发打开会返回同一应用级连接；已打开连接的 adapter 或迁移函数不一致时抛出 `SQLITE_OPEN_OPTIONS_CONFLICT`。`openSqlite()` 在返回前完成能力探测和迁移。宿主不满足要求时抛出 `SQLITE_RUNTIME_UNSUPPORTED`，引擎初始化失败时抛出 `SQLITE_ENGINE_INIT_FAILED`。
+
+`getSqliteTarget()`、`getSqliteRuntimeInfo()` 和 `getSqliteDatabasePath()` 用于验收与调试信息。高级集成可以从 `@weapp-sqlite/weapp-vite/adapter` 导入 `SqliteRuntimeAdapter` 并通过 `openSqlite({ adapter })` 覆盖内置实现。
+
+## Debug
+
+```ts
+import { createSqliteDebugController } from '@weapp-sqlite/weapp-vite/debug'
+
+const debug = createSqliteDebugController({
+  databaseName: 'app.sqlite',
+  migrations,
+  enabled: true,
+})
+```
+
+该入口自动复用当前目标 adapter 的快照和删除能力。生产构建应通过编译常量排除 debug route，并检查产物不包含写 SQL、导入和调试文案。

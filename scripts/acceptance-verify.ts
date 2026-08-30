@@ -6,6 +6,7 @@ interface AcceptanceReport {
   readonly schemaVersion: number
   readonly commit: string
   readonly target: string
+  readonly operatingSystem?: string
   readonly passed: boolean
   readonly screenshots?: { readonly first?: string, readonly persisted?: string }
   readonly checks?: Record<string, unknown>
@@ -18,6 +19,8 @@ interface PageAcceptance {
   readonly environment?: Record<string, unknown>
 }
 
+const platforms = ['weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'] as const
+const operatingSystems = ['ios', 'android'] as const
 const mobileCheckNames = [
   'reset',
   'firstRun',
@@ -36,8 +39,7 @@ function requireAutomatedChecks(report: AcceptanceReport, relativePath: string) 
     if (value?.passed !== true || !Array.isArray(value.checks) || !value.checks.every(check => check.passed === true)) {
       throw new Error(`Automated acceptance phase is incomplete: ${relativePath}#${phase}`)
     }
-    const expectedTarget = report.target === 'web' ? 'web' : 'weapp'
-    if (value.environment?.['target'] !== expectedTarget) {
+    if (value.environment?.['target'] !== report.target) {
       throw new Error(`Automated acceptance platform is invalid: ${relativePath}#${phase}`)
     }
   }
@@ -61,8 +63,11 @@ function requireAutomatedChecks(report: AcceptanceReport, relativePath: string) 
   }
 }
 
-function requireMobileChecks(report: AcceptanceReport, relativePath: string) {
-  for (const field of ['model', 'osVersion', 'wechatVersion', 'sdkVersion'] as const) {
+function requireMobileChecks(report: AcceptanceReport, relativePath: string, operatingSystem: string) {
+  if (report.schemaVersion !== 2 || report.operatingSystem !== operatingSystem) {
+    throw new Error(`Mobile acceptance schema or operating system is invalid: ${relativePath}`)
+  }
+  for (const field of ['model', 'osVersion', 'hostAppVersion', 'sdkVersion'] as const) {
     if (typeof report.device?.[field] !== 'string' || !report.device[field].trim()) {
       throw new Error(`Mobile acceptance device field is missing: ${relativePath}#device.${field}`)
     }
@@ -89,32 +94,46 @@ function resolveEvidencePath(reportPath: string, relativePath: string) {
 
 await assertCleanRepository()
 const { commit, root } = await acceptanceArtifactRoot()
-const reportTargets = new Map([
-  ['web/report.json', 'web'],
-  ['devtools/report.json', 'devtools'],
-  ['mobile/ios-min.json', 'ios-min'],
-  ['mobile/ios-latest.json', 'ios-latest'],
-  ['mobile/android-min.json', 'android-min'],
-  ['mobile/android-latest.json', 'android-latest'],
-])
+const reportTargets = [
+  { relativePath: 'web/report.json', target: 'web', kind: 'automated' as const },
+  ...platforms.map(platform => ({
+    relativePath: `devtools/${platform}/report.json`,
+    target: platform,
+    kind: 'automated' as const,
+  })),
+  ...platforms.flatMap(platform => operatingSystems.map(operatingSystem => ({
+    relativePath: `mobile/${platform}/${operatingSystem}.json`,
+    target: platform,
+    operatingSystem,
+    kind: 'mobile' as const,
+  }))),
+]
 
-for (const [relativePath, target] of reportTargets) {
-  const reportPath = path.join(root, relativePath)
+for (const reportTarget of reportTargets) {
+  const reportPath = path.join(root, reportTarget.relativePath)
   const report = JSON.parse(await readFile(reportPath, 'utf8')) as AcceptanceReport
-  if (report.schemaVersion !== 1 || report.commit !== commit || report.target !== target || report.passed !== true || !report.checks) {
-    throw new Error(`Acceptance report is incomplete or failed: ${relativePath}`)
+  if (
+    report.commit !== commit
+    || report.target !== reportTarget.target
+    || report.passed !== true
+    || !report.checks
+  ) {
+    throw new Error(`Acceptance report is incomplete or failed: ${reportTarget.relativePath}`)
   }
-  if (target === 'web' || target === 'devtools') {
-    requireAutomatedChecks(report, relativePath)
+  if (reportTarget.kind === 'automated') {
+    if (report.schemaVersion !== 1) {
+      throw new Error(`Automated acceptance schema is invalid: ${reportTarget.relativePath}`)
+    }
+    requireAutomatedChecks(report, reportTarget.relativePath)
   }
   else {
-    requireMobileChecks(report, relativePath)
+    requireMobileChecks(report, reportTarget.relativePath, reportTarget.operatingSystem)
   }
   if (!report.screenshots?.first || !report.screenshots.persisted) {
-    throw new Error(`Acceptance screenshots are missing: ${relativePath}`)
+    throw new Error(`Acceptance screenshots are missing: ${reportTarget.relativePath}`)
   }
   await access(resolveEvidencePath(reportPath, report.screenshots.first))
   await access(resolveEvidencePath(reportPath, report.screenshots.persisted))
 }
 
-console.log(JSON.stringify({ commit, passed: true, reports: [...reportTargets.keys()] }))
+console.log(JSON.stringify({ commit, passed: true, reports: reportTargets.map(item => item.relativePath) }))

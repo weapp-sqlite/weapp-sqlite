@@ -9,7 +9,7 @@ import type {
   MiniProgramSqlJsInitializerOptions,
 } from './types'
 import { MiniProgramSqliteUnsupportedError } from './errors'
-import { weappHostAdapter } from './weapp'
+import { portableMiniProgramHostAdapter, weappHostAdapter } from './weapp'
 
 export { MiniProgramSqliteUnsupportedError } from './errors'
 export type {
@@ -33,6 +33,11 @@ export type {
 
 const builtInAdapters: Partial<Record<MiniProgramPlatform, MiniProgramHostAdapter>> = {
   weapp: weappHostAdapter,
+  alipay: portableMiniProgramHostAdapter,
+  tt: portableMiniProgramHostAdapter,
+  swan: portableMiniProgramHostAdapter,
+  jd: portableMiniProgramHostAdapter,
+  xhs: portableMiniProgramHostAdapter,
 }
 
 function platformUnsupported(platform: MiniProgramPlatform): MiniProgramSqliteUnsupportedError {

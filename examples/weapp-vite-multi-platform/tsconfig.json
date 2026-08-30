@@ -8,6 +8,10 @@
       "@weapp-sqlite/web": ["../../packages/web/src/index.ts"],
       "@weapp-sqlite/miniprogram": ["../../packages/miniprogram/src/index.ts"],
       "@weapp-sqlite/debug": ["../../packages/debug/src/index.ts"],
+      "@weapp-sqlite/weapp-vite": ["../../packages/weapp-vite/src/plugin.ts"],
+      "@weapp-sqlite/weapp-vite/runtime": ["../../packages/weapp-vite/src/runtime.ts"],
+      "@weapp-sqlite/weapp-vite/debug": ["../../packages/weapp-vite/src/debug.ts"],
+      "@weapp-sqlite/weapp-vite/adapter": ["../../packages/weapp-vite/src/adapter.ts"],
       "@weapp-sqlite/demo-shared": ["../shared/src/index.ts"]
     }
   },
