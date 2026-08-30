@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/wasm",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "基于可注入 WASM SQLite 引擎的跨宿主 adapter",
   "author": "weapp-sqlite contributors",
   "license": "MIT",

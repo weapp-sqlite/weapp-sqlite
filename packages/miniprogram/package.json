@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/miniprogram",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "小程序 SQLite WASM 宿主协议与持久化 adapter",
   "author": "weapp-sqlite contributors",
   "license": "MIT",

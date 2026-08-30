@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/web",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "基于 IndexedDB 的 Web SQLite WASM 持久化 adapter",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
