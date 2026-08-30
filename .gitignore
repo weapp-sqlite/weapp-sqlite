@@ -41,6 +41,9 @@ config.ts.timestamp-*.mjs
 
 # generated acceptance assets and evidence
 examples/weapp-vite-multi-platform/.generated
+examples/weapp-vite-multi-platform/.weapp-vite/mcp-runtime.json
+examples/weapp-vite-multi-platform/.weapp-vite/typed-router.d.ts
+examples/weapp-vite-multi-platform/src/__weapp_sqlite_debug/
 artifacts/acceptance
 playwright-report
 test-results

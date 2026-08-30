@@ -11,6 +11,9 @@ import type {
 import { MiniProgramSqliteUnsupportedError } from './errors'
 import { portableMiniProgramHostAdapter, weappHostAdapter } from './weapp'
 
+export { createMiniProgramSqliteDebugFileAdapter } from './debug-files'
+
+export type { MiniProgramSqliteDebugFileAdapterOptions } from './debug-files'
 export { MiniProgramSqliteUnsupportedError } from './errors'
 export type {
   MiniProgramHostAdapter,
@@ -18,6 +21,10 @@ export type {
   MiniProgramPlatform,
   MiniProgramSqliteCapability,
   MiniProgramSqliteCapabilityReport,
+  MiniProgramSqliteDebugArtifact,
+  MiniProgramSqliteDebugFile,
+  MiniProgramSqliteDebugFileAdapter,
+  MiniProgramSqliteDebugSaveResult,
   MiniProgramSqliteErrorCode,
   MiniProgramSqliteOptions,
   MiniProgramSqliteWasmStorage,

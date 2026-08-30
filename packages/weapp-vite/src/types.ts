@@ -32,6 +32,29 @@ export interface SqliteRuntimeAdapter {
   remove: (name: string) => Promise<void>
   getRuntimeInfo: () => Promise<SqliteRuntimeInfo>
   getDatabasePath?: (name: string) => string | undefined
+  readonly debugFiles?: SqliteDebugFileAdapter
+}
+
+export interface SqliteDebugArtifact {
+  readonly fileName: string
+  readonly mimeType: string
+  readonly bytes: Uint8Array
+}
+
+export interface SqliteDebugChosenFile {
+  readonly fileName: string
+  readonly mimeType: string
+  readonly bytes: Uint8Array
+}
+
+export interface SqliteDebugFileSaveResult {
+  readonly method: string
+  readonly fileName: string
+}
+
+export interface SqliteDebugFileAdapter {
+  save: (artifact: SqliteDebugArtifact) => Promise<SqliteDebugFileSaveResult>
+  choose: (options?: { readonly extensions?: readonly string[], readonly maxBytes?: number }) => Promise<SqliteDebugChosenFile>
 }
 
 export interface OpenSqliteOptions {
@@ -45,8 +68,23 @@ export interface RemoveSqliteOptions {
   readonly adapter?: SqliteRuntimeAdapter
 }
 
+export interface WeappSqliteDebugPageOptions {
+  readonly route?: string
+  readonly configFile?: string
+}
+
+export interface WeappSqliteDebugPluginOptions {
+  readonly enabled: boolean
+  readonly page?: WeappSqliteDebugPageOptions
+}
+
 export interface WeappSqlitePluginOptions {
-  readonly debug?: boolean
+  readonly debug?: boolean | WeappSqliteDebugPluginOptions
+}
+
+export interface WeappSqliteDebugAppConfigOptions {
+  readonly enabled: boolean
+  readonly route?: string
 }
 
 export interface SqliteDebugRuntimeControllerOptions {
@@ -58,7 +96,13 @@ export interface SqliteDebugRuntimeControllerOptions {
     readonly maxRows?: number
     readonly maxResultBytes?: number
     readonly maxImportBytes?: number
+    readonly maxImportRows?: number
+    readonly maxExportBytes?: number
+    readonly maxExportRows?: number
+    readonly maxUndoBytes?: number
   }
 }
+
+export interface SqliteDebugWorkspaceOptions extends SqliteDebugRuntimeControllerOptions {}
 
 export type OpenedSqliteDatabase = SqliteDatabase

@@ -11,6 +11,8 @@ export type MiniProgramSqliteCapability
     | 'webassembly'
     | 'wasm-instantiation'
     | 'package-binary'
+    | 'file-delivery'
+    | 'file-selection'
 
 export type MiniProgramSqliteErrorCode
   = | 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED'
@@ -22,6 +24,9 @@ export type MiniProgramSqliteErrorCode
     | 'MINIPROGRAM_SQLITE_WEBASSEMBLY_INCOMPATIBLE'
     | 'MINIPROGRAM_SQLITE_WASM_INSTANTIATION_FAILED'
     | 'MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE'
+    | 'MINIPROGRAM_SQLITE_DEBUG_FILE_UNSUPPORTED'
+    | 'MINIPROGRAM_SQLITE_DEBUG_FILE_FAILED'
+    | 'MINIPROGRAM_SQLITE_DEBUG_FILE_TOO_LARGE'
 
 export type MiniProgramWebAssemblyImports = Readonly<Record<string, Readonly<Record<string, unknown>>>>
 
@@ -98,3 +103,25 @@ export interface MiniProgramSqlJsInitializerOptions extends MiniProgramSqliteOpt
 }
 
 export type MiniProgramSqlJsInitializer = SqlJsInitializer
+
+export interface MiniProgramSqliteDebugArtifact {
+  readonly fileName: string
+  readonly mimeType: string
+  readonly bytes: Uint8Array
+}
+
+export interface MiniProgramSqliteDebugFile {
+  readonly fileName: string
+  readonly mimeType: string
+  readonly bytes: Uint8Array
+}
+
+export interface MiniProgramSqliteDebugSaveResult {
+  readonly method: 'save-file-to-disk' | 'share-file-message'
+  readonly fileName: string
+}
+
+export interface MiniProgramSqliteDebugFileAdapter {
+  save: (artifact: MiniProgramSqliteDebugArtifact) => Promise<MiniProgramSqliteDebugSaveResult>
+  choose: (options?: { readonly extensions?: readonly string[], readonly maxBytes?: number }) => Promise<MiniProgramSqliteDebugFile>
+}

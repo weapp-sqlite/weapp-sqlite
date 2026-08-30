@@ -118,4 +118,84 @@ describe('sqlite debug controller', () => {
     await expect(controller.importDatabase(corrupt, { replace: true })).rejects.toMatchObject({ code: 'SQLITE_DEBUG_IMPORT_FAILED' })
     await expect(controller.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'preserved' }] })
   })
+
+  it('manages rows with structured filters, ordering, locators, and one-step undo', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: harness.openDatabase, storage: harness.storage, enabled: true })
+    await controller.createTable('notes', [
+      { name: 'id', type: 'INTEGER', primaryKey: true },
+      { name: 'body', type: 'TEXT', notNull: true },
+      { name: 'score', type: 'REAL' },
+    ], { allowWrite: true })
+    await controller.insertRow('notes', { body: 'alpha', score: 1.5 }, { allowWrite: true })
+    await controller.insertRow('notes', { body: 'alphabet', score: 2.5 }, { allowWrite: true })
+    await controller.insertRow('notes', { body: 'beta', score: 3.5 }, { allowWrite: true })
+
+    const page = await controller.readTable('notes', {
+      filters: [{ column: 'body', operator: 'startsWith', value: 'alph' }],
+      orderBy: [{ column: 'score', direction: 'desc' }],
+    })
+    expect(page.rows.map(row => row['body'])).toEqual(['alphabet', 'alpha'])
+    expect(page.rowLocators[0]).toEqual({ kind: 'primary-key', values: { id: 2 } })
+
+    await controller.updateRow('notes', page.rowLocators[0]!, { body: 'changed' }, { allowWrite: true })
+    await expect(controller.query('SELECT body FROM notes WHERE id = 2')).resolves.toMatchObject({ rows: [{ body: 'changed' }] })
+    await controller.undoLastDestructiveChange()
+    await expect(controller.query('SELECT body FROM notes WHERE id = 2')).resolves.toMatchObject({ rows: [{ body: 'alphabet' }] })
+    await expect(controller.undoLastDestructiveChange()).rejects.toMatchObject({ code: 'SQLITE_DEBUG_UNDO_UNAVAILABLE' })
+
+    const all = await controller.readTable('notes')
+    await expect(controller.deleteRows('notes', [all.rowLocators[0]!], { allowWrite: true, confirmTable: 'wrong' })).rejects.toMatchObject({ code: 'SQLITE_DEBUG_CONFIRMATION_MISMATCH' })
+    await controller.deleteRows('notes', [all.rowLocators[0]!], { allowWrite: true, confirmTable: 'notes' })
+    await expect(controller.query('SELECT count(*) AS total FROM notes')).resolves.toMatchObject({ rows: [{ total: 2 }] })
+  })
+
+  it('manages columns and indexes without rebuilding tables', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: harness.openDatabase, storage: harness.storage, enabled: true })
+    await controller.createTable('items', [{ name: 'id', type: 'INTEGER', primaryKey: true }, { name: 'name', type: 'TEXT' }], { allowWrite: true })
+    await controller.addColumn('items', { name: 'category', type: 'TEXT' }, { allowWrite: true })
+    await controller.renameColumn('items', 'category', 'group_name', { allowWrite: true, confirmTable: 'items' })
+    await controller.createIndex('items', 'items_name_idx', [{ name: 'name', direction: 'asc' }], { allowWrite: true, unique: true })
+    await expect(controller.listIndexes('items')).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'items_name_idx', unique: true, editable: true }),
+    ]))
+    await controller.dropIndex('items', 'items_name_idx', { allowWrite: true, confirmTable: 'items' })
+    await controller.dropColumn('items', 'group_name', { allowWrite: true, confirmTable: 'items' })
+    await expect(controller.describeTable('items')).resolves.toEqual([
+      expect.objectContaining({ name: 'id' }),
+      expect.objectContaining({ name: 'name' }),
+    ])
+    await expect(controller.dropTable('__weapp_sqlite_migrations', { allowWrite: true, confirmTable: '__weapp_sqlite_migrations' })).rejects.toMatchObject({ code: 'SQLITE_DEBUG_PROTECTED_OBJECT' })
+    await expect(controller.execute('DELETE FROM "__weapp_sqlite_migrations"', undefined, { allowWrite: true })).rejects.toMatchObject({ code: 'SQLITE_DEBUG_PROTECTED_OBJECT' })
+  })
+
+  it('exports and transactionally imports CSV and lossless JSON table data', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: harness.openDatabase, storage: harness.storage, enabled: true })
+    await controller.createTable('source', [{ name: 'id', type: 'INTEGER' }, { name: 'text', type: 'TEXT' }, { name: 'payload', type: 'BLOB' }], { allowWrite: true })
+    await controller.insertRow('source', { id: 1, text: '', payload: new Uint8Array([1, 2, 3]) }, { allowWrite: true })
+    await controller.insertRow('source', { id: 2, text: null, payload: null }, { allowWrite: true })
+
+    const json = await controller.exportTable('source', { format: 'json' })
+    const preview = await controller.previewTableImport({ format: 'json', bytes: json.bytes })
+    expect(preview.totalRows).toBe(2)
+    expect(preview.suggestedColumns).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'payload', inferredType: 'BLOB' })]))
+    await controller.importTable({ format: 'json', bytes: json.bytes }, { tableName: 'copy', mode: 'create', allowWrite: true })
+    await expect(controller.query('SELECT id, text, length(payload) AS size FROM copy ORDER BY id')).resolves.toMatchObject({
+      rows: [{ id: 1, text: '', size: 3 }, { id: 2, text: null, size: null }],
+    })
+
+    const csv = await controller.exportTable('source', { format: 'csv' })
+    expect(Array.from(csv.bytes.slice(0, 3))).toEqual([0xEF, 0xBB, 0xBF])
+    expect(new TextDecoder().decode(csv.bytes)).toContain('"id","text","payload"')
+    await expect(controller.importTable({ format: 'csv', bytes: '"id"\r\n"not-an-integer"\r\n' }, {
+      tableName: 'copy',
+      mode: 'replace',
+      mappings: [{ source: 'id', target: 'id', type: 'INTEGER' }],
+      allowWrite: true,
+      confirmTable: 'copy',
+    })).rejects.toMatchObject({ code: 'SQLITE_DEBUG_INVALID_MAPPING' })
+    await expect(controller.query('SELECT count(*) AS total FROM copy')).resolves.toMatchObject({ rows: [{ total: 2 }] })
+  })
 })

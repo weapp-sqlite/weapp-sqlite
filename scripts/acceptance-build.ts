@@ -48,7 +48,7 @@ for (const target of targets) {
   await collect(output)
   for (const file of files.filter(file => /\.(?:js|wxml|html|css|wxss)$/.test(file))) {
     const content = await readFile(file, 'utf8')
-    if (/SQLite 数据面板|debug-sql|createSqliteDebugController|SQLITE_DEBUG_/.test(content)) {
+    if (/__weapp_sqlite_debug|SQLite 数据工作台|debug-sql|createSqliteDebugController|createSqliteDebugWorkspacePage|SQLITE_DEBUG_|saveFileToDisk|shareFileMessage|chooseMessageFile/.test(content)) {
       throw new Error(`Production ${target} output contains SQLite debug capability: ${file}`)
     }
   }

@@ -26,3 +26,7 @@ interface IndexedDbSqliteWasmStorageOptions {
 ## 错误契约
 
 当前 runtime 没有 IndexedDB 时，factory 同步抛出 `SqliteWebStorageUnavailableError`，错误码固定为 `WEB_SQLITE_INDEXEDDB_UNAVAILABLE`。adapter 不会创建内存数据库作为降级。
+
+## 调试文件交付
+
+`createWebSqliteDebugFileAdapter()` 保存工作台产物时优先调用 File System Access API；不可用时创建 Blob 下载。导入优先使用打开选择器，并回退到隐藏 file input。取消、能力缺失和文件过大分别返回稳定错误码，不把浏览器内部路径当作下载结果。

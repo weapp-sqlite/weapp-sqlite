@@ -1,14 +1,107 @@
 import type { Plugin, ResolvedConfig, ViteDevServer, WeappVitePlatform } from 'weapp-vite'
+import type { WeappVitePluginApi } from 'weapp-vite/types'
 import type { WeappSqlitePluginOptions } from './types'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
+import process from 'node:process'
 import { resolveWeappViteHostMeta } from 'weapp-vite'
+import {
+  GENERATED_PAGE_MARKER,
+  workspacePageJson,
+  workspacePageScript,
+  workspacePageStyle,
+  workspacePageTemplate,
+} from './workspace-template'
 
 const VIRTUAL_RUNTIME_ID = 'virtual:weapp-sqlite-runtime'
 const RESOLVED_RUNTIME_ID = `\0${VIRTUAL_RUNTIME_ID}`
 const SUPPORTED_TARGETS = new Set<WeappVitePlatform>(['web', 'weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'])
 const require = createRequire(import.meta.url)
+const DEFAULT_DEBUG_ROUTE = '__weapp_sqlite_debug/index/index'
+const DEFAULT_DEBUG_CONFIG = './src/sqlite-debug.config.ts'
+
+interface DebugPageState {
+  readonly directory: string
+  readonly route: string
+  readonly root: string
+  readonly page: string
+}
+
+function normalizeDebugOptions(options: WeappSqlitePluginOptions) {
+  if (typeof options.debug === 'object') {
+    return {
+      enabled: options.debug.enabled,
+      route: options.debug.page?.route ?? DEFAULT_DEBUG_ROUTE,
+      configFile: options.debug.page?.configFile ?? DEFAULT_DEBUG_CONFIG,
+    }
+  }
+  return { enabled: options.debug === true, route: DEFAULT_DEBUG_ROUTE, configFile: DEFAULT_DEBUG_CONFIG }
+}
+
+function normalizeRoute(route: string) {
+  const normalized = route.replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+  const segments = normalized.split('/')
+  if (segments.length < 2 || segments.some(segment => !segment || segment === '.' || segment === '..' || !/^[\w-]+$/.test(segment))) {
+    throw new Error(`Invalid weapp-sqlite debug page route: ${route}`)
+  }
+  return normalized
+}
+
+async function generateDebugPage(projectRoot: string, srcRoot: string, routeValue: string, configFile: string): Promise<DebugPageState> {
+  const route = normalizeRoute(routeValue)
+  const segments = route.split('/')
+  const root = segments[0] as string
+  const page = segments.slice(1).join('/')
+  const directory = path.resolve(projectRoot, srcRoot, ...segments.slice(0, -1))
+  const baseName = segments.at(-1) as string
+  const markerPath = path.join(directory, '.weapp-sqlite-generated')
+  const configPath = path.resolve(projectRoot, configFile)
+  await readFile(configPath, 'utf8').catch((error) => {
+    throw new Error(`The weapp-sqlite debug workspace config does not exist: ${configPath}`, { cause: error })
+  })
+  let marker: string | undefined
+  try {
+    marker = await readFile(markerPath, 'utf8')
+  }
+  catch {}
+  if (marker !== undefined && marker !== GENERATED_PAGE_MARKER) {
+    throw new Error(`The generated debug page marker is invalid: ${markerPath}`)
+  }
+  if (marker === undefined) {
+    try {
+      if ((await readdir(directory)).length > 0) {
+        throw new Error(`The weapp-sqlite debug route conflicts with user files: ${directory}`)
+      }
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error
+      }
+    }
+  }
+  await mkdir(directory, { recursive: true })
+  const scriptPath = path.join(directory, `${baseName}.ts`)
+  let configImport = path.relative(directory, configPath).replaceAll('\\', '/')
+  if (!configImport.startsWith('.')) {
+    configImport = `./${configImport}`
+  }
+  await Promise.all([
+    writeFile(markerPath, GENERATED_PAGE_MARKER),
+    writeFile(scriptPath, workspacePageScript(configImport)),
+    writeFile(path.join(directory, `${baseName}.wxml`), workspacePageTemplate),
+    writeFile(path.join(directory, `${baseName}.scss`), workspacePageStyle),
+    writeFile(path.join(directory, `${baseName}.json`), workspacePageJson),
+  ])
+  return { directory, route, root, page }
+}
+
+function debugAutoRoutes(existing: unknown, root: string) {
+  const record = existing && typeof existing === 'object' ? existing as { include?: string | RegExp | readonly (string | RegExp)[] } : {}
+  const current = record.include === undefined ? ['pages/**'] : Array.isArray(record.include) ? [...record.include] : [record.include]
+  const include = [...current, `${root}/**`]
+  return { ...record, enabled: true, include: [...new Set(include)] }
+}
 
 function targetAsset(target: WeappVitePlatform) {
   return target === 'web' ? 'sql-wasm-browser.wasm' : 'sql-wasm.wasm'
@@ -56,10 +149,27 @@ function resolveTarget(config: ResolvedConfig): WeappVitePlatform {
   return target
 }
 
+async function applyDebugRoutesToCompiler(config: ResolvedConfig, state: DebugPageState) {
+  const contextPlugin = config.plugins.find(plugin => plugin.name === 'weapp-vite:context') as (Plugin & { readonly api?: WeappVitePluginApi }) | undefined
+  const compiler = contextPlugin?.api?.ctx
+  const weapp = compiler?.configService.weappViteConfig
+  if (!weapp) {
+    return
+  }
+  weapp.autoRoutes = debugAutoRoutes(weapp.autoRoutes, state.root)
+  weapp.subPackages = { ...weapp.subPackages, [state.root]: weapp.subPackages?.[state.root] ?? {} }
+  compiler.autoRoutesService.markDirty()
+  await compiler.autoRoutesService.ensureFresh()
+  compiler.scanService.markDirty()
+  await compiler.scanService.loadAppEntry()
+}
+
 export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
+  const debug = normalizeDebugOptions(options)
   let target: WeappVitePlatform | undefined
   let asset: string | undefined
   let bytes: Uint8Array | undefined
+  let debugPage: DebugPageState | undefined
 
   async function loadAsset() {
     if (!asset) {
@@ -70,17 +180,35 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
 
   return {
     name: 'weapp-sqlite',
-    enforce: 'pre',
-    config() {
+    enforce: 'post',
+    async config(userConfig) {
+      if (debug.enabled) {
+        const config = userConfig as typeof userConfig & { root?: string, weapp?: { srcRoot?: string, autoRoutes?: unknown, subPackages?: Record<string, unknown> } }
+        const projectRoot = path.resolve(config.root ?? process.cwd())
+        debugPage = await generateDebugPage(projectRoot, config.weapp?.srcRoot ?? 'src', debug.route, debug.configFile)
+        const weapp = config.weapp ??= {}
+        weapp.autoRoutes = debugAutoRoutes(weapp.autoRoutes, debugPage.root)
+        weapp.subPackages = { ...weapp.subPackages, [debugPage.root]: weapp.subPackages?.[debugPage.root] ?? {} }
+        return {
+          define: { __WEAPP_SQLITE_DEBUG__: JSON.stringify(true) },
+          weapp: {
+            autoRoutes: weapp.autoRoutes,
+            subPackages: weapp.subPackages,
+          },
+        }
+      }
       return {
         define: {
-          __WEAPP_SQLITE_DEBUG__: JSON.stringify(options.debug === true),
+          __WEAPP_SQLITE_DEBUG__: JSON.stringify(debug.enabled),
         },
       }
     },
-    configResolved(config) {
+    async configResolved(config) {
       target = resolveTarget(config)
       asset = targetAsset(target)
+      if (debugPage) {
+        await applyDebugRoutesToCompiler(config, debugPage)
+      }
     },
     resolveId(id) {
       if (id === VIRTUAL_RUNTIME_ID) {
@@ -121,7 +249,18 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
         }
       })
     },
+    async closeBundle() {
+      if (!debugPage) {
+        return
+      }
+      const markerPath = path.join(debugPage.directory, '.weapp-sqlite-generated')
+      const marker = await readFile(markerPath, 'utf8').catch(() => undefined)
+      if (marker === GENERATED_PAGE_MARKER) {
+        await rm(debugPage.directory, { recursive: true, force: true })
+      }
+      debugPage = undefined
+    },
   }
 }
 
-export type { WeappSqlitePluginOptions } from './types'
+export type { WeappSqliteDebugAppConfigOptions, WeappSqliteDebugPageOptions, WeappSqliteDebugPluginOptions, WeappSqlitePluginOptions } from './types'

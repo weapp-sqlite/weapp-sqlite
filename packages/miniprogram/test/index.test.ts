@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
 import initSqlJs from 'sql.js'
 import {
+  createMiniProgramSqliteDebugFileAdapter,
   createMiniProgramSqliteWasmStorage,
   createMiniProgramSqlJsInitializer,
   loadMiniProgramPackageBinary,
@@ -81,6 +82,40 @@ describe('mini-program storage', () => {
     await expect(storage.load('demo')).resolves.toEqual(new Uint8Array([1, 2, 3]))
     await storage.remove('demo')
     await expect(storage.load('demo')).resolves.toBeUndefined()
+  })
+
+  it('delivers debug artifacts through desktop save and mobile share APIs', async () => {
+    const desktop = createRuntime()
+    const saveFileToDisk = vi.fn(({ success }: { success: () => void }) => success())
+    const desktopAdapter = createMiniProgramSqliteDebugFileAdapter({
+      platform: 'weapp',
+      runtime: { ...desktop.runtime, getDeviceInfo: () => ({ platform: 'devtools' }), saveFileToDisk },
+    })
+    await expect(desktopAdapter.save({ fileName: 'demo.sqlite', mimeType: 'application/vnd.sqlite3', bytes: new Uint8Array([1, 2]) })).resolves.toEqual({ method: 'save-file-to-disk', fileName: 'demo.sqlite' })
+    expect(saveFileToDisk).toHaveBeenCalledOnce()
+
+    const mobile = createRuntime()
+    const shareFileMessage = vi.fn(({ success }: { success: () => void }) => success())
+    const mobileAdapter = createMiniProgramSqliteDebugFileAdapter({
+      platform: 'weapp',
+      runtime: { ...mobile.runtime, getDeviceInfo: () => ({ platform: 'ios' }), shareFileMessage },
+    })
+    await expect(mobileAdapter.save({ fileName: 'notes.csv', mimeType: 'text/csv', bytes: new Uint8Array([3]) })).resolves.toEqual({ method: 'share-file-message', fileName: 'notes.csv' })
+    expect(shareFileMessage).toHaveBeenCalledOnce()
+  })
+
+  it('imports WeChat message files and rejects unsupported platform delivery', async () => {
+    const { runtime, files } = createRuntime()
+    files.set('/tmp/import.json', new Uint8Array([4, 5, 6]))
+    const adapter = createMiniProgramSqliteDebugFileAdapter({
+      platform: 'weapp',
+      runtime: {
+        ...runtime,
+        chooseMessageFile: ({ success }: { success: (result: { tempFiles: { name: string, path: string, type: string, size: number }[] }) => void }) => success({ tempFiles: [{ name: 'import.json', path: '/tmp/import.json', type: 'application/json', size: 3 }] }),
+      },
+    })
+    await expect(adapter.choose({ extensions: ['.json'], maxBytes: 10 })).resolves.toEqual({ fileName: 'import.json', mimeType: 'application/json', bytes: new Uint8Array([4, 5, 6]) })
+    expect(() => createMiniProgramSqliteDebugFileAdapter({ platform: 'alipay', runtime })).toThrow(MiniProgramSqliteUnsupportedError)
   })
 
   it('treats an existing WeChat data directory as initialized', async () => {

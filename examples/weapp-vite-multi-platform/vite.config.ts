@@ -6,7 +6,15 @@ import { defineConfig } from 'weapp-vite'
 const debugEnabled = process.env['WEAPP_SQLITE_DEBUG'] === '1'
 
 export default defineConfig({
-  plugins: [weappSqlite({ debug: debugEnabled })],
+  plugins: [weappSqlite({
+    debug: {
+      enabled: debugEnabled,
+      page: {
+        route: '__weapp_sqlite_debug/index/index',
+        configFile: './src/sqlite-debug.config.ts',
+      },
+    },
+  })],
   resolve: {
     alias: {
       '@weapp-sqlite/core': path.resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
@@ -17,6 +25,7 @@ export default defineConfig({
       '@weapp-sqlite/weapp-vite/runtime': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/runtime.ts'),
       '@weapp-sqlite/weapp-vite/debug': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/debug.ts'),
       '@weapp-sqlite/weapp-vite/adapter': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/adapter.ts'),
+      '@weapp-sqlite/weapp-vite/workspace': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/workspace.ts'),
       '@weapp-sqlite/weapp-vite': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/plugin.ts'),
     },
   },

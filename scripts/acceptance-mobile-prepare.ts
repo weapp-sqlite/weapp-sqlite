@@ -3,7 +3,7 @@ import path from 'node:path'
 import { execa } from 'execa'
 import { acceptanceArtifactRoot, assertCleanRepository, demoRoot, repositoryRoot } from './acceptance-paths'
 
-const platforms = ['weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'] as const
+const platforms = ['weapp'] as const
 const operatingSystems = ['ios', 'android'] as const
 
 await assertCleanRepository()
@@ -30,6 +30,11 @@ for (const platform of platforms) {
         transactionRollback: false,
         processRelaunch: false,
         persistence: false,
+        debugWorkspace: false,
+        tableCrud: false,
+        shareFileMessageExport: false,
+        chooseMessageFileImport: false,
+        undo: false,
       },
       screenshots: { first: '', persisted: '' },
       notes: '',

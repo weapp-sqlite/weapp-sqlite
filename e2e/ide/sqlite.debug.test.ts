@@ -6,20 +6,14 @@ import { Launcher } from '@weapp-vite/miniprogram-automator'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { acceptanceArtifactRoot, demoRoot } from '../../scripts/acceptance-paths'
 
-interface DebugPageData {
+interface WorkspaceState {
+  readonly phase: string
   readonly selectedTable: string
   readonly tables: readonly { readonly name: string }[]
   readonly columns: readonly { readonly name: string }[]
+  readonly indexes: readonly { readonly name: string }[]
   readonly page?: { readonly total: number, readonly limit: number, readonly offset: number }
-  readonly displayRows: readonly string[]
-  readonly snapshot?: { readonly databaseName: string, readonly byteLength: number, readonly sha256: string }
   readonly error?: { readonly code: string, readonly message: string }
-}
-
-interface DebugArtifact {
-  readonly metadata: { readonly databaseName: string, readonly byteLength: number, readonly sha256: string }
-  readonly base64: string
-  readonly filePath?: string
 }
 
 interface PageAcceptance {
@@ -33,30 +27,20 @@ const runtimeLogs: string[] = []
 const runtimeFailures: string[] = []
 let miniProgram: MiniProgram
 
-function runtimeJsonReplacer(_key: string, value: unknown) {
-  if (!value || typeof value !== 'object') {
-    return value
-  }
-  const properties = Object.getOwnPropertyNames(value)
-  if (!properties.includes('message') && !properties.includes('stack')) {
-    return value
-  }
-  return Object.fromEntries(properties.map(property => [property, (value as Record<string, unknown>)[property]]))
-}
-
 function runtimeDetail(value: unknown) {
-  return typeof value === 'string' ? value : JSON.stringify(value, runtimeJsonReplacer)
+  if (typeof value === 'string') {
+    return value
+  }
+  try {
+    return JSON.stringify(value, (_key, item) => item instanceof Error ? { message: item.message, stack: item.stack } : item)
+  }
+  catch {
+    return String(value)
+  }
 }
 
 function runtimeLog(kind: string, value: unknown) {
-  let detail: string
-  try {
-    detail = runtimeDetail(value)
-  }
-  catch {
-    detail = String(value)
-  }
-  runtimeLogs.push(`${new Date().toISOString()} ${kind} ${detail}`)
+  runtimeLogs.push(`${new Date().toISOString()} ${kind} ${runtimeDetail(value)}`)
 }
 
 function consoleLevel(value: unknown) {
@@ -67,7 +51,7 @@ function consoleLevel(value: unknown) {
   return message['type'] ?? message['level'] ?? message['method']
 }
 
-async function waitForPhase(page: Page, phase: string): Promise<PageAcceptance> {
+async function waitForAcceptance(page: Page, phase: string) {
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
     const acceptance = await page.data('acceptance') as PageAcceptance
@@ -75,29 +59,29 @@ async function waitForPhase(page: Page, phase: string): Promise<PageAcceptance> 
       return acceptance
     }
     if (acceptance.phase === 'failed' || acceptance.phase === 'unsupported') {
-      throw new Error(`DevTools debug setup entered ${acceptance.phase}: ${JSON.stringify(acceptance)}`)
+      throw new Error(`Acceptance entered ${acceptance.phase}: ${JSON.stringify(acceptance)}`)
     }
     await new Promise(resolve => setTimeout(resolve, 250))
   }
-  throw new Error(`Timed out waiting for DevTools debug setup phase ${phase}.`)
+  throw new Error(`Timed out waiting for acceptance phase ${phase}.`)
 }
 
-async function waitForDebug(page: Page, predicate: (debug: DebugPageData) => boolean) {
-  const deadline = Date.now() + 30_000
+async function waitForWorkspace(page: Page, predicate: (state: WorkspaceState) => boolean) {
+  const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
-    const debug = await page.data('debug') as DebugPageData
-    if (debug.error) {
-      throw new Error(`DevTools debug panel failed: ${JSON.stringify(debug.error)}`)
+    const state = await page.callMethodWithOptions('workspaceStateForAutomation', { routeOnly: true, timeout: 60_000 }) as WorkspaceState
+    if (state.phase === 'failed' || state.phase === 'unsupported' || state.error) {
+      throw new Error(`Workspace failed: ${JSON.stringify(state)}`)
     }
-    if (predicate(debug)) {
-      return debug
+    if (predicate(state)) {
+      return state
     }
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise(resolve => setTimeout(resolve, 200))
   }
-  throw new Error('Timed out waiting for DevTools debug Page data.')
+  throw new Error('Timed out waiting for SQLite workspace state.')
 }
 
-function callDebugMethod(page: Page, method: string, ...args: unknown[]) {
+function callWorkspace(page: Page, method: string, ...args: unknown[]) {
   return page.callMethodWithOptions(method, { routeOnly: true, timeout: 60_000 }, ...args)
 }
 
@@ -133,98 +117,104 @@ afterAll(async () => {
   await miniProgram?.close()
 })
 
-it('manages and persists SQLite through the DevTools debug bridge', async () => {
+it('manages and persists SQLite through the generated DevTools workspace', async () => {
   const { commit, root } = await acceptanceArtifactRoot()
   const output = path.join(root, 'devtools-debug')
   await mkdir(output, { recursive: true })
-
   let page: Page | undefined
-  let debug: DebugPageData | undefined
+  let state: WorkspaceState | undefined
+  let stage = 'open acceptance page'
   try {
     page = await miniProgram.reLaunch('/pages/index/index')
     await page.callMethod('resetAcceptance')
-    await waitForPhase(page, 'ready')
+    await waitForAcceptance(page, 'ready')
     runtimeFailures.length = 0
     await page.callMethod('runAcceptance')
-    await waitForPhase(page, 'first-pass')
-    await page.callMethod('refreshDebug')
+    await waitForAcceptance(page, 'first-pass')
 
-    debug = await waitForDebug(page, value => value.tables.some(table => table.name === 'notes'))
-    expect(debug.error).toBeUndefined()
-    expect(debug.tables.map(table => table.name)).toContain('notes')
-    expect(debug.columns.map(column => column.name)).toContain('body')
-    expect(debug.displayRows.join('\n')).toContain('SQLite works across frameworks')
-
-    const count = await callDebugMethod(page, 'queryDebugForAutomation', 'SELECT count(*) AS total FROM notes') as { rows: readonly { total: number }[] }
+    stage = 'open debug workspace'
+    page = await miniProgram.reLaunch('/__weapp_sqlite_debug/index/index')
+    state = await waitForWorkspace(page, value => value.phase === 'ready' && value.tables.some(table => table.name === 'notes'))
+    expect(state.columns.map(column => column.name)).toContain('body')
+    const count = await callWorkspace(page, 'queryForAutomation', 'SELECT count(*) AS total FROM notes') as { rows: readonly { total: number }[] }
     expect(count.rows[0]?.total).toBeGreaterThan(0)
-    const write = await callDebugMethod(page, 'executeDebugWriteForAutomation', 'INSERT INTO notes (body) VALUES (\'devtools-debug-write\')') as { changes: number }
-    expect(write.changes).toBe(1)
-    await callDebugMethod(page, 'executeDebugWriteForAutomation', 'WITH RECURSIVE seq(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM seq WHERE value < 55) INSERT INTO notes (body) SELECT \'page-row-\' || value FROM seq')
-    await page.callMethod('nextDebugPage')
-    debug = await waitForDebug(page, value => value.page?.offset === 50)
-    expect(debug.page?.offset).toBe(50)
-    expect(debug.displayRows.length).toBeGreaterThan(0)
 
-    const artifact = await callDebugMethod(page, 'exportDebugArtifact') as DebugArtifact
-    const sqlite = Buffer.from(artifact.base64, 'base64')
+    stage = 'manage table through page handlers'
+    await page.setData({ formName: 'devtools_audit', formValue: 'message' })
+    await page.callMethod('createTable')
+    await waitForWorkspace(page, value => value.tables.some(table => table.name === 'devtools_audit'))
+    await page.callMethod('undoLast')
+    await waitForWorkspace(page, value => !value.tables.some(table => table.name === 'devtools_audit'))
+
+    stage = 'write and paginate workspace data'
+    await callWorkspace(page, 'executeForAutomation', 'INSERT INTO notes (body) VALUES (\'devtools-workspace-write\')')
+    await callWorkspace(page, 'executeForAutomation', 'WITH RECURSIVE seq(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM seq WHERE value < 55) INSERT INTO notes (body) SELECT \'page-row-\' || value FROM seq')
+    await page.callMethod('nextPage')
+    state = await waitForWorkspace(page, value => value.page?.offset === 50)
+    expect(state.page?.total).toBeGreaterThan(50)
+
+    stage = 'export workspace artifacts'
+    const sqliteArtifact = await callWorkspace(page, 'exportArtifactForAutomation', 'sqlite') as { bytes: string, metadata: { byteLength: number, sha256: string } }
+    const sqlite = Buffer.from(sqliteArtifact.bytes, 'base64')
     expect(sqlite.subarray(0, 16).toString()).toBe('SQLite format 3\0')
-    expect(sqlite.byteLength).toBe(artifact.metadata.byteLength)
-    await writeFile(path.join(output, 'debug-export.sqlite'), sqlite)
+    expect(sqlite.byteLength).toBe(sqliteArtifact.metadata.byteLength)
+    await writeFile(path.join(output, 'workspace.sqlite'), sqlite)
 
-    await page.callMethod('resetDebug')
-    await callDebugMethod(page, 'importDebugArtifact', artifact.base64)
-    const imported = await callDebugMethod(page, 'queryDebugForAutomation', 'SELECT count(*) AS total FROM notes WHERE body = \'devtools-debug-write\'') as { rows: readonly { total: number }[] }
-    expect(imported.rows[0]?.total).toBe(1)
-    await callDebugMethod(page, 'closeDebugController')
-    await miniProgram.screenshot({ path: path.join(output, 'managed.png') })
+    stage = 'restore exported database through import bridge'
+    await callWorkspace(page, 'executeForAutomation', 'INSERT INTO notes (body) VALUES (\'discarded-by-import\')')
+    await callWorkspace(page, 'importArtifactForAutomation', sqliteArtifact.bytes)
+    const restored = await callWorkspace(page, 'queryForAutomation', 'SELECT count(*) AS total FROM notes WHERE body = \'discarded-by-import\'') as { rows: readonly { total: number }[] }
+    expect(restored.rows[0]?.total).toBe(0)
 
+    stage = 'export table artifacts'
+    const csvArtifact = await callWorkspace(page, 'exportArtifactForAutomation', 'csv') as { bytes: string, rowCount: number }
+    const jsonArtifact = await callWorkspace(page, 'exportArtifactForAutomation', 'json') as { bytes: string, rowCount: number }
+    expect(csvArtifact.rowCount).toBeGreaterThan(50)
+    expect(jsonArtifact.rowCount).toBe(csvArtifact.rowCount)
+    await writeFile(path.join(output, 'notes.csv'), Buffer.from(csvArtifact.bytes, 'base64'))
+    await writeFile(path.join(output, 'notes.json'), Buffer.from(jsonArtifact.bytes, 'base64'))
+    stage = 'capture workspace screenshot'
+    await miniProgram.screenshot({ path: path.join(output, 'workspace.png'), timeout: 60_000 })
+
+    stage = 'verify persisted workspace'
     page = await miniProgram.reLaunch('/pages/index/index')
-    const persisted = await callDebugMethod(page, 'queryDebugForAutomation', 'SELECT count(*) AS total FROM notes WHERE body = \'devtools-debug-write\'') as { rows: readonly { total: number }[] }
+    page = await miniProgram.reLaunch('/__weapp_sqlite_debug/index/index')
+    await waitForWorkspace(page, value => value.phase === 'ready')
+    const persisted = await callWorkspace(page, 'queryForAutomation', 'SELECT count(*) AS total FROM notes WHERE body = \'devtools-workspace-write\'') as { rows: readonly { total: number }[] }
     expect(persisted.rows[0]?.total).toBe(1)
-    await page.callMethod('refreshDebug')
-    debug = await waitForDebug(page, value => Boolean(value.snapshot?.sha256))
-    expect(debug.snapshot?.sha256).toMatch(/^[a-f0-9]{64}$/)
     expect(runtimeFailures).toEqual([])
-    await miniProgram.screenshot({ path: path.join(output, 'persisted.png') })
+    stage = 'capture persisted screenshot'
+    await miniProgram.screenshot({ path: path.join(output, 'persisted.png'), timeout: 60_000 })
 
     await writeFile(path.join(output, 'report.json'), `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       commit,
-      target: 'devtools-debug',
+      target: 'devtools-debug-workspace',
       passed: true,
       supportEvidence: true,
-      checks: { debug, artifact: artifact.metadata, filePath: artifact.filePath, runtimeFailures },
-      artifacts: { database: 'debug-export.sqlite', screenshots: ['managed.png', 'persisted.png'] },
+      checks: { state, tableManagement: true, importRestore: true, sqlite: sqliteArtifact.metadata, csvRows: csvArtifact.rowCount, jsonRows: jsonArtifact.rowCount, runtimeFailures },
+      artifacts: { database: 'workspace.sqlite', tables: ['notes.csv', 'notes.json'] },
+      screenshots: { first: 'workspace.png', persisted: 'persisted.png' },
     }, null, 2)}\n`)
     await writeFile(path.join(output, 'runtime.log'), `${runtimeLogs.join('\n')}\n`)
   }
   catch (error) {
-    const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
-    runtimeLog('debug-acceptance-error', message)
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
+    const message = `${stage}: ${detail}`
+    runtimeLog('debug-workspace-error', message)
     try {
-      debug = await page?.data('debug') as DebugPageData | undefined
+      state = page ? await callWorkspace(page, 'workspaceStateForAutomation') as WorkspaceState : undefined
     }
-    catch (dataError) {
-      runtimeLog('page-data-error', dataError)
+    catch (stateError) {
+      runtimeLog('workspace-state-error', stateError)
     }
-    let failureScreenshot: string | undefined
     try {
-      failureScreenshot = 'failure.png'
-      await miniProgram.screenshot({ path: path.join(output, failureScreenshot) })
+      await miniProgram.screenshot({ path: path.join(output, 'failure.png') })
     }
     catch (screenshotError) {
-      failureScreenshot = undefined
       runtimeLog('screenshot-error', screenshotError)
     }
-    await writeFile(path.join(output, 'report.json'), `${JSON.stringify({
-      schemaVersion: 1,
-      commit,
-      target: 'devtools-debug',
-      passed: false,
-      checks: { debug, runtimeFailures },
-      error: message,
-      artifacts: failureScreenshot ? { screenshots: [failureScreenshot] } : {},
-    }, null, 2)}\n`)
+    await writeFile(path.join(output, 'report.json'), `${JSON.stringify({ schemaVersion: 2, commit, target: 'devtools-debug-workspace', passed: false, checks: { state, runtimeFailures }, error: message }, null, 2)}\n`)
     await writeFile(path.join(output, 'runtime.log'), `${runtimeLogs.join('\n')}\n`)
     throw error
   }

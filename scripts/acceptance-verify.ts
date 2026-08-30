@@ -11,6 +11,8 @@ interface AcceptanceReport {
   readonly screenshots?: { readonly first?: string, readonly persisted?: string }
   readonly checks?: Record<string, unknown>
   readonly device?: Record<string, unknown>
+  readonly supportEvidence?: boolean
+  readonly artifacts?: { readonly database?: string, readonly tables?: readonly string[] }
 }
 
 interface PageAcceptance {
@@ -19,7 +21,6 @@ interface PageAcceptance {
   readonly environment?: Record<string, unknown>
 }
 
-const platforms = ['weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'] as const
 const operatingSystems = ['ios', 'android'] as const
 const mobileCheckNames = [
   'reset',
@@ -30,6 +31,11 @@ const mobileCheckNames = [
   'transactionRollback',
   'processRelaunch',
   'persistence',
+  'debugWorkspace',
+  'tableCrud',
+  'shareFileMessageExport',
+  'chooseMessageFileImport',
+  'undo',
 ] as const
 
 function requireAutomatedChecks(report: AcceptanceReport, relativePath: string) {
@@ -92,21 +98,36 @@ function resolveEvidencePath(reportPath: string, relativePath: string) {
   return resolved
 }
 
+async function requireWorkspaceChecks(report: AcceptanceReport, reportPath: string, relativePath: string) {
+  if (report.schemaVersion !== 2 || report.supportEvidence !== true) {
+    throw new Error(`Debug workspace report is not support evidence: ${relativePath}`)
+  }
+  const runtimeFailures = report.checks?.['runtimeFailures']
+  if (!Array.isArray(runtimeFailures) || runtimeFailures.length > 0) {
+    throw new Error(`Debug workspace contains runtime failures: ${relativePath}`)
+  }
+  const artifactPaths = [report.artifacts?.database, ...(report.artifacts?.tables ?? [])]
+  if (artifactPaths.some(value => typeof value !== 'string' || !value)) {
+    throw new Error(`Debug workspace artifacts are incomplete: ${relativePath}`)
+  }
+  for (const artifact of artifactPaths as string[]) {
+    await access(resolveEvidencePath(reportPath, artifact))
+  }
+}
+
 await assertCleanRepository()
 const { commit, root } = await acceptanceArtifactRoot()
 const reportTargets = [
   { relativePath: 'web/report.json', target: 'web', kind: 'automated' as const },
-  ...platforms.map(platform => ({
-    relativePath: `devtools/${platform}/report.json`,
-    target: platform,
-    kind: 'automated' as const,
-  })),
-  ...platforms.flatMap(platform => operatingSystems.map(operatingSystem => ({
-    relativePath: `mobile/${platform}/${operatingSystem}.json`,
-    target: platform,
+  { relativePath: 'devtools/weapp/report.json', target: 'weapp', kind: 'automated' as const },
+  { relativePath: 'web-debug/report.json', target: 'web-debug-workspace', kind: 'workspace' as const },
+  { relativePath: 'devtools-debug/report.json', target: 'devtools-debug-workspace', kind: 'workspace' as const },
+  ...operatingSystems.map(operatingSystem => ({
+    relativePath: `mobile/weapp/${operatingSystem}.json`,
+    target: 'weapp',
     operatingSystem,
     kind: 'mobile' as const,
-  }))),
+  })),
 ]
 
 for (const reportTarget of reportTargets) {
@@ -125,6 +146,9 @@ for (const reportTarget of reportTargets) {
       throw new Error(`Automated acceptance schema is invalid: ${reportTarget.relativePath}`)
     }
     requireAutomatedChecks(report, reportTarget.relativePath)
+  }
+  else if (reportTarget.kind === 'workspace') {
+    await requireWorkspaceChecks(report, reportPath, reportTarget.relativePath)
   }
   else {
     requireMobileChecks(report, reportTarget.relativePath, reportTarget.operatingSystem)

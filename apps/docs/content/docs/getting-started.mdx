@@ -46,6 +46,38 @@ await database.close()
 
 `weappSqlite()` 在构建时读取 weapp-vite 的单目标元数据并发射 WASM。Web 只包含 `sql-wasm-browser.wasm`，小程序只包含 `sql-wasm.wasm`；应用不需要维护资源路径、平台 runtime 或复制脚本。
 
+## 启用数据工作台
+
+```ts
+export default defineConfig({
+  plugins: [weappSqlite({
+    debug: {
+      enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+      page: {
+        route: '__weapp_sqlite_debug/index/index',
+        configFile: './src/sqlite-debug.config.ts',
+      },
+    },
+  })],
+})
+```
+
+```ts
+// src/sqlite-debug.config.ts
+export default defineSqliteDebugWorkspace({ databaseName: 'app.sqlite', migrations })
+```
+
+生成页通过自动路由进入独立分包。应用清单使用 `app.json.ts` 时，从 `weapp-vite/auto-routes` 导入 `subPackages`：
+
+```ts
+import { subPackages } from 'weapp-vite/auto-routes'
+import { defineAppJson } from 'weapp-vite/json'
+
+export default defineAppJson({ pages: ['pages/index/index'], subPackages })
+```
+
+`WEAPP_SQLITE_DEBUG` 未启用时不会生成页面，`subPackages` 为空，管理代码和文件 API会被构建器剔除。
+
 ## 加入迁移
 
 迁移版本必须是正整数且唯一，已应用的版本会记录在 `__weapp_sqlite_migrations` 表中：

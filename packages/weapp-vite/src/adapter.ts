@@ -2,14 +2,17 @@ import type { MiniProgramPlatform, MiniProgramSqliteWasmStorage } from '@weapp-s
 import type { SqliteWasmStorage, SqlJsInitializer } from '@weapp-sqlite/wasm'
 import type { SqliteRuntimeAdapter, SqliteRuntimeInfo, SqliteRuntimeTarget } from './types'
 import {
+  createMiniProgramSqliteDebugFileAdapter,
   createMiniProgramSqliteWasmStorage,
   createMiniProgramSqlJsInitializer,
   MiniProgramSqliteUnsupportedError,
   probeMiniProgramSqliteCapabilities,
 } from '@weapp-sqlite/miniprogram'
 import { createSqliteWasmDriver } from '@weapp-sqlite/wasm'
-import { createIndexedDbSqliteWasmStorage, SqliteWebStorageUnavailableError } from '@weapp-sqlite/web'
+import { createIndexedDbSqliteWasmStorage, createWebSqliteDebugFileAdapter, SqliteWebStorageUnavailableError } from '@weapp-sqlite/web'
 import initSqlJs from 'sql.js'
+
+declare const __WEAPP_SQLITE_DEBUG__: boolean
 
 export type {
   SqliteRuntimeAdapter,
@@ -76,6 +79,7 @@ export interface CreateWebSqliteRuntimeAdapterOptions {
 }
 
 export function createWebSqliteRuntimeAdapter(options: CreateWebSqliteRuntimeAdapterOptions = {}): SqliteRuntimeAdapter {
+  const debugEnabled = typeof __WEAPP_SQLITE_DEBUG__ !== 'undefined' && __WEAPP_SQLITE_DEBUG__
   let storage: ReturnType<typeof createIndexedDbSqliteWasmStorage> | undefined
   const resolveStorage = () => storage ??= createIndexedDbSqliteWasmStorage({
     ...(options.indexedDB === undefined ? {} : { indexedDB: options.indexedDB }),
@@ -128,6 +132,17 @@ export function createWebSqliteRuntimeAdapter(options: CreateWebSqliteRuntimeAda
         userAgent: options.userAgent ?? globalThis.navigator?.userAgent,
       }
     },
+    ...(debugEnabled
+      ? {
+          debugFiles: {
+            save: artifact => createWebSqliteDebugFileAdapter().save(artifact),
+            choose: async chooseOptions => createWebSqliteDebugFileAdapter().choose({
+              ...(chooseOptions?.maxBytes === undefined ? {} : { maxBytes: chooseOptions.maxBytes }),
+              ...(chooseOptions?.extensions === undefined ? {} : { accept: chooseOptions.extensions }),
+            }),
+          },
+        }
+      : {}),
   }
 }
 
@@ -159,6 +174,7 @@ function miniProgramRuntimeInfo(platform: MiniProgramPlatform, runtime: unknown)
 export function createMiniProgramSqliteRuntimeAdapter(
   options: CreateMiniProgramSqliteRuntimeAdapterOptions,
 ): SqliteRuntimeAdapter {
+  const debugEnabled = typeof __WEAPP_SQLITE_DEBUG__ !== 'undefined' && __WEAPP_SQLITE_DEBUG__
   const packageBinaryPath = options.packageBinaryPath ?? '/assets/sql-wasm.wasm'
   const hostOptions = {
     platform: options.platform,
@@ -204,5 +220,8 @@ export function createMiniProgramSqliteRuntimeAdapter(
     remove: name => resolveStorage().remove(name),
     getRuntimeInfo: async () => miniProgramRuntimeInfo(options.platform, options.runtime),
     getDatabasePath: name => resolveStorage().getDatabasePath?.(name),
+    ...(debugEnabled && options.platform === 'weapp'
+      ? { debugFiles: createMiniProgramSqliteDebugFileAdapter({ platform: options.platform, runtime: options.runtime }) }
+      : {}),
   }
 }

@@ -29,9 +29,9 @@ description: 理解 core、WASM 引擎和宿主存储之间的职责边界
 
 `@weapp-sqlite/miniprogram` 定义统一的平台、runtime、能力探测、数据库文件和包内资源读取协议。应用显式传入 `platform` 和顶层 runtime，包本身不依赖 weapp-vite 的 AST API 重写。
 
-`@weapp-sqlite/debug` 位于业务 UI 与数据库宿主之间，只通过 `SqliteDatabase` 和 `load/save/remove` 管理快照；它不进入 core，也不直接访问 IndexedDB、微信文件系统或 sql.js 实例。
+`@weapp-sqlite/debug` 位于生成工作台与数据库宿主之间，只通过 `SqliteDatabase` 和 `load/save/remove` 管理快照；它不进入 core，也不直接访问 IndexedDB、微信文件系统或 sql.js 实例。CSV/JSON codec、写 SQL、撤销和文件交付只存在于调试构建。
 
-六个平台都内置相同文件系统契约：使用 `getFileSystemManager()` 和 `env.USER_DATA_PATH` 持久化数据库。微信通过 `WXWebAssembly` 按代码包路径实例化；其余目标读取包内二进制后交给标准 WebAssembly。宿主能力不满足契约时返回结构化 `unsupported`，不会静默切换到内存。
+微信使用 `getFileSystemManager()` 和 `env.USER_DATA_PATH` 持久化数据库，并通过 `WXWebAssembly` 按代码包路径实例化。其他目标可构建并进入相同能力探测边界；文件系统、WASM 或文件交付能力未满足时返回结构化 `unsupported`，不会静默切换到内存。
 
 `MiniProgramHostAdapter` 的 `instantiatePackageWasm` 是宿主 WebAssembly 边界。微信实现验证 sql.js 所需的构造器和 BigInt TypedArray，并为部分 DevTools 未暴露的 `RuntimeError` 提供等价 `Error` 构造器；它只在标准 `WebAssembly` 缺失时安装兼容命名空间，已有不同实现时明确失败，不覆盖全局对象。
 

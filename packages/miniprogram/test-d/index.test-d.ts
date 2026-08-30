@@ -7,6 +7,7 @@ import type {
 } from '..'
 import { expectType } from 'tsd'
 import {
+  createMiniProgramSqliteDebugFileAdapter,
   createMiniProgramSqliteWasmStorage,
   createMiniProgramSqlJsInitializer,
   probeMiniProgramSqliteCapabilities,
@@ -27,3 +28,4 @@ expectType<SqlJsInitializer>(createMiniProgramSqlJsInitializer({
   packageBinaryPath: '/assets/sql-wasm.wasm',
   initializer,
 }))
+expectType<Promise<{ readonly method: 'save-file-to-disk' | 'share-file-message', readonly fileName: string }>>(createMiniProgramSqliteDebugFileAdapter({ platform, runtime: {} }).save({ fileName: 'demo.sqlite', mimeType: 'application/vnd.sqlite3', bytes: new Uint8Array() }))

@@ -27,6 +27,11 @@
       "types": "./dist/adapter.d.mts",
       "import": "./dist/adapter.mjs",
       "require": "./dist/adapter.cjs"
+    },
+    "./workspace": {
+      "types": "./dist/workspace.d.mts",
+      "import": "./dist/workspace.mjs",
+      "require": "./dist/workspace.cjs"
     }
   },
   "main": "./dist/plugin.cjs",
@@ -57,7 +62,7 @@
   },
   "devDependencies": {
     "@types/sql.js": "^1.4.11",
-    "weapp-vite": "^6.22.0"
+    "weapp-vite": "^6.25.1"
   },
   "publishConfig": {}
 }

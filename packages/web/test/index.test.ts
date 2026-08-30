@@ -1,5 +1,5 @@
 import { IDBFactory } from 'fake-indexeddb'
-import { createIndexedDbSqliteWasmStorage, SqliteWebStorageUnavailableError } from '@/index'
+import { createIndexedDbSqliteWasmStorage, createWebSqliteDebugFileAdapter, SqliteWebStorageUnavailableError } from '@/index'
 
 describe('web IndexedDB storage', () => {
   it('loads, saves, and removes binary databases', async () => {
@@ -30,5 +30,32 @@ describe('web IndexedDB storage', () => {
     finally {
       Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: previous })
     }
+  })
+})
+
+describe('web debug file delivery', () => {
+  it('uses the File System Access API when available', async () => {
+    const write = vi.fn(async () => undefined)
+    const close = vi.fn(async () => undefined)
+    const adapter = createWebSqliteDebugFileAdapter({
+      scope: { showSaveFilePicker: async () => ({ createWritable: async () => ({ write, close }), getFile: async () => ({ name: 'unused', type: '', arrayBuffer: async () => new ArrayBuffer(0) }) }) },
+    })
+    await expect(adapter.save({ fileName: 'demo.sqlite', mimeType: 'application/vnd.sqlite3', bytes: new Uint8Array([1, 2]) })).resolves.toEqual({ method: 'file-system-access', fileName: 'demo.sqlite' })
+    expect(write).toHaveBeenCalledWith(new Uint8Array([1, 2]))
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('falls back to a Blob download without reporting an internal path', async () => {
+    const click = vi.fn()
+    const revokeObjectURL = vi.fn()
+    const adapter = createWebSqliteDebugFileAdapter({
+      scope: {},
+      document: { createElement: (() => ({ download: '', href: '', click, remove: vi.fn() })) as never },
+      url: { createObjectURL: () => 'blob:debug', revokeObjectURL },
+      Blob,
+    })
+    await expect(adapter.save({ fileName: 'notes.csv', mimeType: 'text/csv', bytes: new Uint8Array([1]) })).resolves.toEqual({ method: 'download', fileName: 'notes.csv' })
+    expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:debug')
   })
 })

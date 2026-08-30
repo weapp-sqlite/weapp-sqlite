@@ -6,7 +6,7 @@ import type { SqliteRuntimeInfo } from '../dist/runtime.mjs'
 import { expectAssignable, expectType } from 'tsd'
 import { weappSqlite } from '..'
 // eslint-disable-next-line antfu/no-import-dist
-import { createSqliteDebugController } from '../dist/debug.mjs'
+import { createSqliteDebugController, defineSqliteDebugWorkspace } from '../dist/debug.mjs'
 // eslint-disable-next-line antfu/no-import-dist
 import { getSqliteRuntimeInfo, getSqliteTarget, openSqlite, removeSqlite } from '../dist/runtime.mjs'
 
@@ -17,6 +17,8 @@ const migrations: readonly SqliteMigration[] = [{
 }]
 
 expectAssignable<object>(weappSqlite())
+expectAssignable<object>(weappSqlite({ debug: { enabled: true, page: { route: '__debug/index/index', configFile: './src/sqlite-debug.config.ts' } } }))
+expectType<string>(defineSqliteDebugWorkspace({ databaseName: 'demo.sqlite' }).databaseName)
 expectType<Promise<import('@weapp-sqlite/core').SqliteDatabase>>(openSqlite({ name: 'app.sqlite', migrations }))
 expectType<Promise<void>>(removeSqlite({ name: 'app.sqlite' }))
 expectType<'web' | 'weapp' | 'alipay' | 'tt' | 'swan' | 'jd' | 'xhs'>(getSqliteTarget())

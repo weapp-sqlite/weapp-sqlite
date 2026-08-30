@@ -56,3 +56,7 @@ storage 使用 `getFileSystemManager()` 在 `env.USER_DATA_PATH` 下保存数据
 能力探测返回平台、`supported`、失败 capability、稳定错误码和消息。缺少 runtime、文件系统、用户目录、BigInt TypedArray、兼容的 WebAssembly runtime 或包内资源时返回对应失败；实例化拒绝使用 `MINIPROGRAM_SQLITE_WASM_INSTANTIATION_FAILED`。
 
 创建 storage 或读取包资源时，不支持状态会抛出 `MiniProgramSqliteUnsupportedError`。没有 asm.js 或内存数据库降级。
+
+## 微信调试文件交付
+
+`createMiniProgramSqliteDebugFileAdapter()` 只在微信调试构建使用：PC 和 DevTools 将临时文件交给 `wx.saveFileToDisk`，iOS/Android 使用 `wx.shareFileMessage`；导入统一使用 `wx.chooseMessageFile` 后读取二进制。能力缺失返回稳定错误码，写入 `USER_DATA_PATH` 本身不算“下载成功”。支付宝、抖音、百度、京东和小红书在没有已验证文件交付 adapter 时返回 `unsupported`。

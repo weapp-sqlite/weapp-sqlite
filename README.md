@@ -44,7 +44,32 @@ await database.close()
 
 所有数据库操作都是异步的。事务会串行执行，并在回调成功后提交；回调抛错时自动回滚。同名并发打开会合并，adapter 或迁移配置冲突时返回 `SQLITE_OPEN_OPTIONS_CONFLICT`，能力缺失时不会退回内存。
 
-开发调试面板通过 `WEAPP_SQLITE_DEBUG=1` 编译开关启用，支持表预览、只读查询、显式确认写 SQL、导出/导入/重置。默认生产构建不包含调试入口；调试控制器会在导出前调用 `database.flush()`，并拒绝文件系统相关 SQL。
+开发数据工作台通过 `WEAPP_SQLITE_DEBUG=1` 编译开关启用，支持筛选、排序、分页、行 CRUD、表/列/索引管理、受控 SQL、单步撤销，以及 SQLite/CSV/JSON 导入导出。默认生产构建不生成工作台路由，也不打包写 SQL、codec 或宿主文件 API。
+
+```ts
+weappSqlite({
+  debug: {
+    enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+    page: {
+      route: '__weapp_sqlite_debug/index/index',
+      configFile: './src/sqlite-debug.config.ts',
+    },
+  },
+})
+```
+
+```ts
+// src/sqlite-debug.config.ts
+import { defineSqliteDebugWorkspace } from '@weapp-sqlite/weapp-vite/debug'
+import { migrations } from './sqlite'
+
+export default defineSqliteDebugWorkspace({
+  databaseName: 'app.sqlite',
+  migrations,
+})
+```
+
+生成页使用 weapp-vite 自动路由注册独立分包。采用静态 `app.json` 的项目需升级为 `app.json.ts`，从 `weapp-vite/auto-routes` 写入 `subPackages`；生产构建得到空数组，调试构建才包含工作台。
 
 ## 开发
 
@@ -108,6 +133,6 @@ pnpm --filter weapp-sqlite-demo-mpx typecheck
 pnpm --filter weapp-sqlite-demo-mpx build:weapp
 ```
 
-`weappSqlite()` 会确定性发射当前目标所需的单个 WASM 文件。Web 使用 `sql-wasm-browser.wasm` 和 IndexedDB；微信通过 `WXWebAssembly.instantiate()` 加载 `sql-wasm.wasm`；其余小程序 adapter 从代码包读取二进制，再交给宿主标准 WebAssembly 实现。数据库文件统一保存在宿主 `USER_DATA_PATH`。
+`weappSqlite()` 会确定性发射当前目标所需的单个 WASM 文件。Web 使用 `sql-wasm-browser.wasm` 和 IndexedDB；微信通过 `WXWebAssembly.instantiate()` 加载 `sql-wasm.wasm`。其余五个平台保持可构建，运行或文件交付能力未通过真实宿主门禁时返回结构化 `unsupported`，不得视为正式支持。
 
 完整门禁命令为 `pnpm acceptance:build`、`pnpm acceptance:web`、`pnpm acceptance:debug:web`、`pnpm acceptance:devtools:doctor`、`pnpm acceptance:devtools`、`pnpm acceptance:debug:devtools`、`pnpm acceptance:mobile:prepare` 和 `pnpm acceptance:verify`。汇总器要求 Web，以及六个平台各自的官方 DevTools、当前稳定 iOS 和 Android 宿主报告；缺少任一当前 commit 证据的平台不得标记正式支持。

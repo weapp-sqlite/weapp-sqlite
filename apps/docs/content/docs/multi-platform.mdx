@@ -30,19 +30,21 @@ pnpm --filter weapp-sqlite-demo-mpx test
 ```bash
 pnpm acceptance:build
 pnpm acceptance:web
+pnpm acceptance:debug:web
 pnpm acceptance:devtools:doctor
 pnpm acceptance:devtools
+pnpm acceptance:debug:devtools
 pnpm acceptance:mobile:prepare
 pnpm acceptance:verify
 ```
 
-`acceptance:verify` 只接受当前 commit 的 Web、DevTools、iOS 下限/最新和 Android 下限/最新报告，并要求所有功能检查、设备字段和截图完整。正式准备与汇总必须在干净工作区运行。
+`acceptance:build` 构建 Web 和六个小程序目标，但正式运行证据首期只汇总 Web、微信 DevTools、微信 iOS/Android，以及 Web/微信数据工作台报告。其余五端保持可构建和结构化 `unsupported`，不据此宣称运行支持。正式准备与汇总必须在干净工作区运行。
 
 ## 平台注意事项
 
 - Web 使用 `@weapp-sqlite/web` 的 IndexedDB 二进制持久化，不回退到内存。
 - 应用通过 `@weapp-sqlite/weapp-vite/runtime` 调用统一 API，不显式传入平台、runtime 或 WASM 路径。
-- 微信使用 `WXWebAssembly` 路径式实例化；其余小程序 adapter 使用包内二进制和标准 WebAssembly。
+- 微信使用 `WXWebAssembly` 路径式实例化；其余小程序目标能力不足时返回 `unsupported`。
 - Web 产物只包含 `sql-wasm-browser.wasm`，小程序产物只包含 `sql-wasm.wasm`，避免重复资源占用主包。
 - `probe()` 会检查文件系统、用户目录、TypedArray、WebAssembly 和包内资源；失败时统一返回结构化错误，不回退内存。
-- Headless 结果只是逻辑预检。每个平台只有在对应官方 DevTools、iOS 和 Android 宿主报告齐全后才标记正式支持。
+- Headless 结果只是逻辑预检。首期只有 Web 与微信进入正式支持矩阵。

@@ -28,7 +28,15 @@ interface MiniProgramHostAdapterFactoryOptions {
   readonly wasmSource: 'path' | 'binary'
 }
 
-const ERROR_CODES: Record<Exclude<MiniProgramSqliteErrorCode, 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED'>, string> = {
+type MiniProgramRuntimeErrorCode = Exclude<
+  MiniProgramSqliteErrorCode,
+  | 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED'
+  | 'MINIPROGRAM_SQLITE_DEBUG_FILE_UNSUPPORTED'
+  | 'MINIPROGRAM_SQLITE_DEBUG_FILE_FAILED'
+  | 'MINIPROGRAM_SQLITE_DEBUG_FILE_TOO_LARGE'
+>
+
+const ERROR_CODES: Record<MiniProgramRuntimeErrorCode, string> = {
   MINIPROGRAM_SQLITE_RUNTIME_UNAVAILABLE: 'The mini-program runtime is unavailable.',
   MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE: 'The mini-program filesystem API is unavailable.',
   MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE: 'The mini-program user data path is unavailable.',
@@ -52,7 +60,7 @@ const compatibilityRuntimes = new WeakMap<object, MiniProgramWebAssemblyRuntime>
 function failure(
   options: MiniProgramHostAdapterOptions,
   capability: MiniProgramSqliteCapabilityReport['capability'],
-  code: Exclude<MiniProgramSqliteErrorCode, 'MINIPROGRAM_SQLITE_PLATFORM_UNSUPPORTED'>,
+  code: MiniProgramRuntimeErrorCode,
   cause?: unknown,
 ) {
   return new MiniProgramSqliteUnsupportedError(

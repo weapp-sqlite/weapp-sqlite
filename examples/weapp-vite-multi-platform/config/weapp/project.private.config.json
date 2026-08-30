@@ -10,6 +10,12 @@
           "pathName": "pages/index/index",
           "query": "",
           "scene": null
+        },
+        {
+          "name": "SQLite data workspace",
+          "pathName": "__weapp_sqlite_debug/index/index",
+          "query": "",
+          "scene": null
         }
       ]
     }

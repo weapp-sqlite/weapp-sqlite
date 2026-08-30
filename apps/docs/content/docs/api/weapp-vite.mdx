@@ -9,7 +9,12 @@ description: "全端统一 SQLite 构建插件与运行时"
 import { weappSqlite } from '@weapp-sqlite/weapp-vite'
 
 export default defineConfig({
-  plugins: [weappSqlite({ debug: process.env.WEAPP_SQLITE_DEBUG === '1' })],
+  plugins: [weappSqlite({
+    debug: {
+      enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+      page: { route: '__weapp_sqlite_debug/index/index', configFile: './src/sqlite-debug.config.ts' },
+    },
+  })],
 })
 ```
 
@@ -29,16 +34,17 @@ await removeSqlite({ name: 'app.sqlite' })
 
 `getSqliteTarget()`、`getSqliteRuntimeInfo()` 和 `getSqliteDatabasePath()` 用于验收与调试信息。高级集成可以从 `@weapp-sqlite/weapp-vite/adapter` 导入 `SqliteRuntimeAdapter` 并通过 `openSqlite({ adapter })` 覆盖内置实现。
 
-## Debug
+## 数据工作台
 
 ```ts
-import { createSqliteDebugController } from '@weapp-sqlite/weapp-vite/debug'
+import { defineSqliteDebugWorkspace } from '@weapp-sqlite/weapp-vite/debug'
 
-const debug = createSqliteDebugController({
+export default defineSqliteDebugWorkspace({
   databaseName: 'app.sqlite',
   migrations,
-  enabled: true,
 })
 ```
 
-该入口自动复用当前目标 adapter 的快照和删除能力。生产构建应通过编译常量排除 debug route，并检查产物不包含写 SQL、导入和调试文案。
+`debug: boolean` 仍兼容并映射到默认路由与配置文件。调试构建生成带所有权标记的 TS/WXML/SCSS/JSON 页面；目标目录已有用户文件时直接失败，不覆盖。Web 将其注册为懒加载路由，小程序将其注册为独立分包。
+
+工作台自动复用当前目标 adapter 的数据库、快照和文件交付能力。生产构建通过编译常量排除 route、写 SQL、CSV/JSON codec、导入逻辑和 `saveFileToDisk` / `shareFileMessage` / `chooseMessageFile`。
