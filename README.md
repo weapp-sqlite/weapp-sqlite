@@ -2,9 +2,9 @@
 
 一个面向小程序与 Web 宿主的可插拔 SQLite driver workspace。
 
-文档站：[`sqlite.icebreaker.top`](https://sqlite.icebreaker.top)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，并由 Cloudflare Worker 的 Static Assets 托管。
+文档站：[`sqlite.weapp.dev`](https://sqlite.weapp.dev)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，并由 Cloudflare Worker 的 Static Assets 托管。
 
-如果你是第一次使用，建议先阅读[快速开始](https://sqlite.icebreaker.top/docs/getting-started)。本项目适合把数据保存在用户设备上，不是远程数据库或线上运营后台。
+如果你是第一次使用，建议先阅读[快速开始](https://sqlite.weapp.dev/docs/getting-started)。本项目适合把数据保存在用户设备上，不是远程数据库或线上运营后台。
 
 ## 你需要准备什么
 
@@ -53,9 +53,9 @@ await database.close()
 
 所有数据库操作都是异步的。事务会串行执行，并在回调成功后提交；回调抛错时自动回滚。同名并发打开会合并，adapter 或迁移配置冲突时返回 `SQLITE_OPEN_OPTIONS_CONFLICT`，能力缺失时不会退回内存。
 
-建议先掌握四个动作：定义迁移、`openSqlite()`、使用绑定参数读写、`flush()`/`close()`。完整解释见[核心概念](https://sqlite.icebreaker.top/docs/concepts)。
+建议先掌握四个动作：定义迁移、`openSqlite()`、使用绑定参数读写、`flush()`/`close()`。完整解释见[核心概念](https://sqlite.weapp.dev/docs/concepts)。
 
-开发数据工作台通过 `WEAPP_SQLITE_DEBUG=1` 编译开关启用，支持筛选、排序、分页、行 CRUD、表/列/索引管理、受控 SQL、单步撤销，以及 SQLite/CSV/JSON 导入导出。默认生产构建不生成工作台路由，也不打包写 SQL、codec 或宿主文件 API。详细操作见[调试工作台](https://sqlite.icebreaker.top/docs/debug-workbench)。
+开发数据工作台通过 `WEAPP_SQLITE_DEBUG=1` 编译开关启用，支持筛选、排序、分页、行 CRUD、表/列/索引管理、受控 SQL、单步撤销，以及 SQLite/CSV/JSON 导入导出。默认生产构建不生成工作台路由，也不打包写 SQL、codec 或宿主文件 API。详细操作见[调试工作台](https://sqlite.weapp.dev/docs/debug-workbench)。
 
 ```ts
 weappSqlite({

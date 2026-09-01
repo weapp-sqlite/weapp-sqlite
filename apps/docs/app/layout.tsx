@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import './global.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://sqlite.icebreaker.top'),
+  metadataBase: new URL('https://sqlite.weapp.dev'),
   title: {
     default: 'weapp-sqlite',
     template: '%s | weapp-sqlite',

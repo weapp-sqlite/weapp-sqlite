@@ -10,7 +10,7 @@
   },
   "routes": [
     {
-      "pattern": "sqlite.icebreaker.top",
+      "pattern": "sqlite.weapp.dev",
       "custom_domain": true
     }
   ]

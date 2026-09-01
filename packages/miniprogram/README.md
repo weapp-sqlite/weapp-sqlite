@@ -22,4 +22,4 @@ const initializer = createMiniProgramSqlJsInitializer({
 
 微信 adapter 使用 `getFileSystemManager()` 和 `USER_DATA_PATH` 保存快照，并通过 `WXWebAssembly` 按代码包路径实例化。其他五个平台可以构建，但缺少真实宿主证据或能力时返回结构化 `unsupported`，不会回退到内存数据库。
 
-业务项目通常应使用统一的 `openSqlite()` 入口。详见 [小程序 API](https://sqlite.icebreaker.top/docs/api/miniprogram) 和 [多端接入](https://sqlite.icebreaker.top/docs/multi-platform)。
+业务项目通常应使用统一的 `openSqlite()` 入口。详见 [小程序 API](https://sqlite.weapp.dev/docs/api/miniprogram) 和 [多端接入](https://sqlite.weapp.dev/docs/multi-platform)。

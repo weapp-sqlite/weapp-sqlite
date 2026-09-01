@@ -22,4 +22,4 @@ const database = await openSqliteWasmDatabase(
 
 本包不直接访问 IndexedDB、小程序文件系统或平台 runtime。Web 使用 `@weapp-sqlite/web`，小程序使用 `@weapp-sqlite/miniprogram`，weapp-vite 项目优先使用 `@weapp-sqlite/weapp-vite`。
 
-通常不需要直接配置 WASM adapter：weapp-vite 会为当前目标自动选择资源。详见 [WASM API](https://sqlite.icebreaker.top/docs/api/wasm)。
+通常不需要直接配置 WASM adapter：weapp-vite 会为当前目标自动选择资源。详见 [WASM API](https://sqlite.weapp.dev/docs/api/wasm)。

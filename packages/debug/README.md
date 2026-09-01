@@ -21,4 +21,4 @@ const controller = createSqliteDebugController({
 
 控制器只有在 `enabled: true` 时才执行操作。查询 SQL 默认只允许 `SELECT`、`EXPLAIN` 和安全 `PRAGMA`；写入、结构修改和导入必须显式传入 `allowWrite: true`，破坏性操作还需要完整表名确认和可用快照。
 
-详见 [调试工作台](https://sqlite.icebreaker.top/docs/debug-workbench) 和 [Debug API](https://sqlite.icebreaker.top/docs/api/debug)。
+详见 [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench) 和 [Debug API](https://sqlite.weapp.dev/docs/api/debug)。

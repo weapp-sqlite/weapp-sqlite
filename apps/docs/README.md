@@ -15,7 +15,7 @@ pnpm --filter @weapp-sqlite/docs build
 pnpm --filter @weapp-sqlite/docs preview
 ```
 
-部署到 `sqlite.icebreaker.top`：
+部署到 `sqlite.weapp.dev`：
 
 ```bash
 pnpm --filter @weapp-sqlite/docs wrangler:types
@@ -24,3 +24,5 @@ pnpm --filter @weapp-sqlite/docs run deploy
 ```
 
 `wrangler.jsonc` 使用 `assets.directory: "./out"` 和 `ASSETS` binding；Worker 本身只调用 `env.ASSETS.fetch(request)`。
+
+推送到 `main` 后，`.github/workflows/docs-deploy.yml` 会自动构建并部署到 `sqlite.weapp.dev`。启用该 workflow 前，请在 GitHub Actions Secrets 中配置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。完整说明见文档站的[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。

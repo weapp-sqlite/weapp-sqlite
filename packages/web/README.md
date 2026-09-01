@@ -18,4 +18,4 @@ const storage = createIndexedDbSqliteWasmStorage({
 
 默认 IndexedDB 数据库名为 `weapp-sqlite`，object store 为 `databases`。IndexedDB 不可用时会抛出 `WEB_SQLITE_INDEXEDDB_UNAVAILABLE`，不会静默回退到内存数据库。
 
-详见 [Web API](https://sqlite.icebreaker.top/docs/api/web) 和 [调试工作台](https://sqlite.icebreaker.top/docs/debug-workbench)。
+详见 [Web API](https://sqlite.weapp.dev/docs/api/web) 和 [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench)。

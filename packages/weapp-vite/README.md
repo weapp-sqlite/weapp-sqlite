@@ -46,4 +46,4 @@ Web、微信、支付宝、抖音、百度、京东和小红书使用相同业�
 
 高级 adapter 类型从 `@weapp-sqlite/weapp-vite/adapter` 导入；调试控制器从 `@weapp-sqlite/weapp-vite/debug` 导入。平台正式支持结论仍以对应官方 DevTools、iOS 和 Android 宿主验收为准，`unsupported` 不会静默回退到内存数据库。
 
-完整教程：[快速开始](https://sqlite.icebreaker.top/docs/getting-started) · [核心概念](https://sqlite.icebreaker.top/docs/concepts) · [调试工作台](https://sqlite.icebreaker.top/docs/debug-workbench)
+完整教程：[快速开始](https://sqlite.weapp.dev/docs/getting-started) · [核心概念](https://sqlite.weapp.dev/docs/concepts) · [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench)

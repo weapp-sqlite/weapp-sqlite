@@ -16,7 +16,7 @@ pnpm --filter @weapp-sqlite/docs preview
 
 ## Cloudflare Worker
 
-`apps/docs/wrangler.jsonc` 将 `out` 绑定为 `ASSETS`，域名配置为 `sqlite.icebreaker.top`。Worker 的唯一职责是：
+`apps/docs/wrangler.jsonc` 将 `out` 绑定为 `ASSETS`，域名配置为 `sqlite.weapp.dev`。Worker 的唯一职责是：
 
 ```ts
 export default {
@@ -34,7 +34,31 @@ pnpm --filter @weapp-sqlite/docs run deploy:dry
 pnpm --filter @weapp-sqlite/docs run deploy
 ```
 
-首次部署需要当前 Cloudflare 账号对 `icebreaker.top` 有 DNS / Custom Domain 权限。若账号未登录或域名不在当前账号，Wrangler 会在部署阶段明确报错；这不影响本地静态构建和预览。
+首次部署需要当前 Cloudflare 账号对 `weapp.dev` 有 DNS / Custom Domain 权限。若账号未登录或域名不在当前账号，Wrangler 会在部署阶段明确报错；这不影响本地静态构建和预览。
+
+## GitHub Actions 自动部署
+
+仓库提供 `.github/workflows/docs-deploy.yml`。推送到 `main` 且修改文档站、包 README、锁文件或该 workflow 时，会自动构建并部署；也可以在 GitHub Actions 页面手动选择 **Deploy Docs → Run workflow**。
+
+在仓库的 **Settings → Secrets and variables → Actions** 中配置以下两个 repository secrets：
+
+- `CLOUDFLARE_API_TOKEN`：仅授予 Workers 部署和读取账号信息所需权限的 API Token。
+- `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare 账号 ID。
+
+Token 不写入仓库、workflow 日志或本地配置。部署 job 使用 `pnpm install --frozen-lockfile`、Node.js 22.12 和 `wrangler deploy`，构建失败或 dry-run 校验失败时不会执行正式部署。
+
+Cloudflare 侧还需要满足两个前置条件：`weapp.dev` zone 在该账号下，且 Worker `weapp-sqlite-docs` 已允许绑定 `sqlite.weapp.dev` Custom Domain。首次绑定域名可能需要在 Cloudflare 控制台确认 DNS；绑定完成后，部署结果应在 [sqlite.weapp.dev](https://sqlite.weapp.dev) 可访问。
+
+## 发布后检查
+
+部署完成后，在 Actions 运行详情确认 `Build documentation`、`Validate deployment configuration` 和 `Deploy to Cloudflare Workers` 三步均通过，然后检查：
+
+- [首页](https://sqlite.weapp.dev/)
+- [快速开始](https://sqlite.weapp.dev/docs/getting-started/)
+- [核心概念](https://sqlite.weapp.dev/docs/concepts/)
+- [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench/)
+
+如果出现 404，先确认域名 Custom Domain 已绑定，再检查 `apps/docs/out` 是否包含对应的 `index.html`；如果 workflow 在认证阶段失败，检查两个 Secrets 的名称、账号 ID 和 Token 权限，不要把 Token 粘贴到 issue 或聊天中。
 
 ## 静态资源检查
 
