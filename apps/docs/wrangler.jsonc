@@ -12,6 +12,10 @@
     {
       "pattern": "sqlite.weapp.dev",
       "custom_domain": true
+    },
+    {
+      "pattern": "sqlite.icebreaker.top",
+      "custom_domain": true
     }
   ]
 }
