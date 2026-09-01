@@ -39,6 +39,21 @@ export default defineConfig({
 })
 ```
 
+默认值是 `{ variant: 'full', weappPackage: 'main' }`。微信主包空间紧张时推荐：
+
+```ts
+export default defineConfig({
+  plugins: [weappSqlite({
+    wasm: {
+      variant: 'lite',
+      weappPackage: { mode: 'generated-subpackage' },
+    },
+  })],
+})
+```
+
+自动分包默认生成 `__weapp_sqlite__` 普通分包；`openSqlite()` 调用不变。lite 不支持 FTS3、normalize 和贡献扩展函数，其他受支持 SQL 与数据库文件格式保持一致。
+
 底层的 core、WASM、Web 和小程序 adapter 仍可供高级集成直接使用。
 
 ## 定义迁移
@@ -109,7 +124,7 @@ catch (error) {
 
 ## 加载 WASM
 
-`weappSqlite()` 在构建时读取 weapp-vite 的单目标元数据并发射 WASM。Web 只包含 `sql-wasm-browser.wasm`，小程序只包含 `sql-wasm.wasm`；应用不需要维护资源路径、平台 runtime 或复制脚本。
+`weappSqlite()` 在构建时读取 weapp-vite 的单目标元数据并发射 WASM。full 在 Web 使用 `sql-wasm-browser.wasm`、在小程序使用 `sql-wasm.wasm`；lite 使用 `sql-wasm-lite.wasm`。微信分包模式会先通过静态 `require.async()` 下载并缓存 initializer，再探测 WASM 资源；其他目标仍把资源放在主包。
 
 ## 启用数据工作台
 

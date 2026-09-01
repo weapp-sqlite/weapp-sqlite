@@ -1,0 +1,121 @@
+diff --git a/Makefile b/Makefile
+index 9b29aa5..13a0b54 100644
+--- a/Makefile
++++ b/Makefile
+@@ -21,10 +21,7 @@ SQLITE_COMPILATION_FLAGS = \
+ 	-Oz \
+ 	-DSQLITE_OMIT_LOAD_EXTENSION \
+ 	-DSQLITE_DISABLE_LFS \
+-	-DSQLITE_ENABLE_FTS3 \
+-	-DSQLITE_ENABLE_FTS3_PARENTHESIS \
+-	-DSQLITE_THREADSAFE=0 \
+-	-DSQLITE_ENABLE_NORMALIZE
++	-DSQLITE_THREADSAFE=0
+ 
+ # When compiling to WASM, enabling memory-growth is not expected to make much of an impact, so we enable it for all builds
+ # Since tihs is a library and not a standalone executable, we don't want to catch unhandled Node process exceptions
+@@ -64,7 +61,7 @@ EMFLAGS_DEBUG = \
+ 	-s ASSERTIONS=2 \
+ 	-O1
+ 
+-BITCODE_FILES = out/sqlite3.o out/extension-functions.o
++BITCODE_FILES = out/sqlite3.o
+ 
+ OUTPUT_WRAPPER_FILES = src/shell-pre.js src/shell-post.js
+ 
+@@ -187,7 +184,7 @@ cache/$(EXTENSION_FUNCTIONS):
+ .PHONY: sqlite-src
+ sqlite-src: sqlite-src/$(SQLITE_AMALGAMATION) sqlite-src/$(SQLITE_AMALGAMATION)/$(EXTENSION_FUNCTIONS)
+ 
+-sqlite-src/$(SQLITE_AMALGAMATION): cache/$(SQLITE_AMALGAMATION).zip sqlite-src/$(SQLITE_AMALGAMATION)/$(EXTENSION_FUNCTIONS)
++sqlite-src/$(SQLITE_AMALGAMATION): cache/$(SQLITE_AMALGAMATION).zip
+ 	mkdir -p sqlite-src/$(SQLITE_AMALGAMATION)
+ 	echo '$(SQLITE_AMALGAMATION_ZIP_SHA3)  ./cache/$(SQLITE_AMALGAMATION).zip' > cache/check.txt
+ 	sha3sum -a 256 -c cache/check.txt
+diff --git a/src/api.js b/src/api.js
+index 126baf1..e928745 100644
+--- a/src/api.js
++++ b/src/api.js
+@@ -86,11 +86,6 @@ Module["onRuntimeInitialized"] = function onRuntimeInitialized() {
+         ["number", "string", "number", "number", "number"]
+     );
+     var sqlite3_sql = cwrap("sqlite3_sql", "string", ["number"]);
+-    var sqlite3_normalized_sql = cwrap(
+-        "sqlite3_normalized_sql",
+-        "string",
+-        ["number"]
+-    );
+     var sqlite3_prepare_v2_sqlptr = cwrap(
+         "sqlite3_prepare_v2",
+         "number",
+@@ -233,12 +228,6 @@ Module["onRuntimeInitialized"] = function onRuntimeInitialized() {
+         "number",
+         ["number", "number"]
+     );
+-    var registerExtensionFunctions = cwrap(
+-        "RegisterExtensionFunctions",
+-        "number",
+-        ["number"]
+-    );
+-
+     var sqlite3_update_hook = cwrap(
+         "sqlite3_update_hook",
+         "number",
+@@ -507,22 +496,6 @@ Module["onRuntimeInitialized"] = function onRuntimeInitialized() {
+         return sqlite3_sql(this.stmt);
+     };
+ 
+-    /** Get the SQLite's normalized version of the SQL string used in
+-    preparing this statement.  The meaning of "normalized" is not
+-    well-defined: see {@link https://sqlite.org/c3ref/expanded_sql.html
+-    the SQLite documentation}.
+-
+-     @example
+-     db.run("create table test (x integer);");
+-     stmt = db.prepare("select * from test where x = 42");
+-     // returns "SELECT*FROM test WHERE x=?;"
+-
+-     @return {string} The normalized SQL string
+-     */
+-    Statement.prototype.getNormalizedSQL = function getNormalizedSQL() {
+-        return sqlite3_normalized_sql(this.stmt);
+-    };
+-
+     /** Shorthand for bind + step + reset
+     Bind the values, execute the statement, ignoring the rows it returns,
+     and resets it
+@@ -833,7 +806,6 @@ Module["onRuntimeInitialized"] = function onRuntimeInitialized() {
+         }
+         this.handleError(sqlite3_open(this.filename, apiTemp));
+         this.db = getValue(apiTemp, "i32");
+-        registerExtensionFunctions(this.db);
+         // A list of all prepared statements of the database
+         this.statements = {};
+         // A list of all user function of the database
+@@ -1100,7 +1072,6 @@ Module["onRuntimeInitialized"] = function onRuntimeInitialized() {
+         var binaryDb = FS.readFile(this.filename, { encoding: "binary" });
+         this.handleError(sqlite3_open(this.filename, apiTemp));
+         this.db = getValue(apiTemp, "i32");
+-        registerExtensionFunctions(this.db);
+         return binaryDb;
+     };
+ 
+diff --git a/src/exported_functions.json b/src/exported_functions.json
+index 3be2595..1898edc 100644
+--- a/src/exported_functions.json
++++ b/src/exported_functions.json
+@@ -8,7 +8,6 @@
+ "_sqlite3_changes",
+ "_sqlite3_prepare_v2",
+ "_sqlite3_sql",
+-"_sqlite3_normalized_sql",
+ "_sqlite3_bind_text",
+ "_sqlite3_bind_blob",
+ "_sqlite3_bind_double",
+@@ -42,6 +41,5 @@
+ "_sqlite3_result_int64",
+ "_sqlite3_result_error",
+ "_sqlite3_aggregate_context",
+-"_RegisterExtensionFunctions",
+ "_sqlite3_update_hook"
+ ]

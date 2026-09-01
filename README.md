@@ -13,10 +13,11 @@
 - 一个可以正常运行的 weapp-vite 项目
 - 验收微信时登录微信开发者工具
 
-当前实现刻意分成六个边界：
+当前实现刻意分成七个边界：
 
 - `@weapp-sqlite/core`：定义异步连接、查询、事务和迁移协议，不依赖具体 SQLite 引擎。
 - `@weapp-sqlite/wasm`：把可注入的 SQLite WASM 引擎（例如 `sql.js`）接到 core，并通过存储回调持久化数据库文件。
+- `@weapp-sqlite/sqljs`：提供默认 full 与裁剪后的 lite sql.js 引擎、WASM 资源和构建期资源解析。
 - `@weapp-sqlite/web`：使用 IndexedDB 持久化 Web 二进制数据库，不回退到内存。
 - `@weapp-sqlite/miniprogram`：六个小程序目标共用的文件系统、能力探测和 WebAssembly 实例化协议。
 - `@weapp-sqlite/debug`：开发期表结构、分页数据、受控 SQL 和 SQLite 快照管理控制器。
@@ -39,6 +40,19 @@ import { defineConfig } from 'weapp-vite'
 
 export default defineConfig({ plugins: [weappSqlite()] })
 ```
+
+默认 `full + main` 保持原有行为。微信主包敏感的项目推荐改用 lite 自动分包：
+
+```ts
+weappSqlite({
+  wasm: {
+    variant: 'lite',
+    weappPackage: { mode: 'generated-subpackage' },
+  },
+})
+```
+
+lite 保留表、索引、事务、触发器、CTE、JSON1、ALTER、参数绑定、BLOB 和数据库导入导出，不提供 FTS3、normalize 与 sql.js 贡献数学/字符串函数。自动分包要求 `app.json.ts` 使用 `weapp-vite/auto-routes`；静态 `app.json` 项目可绑定已有普通分包。详见[小程序 SQLite 方案与包体选择](https://sqlite.weapp.dev/docs/miniprogram-sqlite-options)。
 
 ```ts
 import { openSqlite } from '@weapp-sqlite/weapp-vite/runtime'
@@ -144,6 +158,6 @@ pnpm --filter weapp-sqlite-demo-mpx typecheck
 pnpm --filter weapp-sqlite-demo-mpx build:weapp
 ```
 
-`weappSqlite()` 会确定性发射当前目标所需的单个 WASM 文件。Web 使用 `sql-wasm-browser.wasm` 和 IndexedDB；微信通过 `WXWebAssembly.instantiate()` 加载 `sql-wasm.wasm`。其余五个平台保持可构建，运行或文件交付能力未通过真实宿主门禁时返回结构化 `unsupported`，不得视为正式支持。
+`weappSqlite()` 会确定性发射当前 variant 所需的单个 WASM 文件。full 保持 Web 的 `sql-wasm-browser.wasm` 与小程序的 `sql-wasm.wasm`；lite 统一使用 `sql-wasm-lite.wasm`。微信可通过静态 `require.async()` 把初始化器与 WASM 放入同一普通分包，其余目标忽略 `weappPackage`。其余五个平台保持可构建，运行或文件交付能力未通过真实宿主门禁时返回结构化 `unsupported`，不得视为正式支持。
 
 完整门禁命令为 `pnpm acceptance:build`、`pnpm acceptance:web`、`pnpm acceptance:debug:web`、`pnpm acceptance:devtools:doctor`、`pnpm acceptance:devtools`、`pnpm acceptance:debug:devtools`、`pnpm acceptance:mobile:prepare` 和 `pnpm acceptance:verify`。汇总器要求 Web，以及六个平台各自的官方 DevTools、当前稳定 iOS 和 Android 宿主报告；缺少任一当前 commit 证据的平台不得标记正式支持。

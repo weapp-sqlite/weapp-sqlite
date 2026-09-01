@@ -18,6 +18,9 @@ const migrations: readonly SqliteMigration[] = [{
 
 expectAssignable<object>(weappSqlite())
 expectAssignable<object>(weappSqlite({ debug: { enabled: true, page: { route: '__debug/index/index', configFile: './src/sqlite-debug.config.ts' } } }))
+expectAssignable<object>(weappSqlite({ wasm: { variant: 'lite', weappPackage: 'main' } }))
+expectAssignable<object>(weappSqlite({ wasm: { variant: 'full', weappPackage: { mode: 'generated-subpackage' } } }))
+expectAssignable<object>(weappSqlite({ wasm: { weappPackage: { mode: 'existing-subpackage', root: 'shared' } } }))
 expectType<string>(defineSqliteDebugWorkspace({ databaseName: 'demo.sqlite' }).databaseName)
 expectType<Promise<import('@weapp-sqlite/core').SqliteDatabase>>(openSqlite({ name: 'app.sqlite', migrations }))
 expectType<Promise<void>>(removeSqlite({ name: 'app.sqlite' }))

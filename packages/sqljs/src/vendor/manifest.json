@@ -1,0 +1,44 @@
+{
+  "engine": "sql.js-wasm-lite",
+  "sqlJs": {
+    "version": "1.14.2",
+    "source": "https://github.com/sql-js/sql.js/tree/v1.14.2",
+    "commit": "9c4e167ec37129192d166ab9223faa9a4bd07c58"
+  },
+  "sqlite": {
+    "version": "3.49.1",
+    "amalgamation": "sqlite-amalgamation-3490100",
+    "source": "https://sqlite.org/2025/sqlite-amalgamation-3490100.zip",
+    "sha3_256": "e7eb4cfb2d95626e782cfa748f534c74482f2c3c93f13ee828b9187ce05b2da7"
+  },
+  "emscripten": "5.0.0",
+  "features": {
+    "included": [
+      "tables",
+      "indexes",
+      "transactions",
+      "triggers",
+      "cte",
+      "json1",
+      "alter-table",
+      "parameters",
+      "blob",
+      "import-export"
+    ],
+    "excluded": [
+      "fts3",
+      "normalize",
+      "extension-functions"
+    ]
+  },
+  "artifacts": {
+    "sql-wasm-lite.js": {
+      "bytes": 46185,
+      "sha256": "e4b559edb81f724f3b614a8b22a4afa39c885ae591e2ac4caa05be6dcf76fbbc"
+    },
+    "sql-wasm-lite.wasm": {
+      "bytes": 546045,
+      "sha256": "49bf72f854d365b2d3d1a0f1d251c4996705bfe0926abfa3605d6eb5cac5ec5b"
+    }
+  }
+}

@@ -78,8 +78,19 @@ export interface WeappSqliteDebugPluginOptions {
   readonly page?: WeappSqliteDebugPageOptions
 }
 
+export type SqliteWasmVariant = 'full' | 'lite'
+
+export type WeappSqliteWasmPackage
+  = | 'main'
+    | { readonly mode: 'generated-subpackage', readonly root?: string }
+    | { readonly mode: 'existing-subpackage', readonly root: string }
+
 export interface WeappSqlitePluginOptions {
   readonly debug?: boolean | WeappSqliteDebugPluginOptions
+  readonly wasm?: {
+    readonly variant?: SqliteWasmVariant
+    readonly weappPackage?: WeappSqliteWasmPackage
+  }
 }
 
 export interface WeappSqliteDebugAppConfigOptions {

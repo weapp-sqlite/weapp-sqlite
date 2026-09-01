@@ -1,0 +1,72 @@
+{
+  "name": "@weapp-sqlite/sqljs",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "weapp-sqlite 的 full 与 lite sql.js WASM 引擎资源",
+  "author": "weapp-sqlite contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/sqljs"
+  },
+  "bugs": {
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
+  },
+  "keywords": ["sqlite", "sql.js", "wasm", "weapp", "miniprogram"],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/full.d.mts",
+      "import": "./dist/full.mjs",
+      "require": "./dist/full.cjs"
+    },
+    "./full": {
+      "types": "./dist/full.d.mts",
+      "import": "./dist/full.mjs",
+      "require": "./dist/full.cjs"
+    },
+    "./lite": {
+      "types": "./dist/lite.d.mts",
+      "import": "./dist/lite.mjs",
+      "require": "./dist/lite.cjs"
+    },
+    "./node": {
+      "types": "./dist/node.d.mts",
+      "import": "./dist/node.mjs",
+      "require": "./dist/node.cjs"
+    }
+  },
+  "main": "./dist/full.cjs",
+  "module": "./dist/full.mjs",
+  "types": "./dist/full.d.mts",
+  "files": ["dist"],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "dev": "tsdown -w",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:dev": "vitest",
+    "verify:lite": "node ./scripts/verify-lite.mjs",
+    "rebuild:lite": "./scripts/rebuild-lite.sh",
+    "release": "pnpm publish",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+  },
+  "dependencies": {
+    "@weapp-sqlite/wasm": "workspace:*",
+    "sql.js": "1.14.2"
+  },
+  "devDependencies": {
+    "@types/sql.js": "^1.4.11"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

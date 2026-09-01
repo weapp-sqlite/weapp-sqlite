@@ -1,11 +1,14 @@
 import type { SqliteMigration } from '@weapp-sqlite/core'
+import type { SqlJsInitializer } from '@weapp-sqlite/wasm'
 import type { SqliteRuntimeAdapter } from '@/types'
-import initSqlJs from 'sql.js'
+import initSqlJs from '@weapp-sqlite/sqljs/full'
+import initSqlJsLite from '@weapp-sqlite/sqljs/lite'
+import { resolveSqliteWasmAsset } from '@weapp-sqlite/sqljs/node'
 import { createSqliteWasmRuntimeAdapter } from '@/adapter'
 import { SqliteRuntimeError } from '@/errors'
 import { clearSqliteRuntimeRegistryForTests, openSqliteWithAdapter, removeSqliteWithAdapter } from '@/open'
 
-function createAdapter() {
+function createAdapter(initializer: SqlJsInitializer = initSqlJs, kind = 'sql.js-wasm') {
   const files = new Map<string, Uint8Array>()
   const storage = {
     async load(name: string) {
@@ -19,7 +22,7 @@ function createAdapter() {
       files.delete(name)
     },
   }
-  const adapter = createSqliteWasmRuntimeAdapter({ target: 'web', initializer: initSqlJs, storage })
+  const adapter = createSqliteWasmRuntimeAdapter({ target: 'web', initializer, kind, storage })
   return { adapter, files }
 }
 
@@ -46,6 +49,22 @@ describe('unified SQLite runtime', () => {
     await first.close()
     const reopened = await openSqliteWithAdapter({ name: 'app.sqlite', migrations }, adapter)
     await expect(reopened.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'persisted' }] })
+    await reopened.close()
+  })
+
+  it('runs migrations and reports the lite engine', async () => {
+    const liteInitializer: SqlJsInitializer = options => initSqlJsLite({
+      ...options,
+      locateFile: () => resolveSqliteWasmAsset('lite', 'miniprogram'),
+    })
+    const { adapter } = createAdapter(liteInitializer, 'sql.js-wasm-lite')
+    const database = await openSqliteWithAdapter({ name: 'lite.sqlite', migrations }, adapter)
+    await database.exec('INSERT INTO notes VALUES (?)', ['lite'])
+    await database.close()
+
+    const reopened = await openSqliteWithAdapter({ name: 'lite.sqlite', migrations }, adapter)
+    await expect(reopened.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'lite' }] })
+    await expect(adapter.getRuntimeInfo()).resolves.toMatchObject({ engine: 'sql.js-wasm-lite' })
     await reopened.close()
   })
 

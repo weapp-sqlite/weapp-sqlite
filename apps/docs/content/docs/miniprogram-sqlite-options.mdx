@@ -1,0 +1,48 @@
+---
+title: 小程序 SQLite 方案与包体选择
+description: 选择 full、lite、微信分包或其他本地数据方案
+---
+
+## 当前推荐
+
+微信项目优先使用 `lite + generated-subpackage`。它保留普通表、索引、事务、触发器、CTE、JSON1、ALTER、绑定参数、BLOB 和数据库导入导出，把初始化器与 WASM 放入同一普通分包，首次打开数据库时按需下载。
+
+```ts
+weappSqlite({
+  wasm: {
+    variant: 'lite',
+    weappPackage: { mode: 'generated-subpackage' },
+  },
+})
+```
+
+当前 lite WASM 为 546,045 bytes，发布胶水与 WASM 合计约 611 KB；示例微信主包约 104 KB，SQLite 分包约 606 KB。具体业务包体仍应运行 `wv analyze -p weapp --markdown --budget-check` 验证。
+
+需要 FTS3、normalize 或 sql.js 贡献数学/字符串函数时使用 full。full/lite 数据库文件互通，切换 variant 不需要迁移文件格式。
+
+## 已有普通分包
+
+静态 `app.json` 项目可以把引擎绑定到已有普通分包：
+
+```ts
+weappSqlite({
+  wasm: {
+    variant: 'lite',
+    weappPackage: { mode: 'existing-subpackage', root: 'shared' },
+  },
+})
+```
+
+`shared` 必须已经存在于最终 `app.json.subPackages`。独立分包有隔离边界，不能承载主包运行时需要的 SQLite initializer。
+
+## 其他方案
+
+| 方案 | 判断 |
+| --- | --- |
+| `wa-sqlite + 自定义 VFS` | 值得后续 R&D。可以更直接控制持久化，但需要实现 VFS、宿主文件语义、并发/崩溃恢复，并完成 DevTools 与 iOS/Android 真机验证。当前不作为生产默认。 |
+| 官方 `@sqlite.org/sqlite-wasm` | 当前测得 WASM 约 865 KB，不是本项目的减包方案；其 OPFS/Worker 设计也不能直接等价移植到小程序宿主。 |
+| 微信插件 | 可能把代码从应用包移出，但需要独立插件 AppID、审核、版本治理、插件 API 设计和真机验证。本仓库尚未实现该适配。 |
+| 远端 SQLite 服务 | 适合联网查询，但不具备设备本地、离线和进程重启后的 SQLite 语义，不能作为本地数据库的透明替代。 |
+| KV 或普通文件 | 适合简单配置、缓存和文档数据；没有 SQL、索引、事务、迁移和 SQLite 文件兼容性，不应称为 SQLite 集成。 |
+
+选择方案时先确认三件事：是否必须离线、是否必须兼容 SQLite 文件、是否需要复杂查询与事务。只有简单键值需求时，直接使用宿主 KV 或文件存储通常更小；需要完整本地关系数据库时，再承担 WASM 与持久化成本。

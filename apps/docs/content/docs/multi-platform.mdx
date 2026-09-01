@@ -70,7 +70,8 @@ pnpm acceptance:verify
 - Web 使用 `@weapp-sqlite/web` 的 IndexedDB 二进制持久化，不回退到内存。
 - 应用通过 `@weapp-sqlite/weapp-vite/runtime` 调用统一 API，不显式传入平台、runtime 或 WASM 路径。
 - 微信使用 `WXWebAssembly` 路径式实例化；其余小程序目标能力不足时返回 `unsupported`。
-- Web 产物只包含 `sql-wasm-browser.wasm`，小程序产物只包含 `sql-wasm.wasm`，避免重复资源占用主包。
+- full 的 Web 产物只包含 `sql-wasm-browser.wasm`，小程序产物只包含 `sql-wasm.wasm`；lite 使用 `sql-wasm-lite.wasm`。`variant` 对所有目标生效，`weappPackage` 只改变微信资源归属。
+- 微信普通分包通过静态 `require.async()` 按需下载；独立分包不能作为 SQLite 引擎目标。
 - `probe()` 会检查文件系统、用户目录、TypedArray、WebAssembly 和包内资源；失败时统一返回结构化错误，不回退内存。
 - Headless 结果只是逻辑预检。首期只有 Web 与微信进入正式支持矩阵。
 

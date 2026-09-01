@@ -349,6 +349,19 @@ importers:
         specifier: ^1.14.2
         version: 1.14.2
 
+  packages/sqljs:
+    dependencies:
+      '@weapp-sqlite/wasm':
+        specifier: workspace:*
+        version: link:../wasm
+      sql.js:
+        specifier: 1.14.2
+        version: 1.14.2
+    devDependencies:
+      '@types/sql.js':
+        specifier: ^1.4.11
+        version: 1.4.11
+
   packages/wasm:
     dependencies:
       '@weapp-sqlite/core':
@@ -373,15 +386,15 @@ importers:
       '@weapp-sqlite/miniprogram':
         specifier: workspace:*
         version: link:../miniprogram
+      '@weapp-sqlite/sqljs':
+        specifier: workspace:*
+        version: link:../sqljs
       '@weapp-sqlite/wasm':
         specifier: workspace:*
         version: link:../wasm
       '@weapp-sqlite/web':
         specifier: workspace:*
         version: link:../web
-      sql.js:
-        specifier: ^1.14.2
-        version: 1.14.2
     devDependencies:
       '@types/sql.js':
         specifier: ^1.4.11

@@ -6,6 +6,7 @@ import { acceptanceArtifactRoot, demoRoot, repositoryRoot } from './acceptance-p
 const packageBuilds = [
   '@weapp-sqlite/core',
   '@weapp-sqlite/wasm',
+  '@weapp-sqlite/sqljs',
   '@weapp-sqlite/web',
   '@weapp-sqlite/miniprogram',
   '@weapp-sqlite/debug',
@@ -57,10 +58,11 @@ for (const target of targets) {
 for (const target of targets) {
   const targetRoot = path.join(demoRoot, 'dist', target)
   await access(targetRoot)
-  const asset = target === 'web' ? 'sql-wasm-browser.wasm' : 'sql-wasm.wasm'
+  const asset = 'sql-wasm-lite.wasm'
   const wasmCandidates = [
     path.join(targetRoot, 'assets', asset),
     path.join(targetRoot, 'dist/assets', asset),
+    path.join(targetRoot, 'dist/__weapp_sqlite__/assets', asset),
   ]
   let wasmFound = false
   for (const candidate of wasmCandidates) {
@@ -74,31 +76,45 @@ for (const target of targets) {
   if (!wasmFound) {
     throw new Error(`Missing ${asset} in the ${target} build output.`)
   }
-
-  const unexpectedAsset = target === 'web' ? 'sql-wasm.wasm' : 'sql-wasm-browser.wasm'
-  const unexpectedCandidates = [
-    path.join(targetRoot, 'assets', unexpectedAsset),
-    path.join(targetRoot, 'dist/assets', unexpectedAsset),
-  ]
-  for (const candidate of unexpectedCandidates) {
-    try {
-      await access(candidate)
-      throw new Error(`Unexpected ${unexpectedAsset} in the ${target} build output.`)
-    }
-    catch (error) {
-      if (error instanceof Error && error.message.startsWith('Unexpected ')) {
-        throw error
-      }
-    }
-  }
 }
 
 const weappMainPackage = path.join(demoRoot, 'dist/weapp/dist')
-const bytes = await directoryBytes(weappMainPackage)
-const maximumBytes = 2 * 1024 * 1024
-if (bytes > maximumBytes) {
-  throw new Error(`WeChat main package exceeds 2 MiB: ${bytes} bytes.`)
+const appJson = JSON.parse(await readFile(path.join(weappMainPackage, 'app.json'), 'utf8')) as {
+  subPackages?: Array<{ root: string }>
+}
+const sqliteSubpackageRoot = appJson.subPackages?.find(item => item.root === '__weapp_sqlite__')?.root
+if (!sqliteSubpackageRoot) {
+  throw new Error('The generated SQLite WeChat subpackage is missing from app.json.')
+}
+const sqliteSubpackagePath = path.join(weappMainPackage, sqliteSubpackageRoot)
+const sqliteSubpackageBytes = await directoryBytes(sqliteSubpackagePath)
+const maximumSubpackageBytes = 2 * 1024 * 1024
+if (sqliteSubpackageBytes > maximumSubpackageBytes) {
+  throw new Error(`SQLite WeChat subpackage exceeds 2 MiB: ${sqliteSubpackageBytes} bytes.`)
+}
+
+let weappMainPackageBytes = 0
+for (const entry of await readdir(weappMainPackage, { withFileTypes: true })) {
+  if (entry.name === sqliteSubpackageRoot) {
+    continue
+  }
+  const entryPath = path.join(weappMainPackage, entry.name)
+  weappMainPackageBytes += entry.isDirectory() ? await directoryBytes(entryPath) : (await stat(entryPath)).size
+}
+const maximumMainPackageBytes = 128 * 1024
+if (weappMainPackageBytes > maximumMainPackageBytes) {
+  throw new Error(`WeChat main package exceeds 128 KiB: ${weappMainPackageBytes} bytes.`)
+}
+const mainPackageFiles = await readdir(weappMainPackage, { recursive: true, withFileTypes: true })
+for (const entry of mainPackageFiles) {
+  const relative = path.relative(weappMainPackage, path.join(entry.parentPath, entry.name))
+  if (relative === sqliteSubpackageRoot || relative.startsWith(`${sqliteSubpackageRoot}${path.sep}`)) {
+    continue
+  }
+  if (entry.isFile() && (entry.name.endsWith('.wasm') || /sql(?:ite)?[.-].*\.js$/i.test(entry.name))) {
+    throw new Error(`WeChat main package contains a SQLite engine asset: ${relative}`)
+  }
 }
 
 const { commit } = await acceptanceArtifactRoot()
-console.log(JSON.stringify({ commit, targets, weappMainPackageBytes: bytes }))
+console.log(JSON.stringify({ commit, targets, weappMainPackageBytes, sqliteSubpackageBytes }))

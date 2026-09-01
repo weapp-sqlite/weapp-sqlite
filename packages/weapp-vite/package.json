@@ -37,6 +37,11 @@
       "import": "./dist/adapter.mjs",
       "require": "./dist/adapter.cjs"
     },
+    "./advanced": {
+      "types": "./dist/advanced.d.mts",
+      "import": "./dist/advanced.mjs",
+      "require": "./dist/advanced.cjs"
+    },
     "./workspace": {
       "types": "./dist/workspace.d.mts",
       "import": "./dist/workspace.mjs",
@@ -68,9 +73,9 @@
     "@weapp-sqlite/core": "workspace:*",
     "@weapp-sqlite/debug": "workspace:*",
     "@weapp-sqlite/miniprogram": "workspace:*",
+    "@weapp-sqlite/sqljs": "workspace:*",
     "@weapp-sqlite/wasm": "workspace:*",
-    "@weapp-sqlite/web": "workspace:*",
-    "sql.js": "^1.14.2"
+    "@weapp-sqlite/web": "workspace:*"
   },
   "devDependencies": {
     "@types/sql.js": "^1.4.11",

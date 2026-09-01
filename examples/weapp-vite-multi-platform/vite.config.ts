@@ -14,6 +14,10 @@ export default defineConfig({
         configFile: './src/sqlite-debug.config.ts',
       },
     },
+    wasm: {
+      variant: 'lite',
+      weappPackage: { mode: 'generated-subpackage' },
+    },
   })],
   resolve: {
     alias: {
@@ -25,12 +29,19 @@ export default defineConfig({
       '@weapp-sqlite/weapp-vite/runtime': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/runtime.ts'),
       '@weapp-sqlite/weapp-vite/debug': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/debug.ts'),
       '@weapp-sqlite/weapp-vite/adapter': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/adapter.ts'),
+      '@weapp-sqlite/weapp-vite/advanced': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/advanced.ts'),
       '@weapp-sqlite/weapp-vite/workspace': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/workspace.ts'),
       '@weapp-sqlite/weapp-vite': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/plugin.ts'),
     },
   },
   weapp: {
     srcRoot: 'src',
+    analyze: {
+      budgets: {
+        mainBytes: 128 * 1024,
+        subPackageBytes: 2 * 1024 * 1024,
+      },
+    },
     multiPlatform: {
       enabled: true,
       targets: ['weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'],

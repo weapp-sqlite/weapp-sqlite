@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@weapp-sqlite/wasm": ["../wasm/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "test-d/**/*.ts", "tsdown.config.ts", "vitest.config.ts"]
+}

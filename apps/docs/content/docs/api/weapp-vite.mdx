@@ -18,9 +18,26 @@ export default defineConfig({
       enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
       page: { route: '__weapp_sqlite_debug/index/index', configFile: './src/sqlite-debug.config.ts' },
     },
+    wasm: {
+      variant: 'lite',
+      weappPackage: { mode: 'generated-subpackage' },
+    },
   })],
 })
 ```
+
+```ts
+type SqliteWasmVariant = 'full' | 'lite'
+
+type WeappSqliteWasmPackage =
+  | 'main'
+  | { mode: 'generated-subpackage', root?: string }
+  | { mode: 'existing-subpackage', root: string }
+```
+
+默认值为 `full + main`，资源名与旧版本一致。`variant` 对 Web 和全部小程序目标生效；`weappPackage` 只影响微信。自动分包 root 默认是 `__weapp_sqlite__`，生成普通分包、隐藏页、主包 loader 和带所有权标记的 runtime，冲突时构建失败。已有分包必须出现在最终 `app.json.subPackages`，且不能设置 `independent: true`。
+
+自动分包要求 `app.json.ts` 从 `weapp-vite/auto-routes` 写入 `subPackages`；静态 `app.json` 使用已有分包模式。full 的 runtime engine 为 `sql.js-wasm`，lite 为 `sql.js-wasm-lite`。
 
 ## Runtime
 

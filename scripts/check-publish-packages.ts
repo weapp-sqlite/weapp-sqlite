@@ -60,6 +60,7 @@ const registry = 'https://registry.npmjs.org/'
 const publicPackages = new Map([
   ['packages/core', '@weapp-sqlite/core'],
   ['packages/wasm', '@weapp-sqlite/wasm'],
+  ['packages/sqljs', '@weapp-sqlite/sqljs'],
   ['packages/web', '@weapp-sqlite/web'],
   ['packages/miniprogram', '@weapp-sqlite/miniprogram'],
   ['packages/debug', '@weapp-sqlite/debug'],

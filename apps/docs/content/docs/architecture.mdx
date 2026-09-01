@@ -23,7 +23,7 @@ sequenceDiagram
   Adapter->>Store: 保存最新快照
 ```
 
-## 六层边界
+## 七层边界
 
 ### weapp-vite 集成
 
@@ -40,6 +40,12 @@ sequenceDiagram
 - 将数组参数、命名参数和 `boolean`、`bigint`、`ArrayBuffer` 转成 sql.js 可接受的值。
 - 将 sql.js 的列数组和值数组还原成带列名的行对象。
 - 在连接变脏后调用 `storage.save` 保存 `database.export()`。
+
+### sql.js 引擎资源
+
+`@weapp-sqlite/sqljs/full` 包装 `sql.js@1.14.2`；`@weapp-sqlite/sqljs/lite` 固定 SQLite 3.49.1 与 Emscripten 5.0.0，并提交生成资源、许可证、来源和哈希。普通项目构建不需要 Emscripten。构建期插件只通过 `@weapp-sqlite/sqljs/node` 解析资源，不把 Node API带入宿主中立的 WASM adapter。
+
+微信分包模式把 engine-neutral adapter 留在主包。首次 `probe()` 前，主包 loader 通过静态 `require.async()` 下载并缓存分包 initializer；initializer chunk 与 WASM 都属于同一普通分包，避免 `sharedStrategy: 'hoist'` 将引擎提升回主包。
 
 ### Web 宿主 adapter
 
