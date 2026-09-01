@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/sqljs",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "weapp-sqlite 的 full 与 lite sql.js WASM 引擎资源",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
