@@ -45,7 +45,7 @@ pnpm --filter @weapp-sqlite/docs run deploy
 - `CLOUDFLARE_API_TOKEN`：仅授予 Workers 部署和读取账号信息所需权限的 API Token。
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare 账号 ID。
 
-Token 不写入仓库、workflow 日志或本地配置。部署 job 使用 `pnpm install --frozen-lockfile`、Node.js 22.12 和 `wrangler deploy`，构建失败或 dry-run 校验失败时不会执行正式部署。
+Token 不写入仓库、workflow 日志或本地配置。部署 job 使用 `pnpm install --frozen-lockfile`、Node.js 22.13 和 `wrangler deploy`，构建失败或 dry-run 校验失败时不会执行正式部署。
 
 Cloudflare 侧还需要满足两个前置条件：`weapp.dev` zone 在该账号下，且 Worker `weapp-sqlite-docs` 已允许绑定 `sqlite.weapp.dev` Custom Domain。首次绑定域名可能需要在 Cloudflare 控制台确认 DNS；绑定完成后，部署结果应在 [sqlite.weapp.dev](https://sqlite.weapp.dev) 可访问。
 
