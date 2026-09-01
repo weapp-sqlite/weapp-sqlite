@@ -25,4 +25,4 @@ pnpm --filter @weapp-sqlite/docs run deploy
 
 `wrangler.jsonc` 使用 `assets.directory: "./out"` 和 `ASSETS` binding；Worker 本身只调用 `env.ASSETS.fetch(request)`。
 
-推送到 `main` 后，`.github/workflows/docs-deploy.yml` 会自动构建并部署到 `sqlite.weapp.dev`。启用该 workflow 前，请在 GitHub Actions Secrets 中配置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。完整说明见文档站的[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+生产部署由 Cloudflare Workers Builds 监听 GitHub `main` 分支并自动完成，不需要 GitHub Actions Secrets。请在 Cloudflare Dashboard 中连接 `weapp-sqlite/weapp-sqlite`，将构建根目录设为仓库根目录，构建命令设为 `pnpm install --frozen-lockfile && pnpm --filter @weapp-sqlite/docs build`，部署命令设为 `pnpm --filter @weapp-sqlite/docs exec wrangler deploy`。完整说明见文档站的[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。

@@ -36,22 +36,53 @@ pnpm --filter @weapp-sqlite/docs run deploy
 
 首次部署需要当前 Cloudflare 账号对 `weapp.dev` 有 DNS / Custom Domain 权限。若账号未登录或域名不在当前账号，Wrangler 会在部署阶段明确报错；这不影响本地静态构建和预览。
 
-## GitHub Actions 自动部署
+## Cloudflare Workers Builds 自动部署
 
-仓库提供 `.github/workflows/docs-deploy.yml`。推送到 `main` 且修改文档站、包 README、锁文件或该 workflow 时，会自动构建并部署；也可以在 GitHub Actions 页面手动选择 **Deploy Docs → Run workflow**。
+生产部署由 Cloudflare Workers Builds 直接监听 GitHub 仓库完成。GitHub Actions 仍然只负责测试和验收，部署状态以 Cloudflare Dashboard 中的 Build 和 Active Deployment 为准。
 
-在仓库的 **Settings → Secrets and variables → Actions** 中配置以下两个 repository secrets：
+在 Cloudflare Dashboard 的 **Workers & Pages → `weapp-sqlite-docs` → Settings → Builds** 中配置：
 
-- `CLOUDFLARE_API_TOKEN`：仅授予 Workers 部署和读取账号信息所需权限的 API Token。
-- `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare 账号 ID。
+| 配置项 | 值 |
+| --- | --- |
+| GitHub repository | `weapp-sqlite/weapp-sqlite` |
+| Production branch | `main` |
+| Root directory | `/`（仓库根目录） |
+| Build command | `pnpm install --frozen-lockfile && pnpm --filter @weapp-sqlite/docs build` |
+| Deploy command | `pnpm --filter @weapp-sqlite/docs exec wrangler deploy` |
+| Node.js | `22.13.0` 或更高的 Node 22 版本 |
+| Worker | `weapp-sqlite-docs` |
 
-Token 不写入仓库、workflow 日志或本地配置。部署 job 使用 `pnpm install --frozen-lockfile`、Node.js 22.13 和 `wrangler deploy`，构建失败或 dry-run 校验失败时不会执行正式部署。
+Workers Builds 会使用 Cloudflare 控制台中自动生成或选择的 API Token。Token 由 Cloudflare 管理，不需要创建 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID` GitHub Secrets，也不应把 Token 写入仓库。
 
-Cloudflare 侧还需要满足两个前置条件：`weapp.dev` zone 在该账号下，且 Worker `weapp-sqlite-docs` 已允许绑定 `sqlite.weapp.dev` Custom Domain。首次绑定域名可能需要在 Cloudflare 控制台确认 DNS；绑定完成后，部署结果应在 [sqlite.weapp.dev](https://sqlite.weapp.dev) 可访问。
+### 构建触发范围
+
+生产分支只使用 `main`。建议在 Workers Builds 的 **Build watch paths** 中包含以下路径：
+
+- `apps/docs/**`
+- `packages/*/README.md`
+- `README.md`
+- `pnpm-lock.yaml`
+- `apps/docs/wrangler.jsonc`
+- `package.json`、`pnpm-workspace.yaml`
+
+这样只有会影响文档内容、依赖或 Worker 配置的提交才会触发部署。其他源码变更仍由 GitHub CI 检查，但不会重新发布文档站。
+
+Cloudflare 侧还需要满足两个前置条件：`weapp.dev` zone 在当前账号下，且 Worker `weapp-sqlite-docs` 已绑定 `sqlite.weapp.dev` Custom Domain。首次绑定域名可能需要在 Cloudflare 控制台确认 DNS；绑定完成后，部署结果应在 [sqlite.weapp.dev](https://sqlite.weapp.dev) 可访问。
+
+### 首次部署检查
+
+首次连接仓库后，在 Cloudflare Builds 页面确认以下步骤均成功：
+
+1. 安装依赖完成，且使用 Node.js 22.13 或更高版本。
+2. 文档静态构建生成 `apps/docs/out`。
+3. `wrangler deploy` 上传 Worker 和 Static Assets。
+4. 新版本被提升为 Worker 的 Active Deployment。
+
+如果只上传了版本但没有上线，检查 Deploy command 是否为 `wrangler deploy`，不要改成只上传版本的 `wrangler versions upload`。如果出现 404，先确认 Custom Domain 和 DNS，再检查 `apps/docs/out` 是否包含对应的 `index.html`。
 
 ## 发布后检查
 
-部署完成后，在 Actions 运行详情确认 `Build documentation`、`Validate deployment configuration` 和 `Deploy to Cloudflare Workers` 三步均通过，然后检查：
+部署完成后，在 Cloudflare Builds 运行详情确认构建、部署和 Active Deployment 均成功，然后检查：
 
 - [首页](https://sqlite.weapp.dev/)
 - [快速开始](https://sqlite.weapp.dev/docs/getting-started/)
