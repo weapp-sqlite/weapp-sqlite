@@ -3,6 +3,10 @@ title: Debug API
 description: "开发期 SQLite 数据预览、SQL 调试和快照管理"
 ---
 
+## 什么时候需要本包
+
+只有开发和验收构建需要数据工作台；生产构建不要暴露控制器、写 SQL 或导入接口。weapp-vite 项目优先使用自动生成的独立工作台。
+
 `@weapp-sqlite/debug` 是宿主无关的开发期控制器。它不连接远程数据库，也不应被默认生产构建暴露。
 
 ```bash

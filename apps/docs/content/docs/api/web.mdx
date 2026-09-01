@@ -3,6 +3,10 @@ title: Web API
 description: "@weapp-sqlite/web 的 IndexedDB 二进制持久化 adapter"
 ---
 
+## 什么时候需要本包
+
+独立 Web 集成或自定义 adapter 时使用本包。weapp-vite 应用通常只调用统一的 `openSqlite()`，由插件选择 Web adapter。
+
 ## `createIndexedDbSqliteWasmStorage`
 
 ```ts

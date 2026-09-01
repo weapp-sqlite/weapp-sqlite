@@ -19,6 +19,16 @@ description: Web 与六个小程序平台的证据门禁
 
 每个平台只生成一份小程序产物。开发者工具、iOS 和 Android 的差异来自宿主环境，不生成系统专属小程序包。“内置 adapter”只代表协议实现存在，不等于真实宿主证据已经完成。
 
+## 先理解“通过”是什么意思
+
+构建成功只说明代码能被编译。只有目标平台的真实运行、持久化和文件交付步骤都通过，才能把它写入正式支持矩阵。
+
+| 阶段 | 你要确认的事情 |
+| --- | --- |
+| Web | 生产构建能打开、刷新后数据仍在、没有 console error |
+| DevTools | 微信开发者工具能首次打开、重载、运行工作台并保存证据 |
+| iOS/Android | 同一微信产物在下限和最新系统上都能运行、重进后数据仍在 |
+
 ## 自动验收
 
 数据工作台只在 `WEAPP_SQLITE_DEBUG=1` 的构建中启用。Web 优先系统保存选择器并回退到 Blob 下载；微信 PC/DevTools 使用 `saveFileToDisk`，真机使用 `shareFileMessage`，导入使用 `chooseMessageFile`。`pnpm acceptance:debug:web` 和 `pnpm acceptance:debug:devtools` 验证表结构、分页、筛选、CRUD、DDL、撤销、SQLite/CSV/JSON 导入导出和刷新持久化。生产 Web/微信构建必须确认生成路由、codec、写 SQL和宿主文件 API 不在产物中。
@@ -26,6 +36,17 @@ description: Web 与六个小程序平台的证据门禁
 Web suite 对生产静态产物执行重置、首次运行、刷新和持久化验证，并把 console error、资源失败和未捕获异常作为硬失败。DevTools suite 在整个文件中只启动一次 automator，使用 `reLaunch('/pages/index/index')` 和 Page data 中版本化的 `acceptance` 对象断言。
 
 Headless 只用于逻辑预检，不计入任何平台支持证据。截图用于保存证据，不做跨系统像素比较。
+
+## 新手执行顺序
+
+第一次验收建议按以下顺序执行，遇到失败时只处理当前阶段：
+
+1. `pnpm install`，确保依赖完整。
+2. `pnpm acceptance:build`，确认七个目标都能构建。
+3. `pnpm acceptance:web` 和 `pnpm acceptance:debug:web`，先在浏览器验证业务和工作台。
+4. 运行 `pnpm acceptance:devtools:doctor`，确认微信 DevTools 已登录且项目配置正确。
+5. 执行 `pnpm acceptance:devtools` 和 `pnpm acceptance:debug:devtools`。
+6. 准备真机报告并执行 `pnpm acceptance:mobile:prepare`，完成 iOS/Android 手工步骤后再运行 `pnpm acceptance:verify`。
 
 ## 真机验收
 
@@ -37,4 +58,4 @@ Headless 只用于逻辑预检，不计入任何平台支持证据。截图用�
 
 `pnpm acceptance:verify` 只汇总属于当前 commit 的 Web、微信 DevTools、两份 debug 工作台及微信 iOS/Android 证据。任何报告缺失、设备信息为空、文件交付步骤失败或截图缺失，都不得在支持矩阵标记通过。
 
-截至 2026-08-26，Web 与真实微信 DevTools 自动验收已在本地通过，微信使用基础库 2.13.0 起提供的 `WXWebAssembly` 路径式实例化能力。四组真机证据尚未完成；因此仓库目前仍没有一次完整门禁通过记录，不能发布“微信 iOS/Android 已支持”的结论。
+截至仓库当前记录，Web 与真实微信 DevTools 自动验收已在本地通过，微信使用基础库 2.13.0 起提供的 `WXWebAssembly` 路径式实例化能力。若四组真机报告未全部归档到当前 commit，仍不能发布“微信 iOS/Android 已支持”的结论。

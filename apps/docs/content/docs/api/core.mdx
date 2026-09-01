@@ -3,6 +3,10 @@ title: Core API
 description: "@weapp-sqlite/core 的数据库、事务和迁移 API"
 ---
 
+## 什么时候需要本包
+
+普通 weapp-vite 应用不需要直接使用 `core`；请从 `@weapp-sqlite/weapp-vite/runtime` 导入 `openSqlite()`。只有实现自定义 driver、测试协议或复用迁移/事务层时才直接依赖本包。
+
 ## `createSqliteDatabase`
 
 ```ts

@@ -1,4 +1,4 @@
 {
   "title": "指南",
-  "pages": ["index", "getting-started", "architecture", "multi-platform", "acceptance", "deployment", "api"]
+  "pages": ["index", "getting-started", "concepts", "debug-workbench", "architecture", "multi-platform", "acceptance", "deployment", "api"]
 }

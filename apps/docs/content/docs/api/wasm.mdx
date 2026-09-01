@@ -3,6 +3,10 @@ title: WASM API
 description: "@weapp-sqlite/wasm 的 sql.js adapter 与存储接口"
 ---
 
+## 什么时候需要本包
+
+本包适合把自定义 SQLite WASM 引擎接入 `core`。如果你使用 weapp-vite，通常由构建插件自动配置；不要在业务代码里手动拼接平台 WASM 路径。
+
 ## `openSqliteWasmDatabase`
 
 ```ts

@@ -3,6 +3,10 @@ title: weapp-vite API
 description: "全端统一 SQLite 构建插件与运行时"
 ---
 
+## 什么时候需要本包
+
+这是新项目的推荐入口。配置一次插件后，业务代码只使用 `openSqlite()`，不感知当前是 Web 还是哪个小程序目标。
+
 `@weapp-sqlite/weapp-vite` 将平台差异留在构建和 adapter 层。应用配置一次插件，业务代码在 Web、微信、支付宝、抖音、百度、京东和小红书保持一致。
 
 ```ts

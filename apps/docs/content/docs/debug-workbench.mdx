@@ -1,0 +1,96 @@
+---
+title: 调试工作台
+description: 在开发构建中预览和管理本地 SQLite 数据
+---
+
+调试工作台是开发期工具，不是线上数据库后台。它直接操作当前应用的本地数据库，生产构建默认不会生成页面或打包管理代码。
+
+## 启用工作台
+
+先安装集成包，并在构建配置中打开开关：
+
+```bash
+pnpm add @weapp-sqlite/weapp-vite
+WEAPP_SQLITE_DEBUG=1 pnpm build:web
+```
+
+```ts
+// vite.config.ts
+import { weappSqlite } from '@weapp-sqlite/weapp-vite'
+import { defineConfig } from 'weapp-vite'
+
+export default defineConfig({
+  plugins: [weappSqlite({
+    debug: {
+      enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+      page: {
+        route: '__weapp_sqlite_debug/index/index',
+        configFile: './src/sqlite-debug.config.ts',
+      },
+    },
+  })],
+})
+```
+
+```ts
+// src/sqlite-debug.config.ts
+import { defineSqliteDebugWorkspace } from '@weapp-sqlite/weapp-vite/debug'
+import { migrations } from './sqlite'
+
+export default defineSqliteDebugWorkspace({
+  databaseName: 'app.sqlite',
+  migrations,
+})
+```
+
+微信小程序项目使用 `app.json.ts` 时，需要把自动路由导出的 `subPackages` 写入应用配置：
+
+```ts
+import { subPackages } from 'weapp-vite/auto-routes'
+import { defineAppJson } from 'weapp-vite/json'
+
+export default defineAppJson({
+  pages: ['pages/index/index'],
+  subPackages,
+})
+```
+
+调试构建完成后打开 `__weapp_sqlite_debug/index/index`。用户已有同名目录时，构建会报冲突并停止，不会覆盖文件。
+
+## 你可以做什么
+
+### 数据
+
+选择表后可以分页查看数据、搜索、组合筛选和排序，也可以新增、编辑和批量删除行。控制器优先使用完整主键定位行，没有主键时使用 `rowid`；视图和没有可靠定位符的对象只读。
+
+### 结构
+
+可以查看列类型、主键、非空约束、默认值和索引。工作台支持创建/重命名/删除表、添加/重命名/删除列，以及创建/删除普通或唯一索引。
+
+SQLite 自动索引、`sqlite_*` 系统对象和 `__weapp_sqlite_migrations` 迁移表受保护，不能被修改。
+
+### SQL
+
+查询模式只允许 `SELECT`、`EXPLAIN` 和安全的只读 `PRAGMA`。写 SQL 必须显式确认并传入 `allowWrite: true`。`ATTACH`、`DETACH`、`load_extension`、`writable_schema` 和 `VACUUM INTO` 始终拒绝。
+
+所有值都使用绑定参数；表名和列名由控制器校验和转义。默认返回最多 500 行和 1 MiB，避免一次查询卡住页面。
+
+### 操作记录与撤销
+
+删除、清空、删列、批量删除和 replace 导入等破坏性操作前会创建快照。成功后该快照成为本会话唯一撤销点；快照失败或超过 `maxUndoBytes` 时，写操作会被阻止。
+
+## 导入和导出
+
+- SQLite 导出是原始 `.sqlite` 快照，包含 SHA-256、迁移版本和运行时信息。
+- CSV 使用 UTF-8 BOM 和 RFC 4180；未加引号的空值表示 `NULL`，BLOB 使用 Base64。
+- JSON 使用版本化带类型值，明确区分 `NULL`、INTEGER、REAL、TEXT 和 BLOB。
+- CSV/JSON 导入先预览样例和字段映射，再选择 `create`、`append` 或 `replace`。
+- 解析、映射和写入在事务中完成，失败不会留下半份数据。
+
+Web 优先使用 File System Access 保存和选择文件，不支持时回退到 Blob 下载或浏览器文件选择器。微信 PC/DevTools 使用 `saveFileToDisk`，iOS/Android 使用 `shareFileMessage` 导出，导入使用 `chooseMessageFile`。把文件写入 `USER_DATA_PATH` 本身不算下载成功。
+
+## 关闭工作台
+
+生产构建不要设置 `WEAPP_SQLITE_DEBUG=1`。关闭后不会生成调试路由，`subPackages` 为空，写 SQL、导入导出 codec 和宿主文件 API 会被排除。
+
+如果页面显示结构化错误，请先记录错误码，再按[多端接入与验收](./multi-platform)中的故障排查表检查目标平台能力。

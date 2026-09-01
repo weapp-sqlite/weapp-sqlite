@@ -3,7 +3,15 @@ title: weapp-sqlite 文档
 description: 面向小程序与 Web 的可插拔 SQLite driver
 ---
 
-`weapp-sqlite` 把 SQLite 的数据库协议、WASM 引擎和宿主 adapter 拆成清晰边界，让同一套迁移与查询逻辑可以运行在 Web 与已验证的小程序宿主中。
+`weapp-sqlite` 让你在 Web 和小程序中使用同一套 SQLite 业务代码。你只需要调用 `openSqlite()`，平台差异由构建插件和 adapter 处理。
+
+```mermaid
+flowchart LR
+  A[你的页面代码] --> B[openSqlite]
+  B --> C[当前平台 adapter]
+  C --> D[SQLite WASM]
+  C --> E[IndexedDB 或平台文件系统]
+```
 
 ## 包结构
 
@@ -11,16 +19,24 @@ description: 面向小程序与 Web 的可插拔 SQLite driver
 - `@weapp-sqlite/wasm`：将 `sql.js` 这类 SQLite WASM 引擎接入 core，并通过回调持久化数据库文件。
 - `@weapp-sqlite/web`：使用 IndexedDB 持久化 Web 二进制数据库。
 - `@weapp-sqlite/miniprogram`：通用小程序宿主协议，首期内置微信文件系统 driver。
+- `@weapp-sqlite/debug`：开发期数据工作台，预览和管理本地数据库。
+- `@weapp-sqlite/weapp-vite`：推荐的统一构建插件和运行时入口。
 
 平台可构建不等于运行已支持。当前支付宝、抖音、百度、京东和小红书目标只验证构建与稳定 `unsupported` 契约；微信结论还需要真实开发者工具及 iOS/Android 真机证据。
 
 ## 推荐阅读路径
 
-1. [快速开始](./getting-started) 安装依赖并跑通一次查询。
-2. [架构与生命周期](./architecture) 了解连接、事务和存储的职责边界。
-3. [多端接入](./multi-platform) 对照各目标的构建与运行边界。
-4. [支持矩阵与验收](./acceptance) 了解 Web、DevTools 与真机发布门禁。
-5. [API 参考](./api/core) 查看稳定的类型与方法。
+1. [快速开始](./getting-started)：从空项目跑通第一次查询。
+2. [核心概念](./concepts)：理解迁移、事务、flush 和多端存储。
+3. [调试工作台](./debug-workbench)：预览表、编辑数据和导入导出文件。
+4. [架构与生命周期](./architecture)：了解连接、事务和存储的职责边界。
+5. [多端接入](./multi-platform)：选择构建目标并处理平台差异。
+6. [支持矩阵与验收](./acceptance)：了解哪些证据才能称为“已支持”。
+7. [API 参考](./api/core)：查阅稳定类型和错误码。
+
+## 适合与不适合
+
+适合本地数据、离线缓存、草稿、表单和需要事务一致性的端内功能。不适合把 SQLite 当作远程共享数据库、线上运营后台或跨设备同步服务；这些场景需要服务端数据库和明确的同步策略。
 
 ## 运行时边界
 

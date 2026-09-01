@@ -3,6 +3,26 @@ title: 架构与生命周期
 description: 理解 core、WASM 引擎和宿主存储之间的职责边界
 ---
 
+如果你只想使用 SQLite，可以先阅读[快速开始](./getting-started)；本页解释“为什么这样设计”，帮助你排查能力错误和选择高级 adapter。
+
+## 从打开到保存
+
+```mermaid
+sequenceDiagram
+  participant App as 业务代码
+  participant Runtime as openSqlite
+  participant Adapter as 平台 adapter
+  participant Store as IndexedDB/用户目录
+  App->>Runtime: openSqlite(name, migrations)
+  Runtime->>Adapter: probe + loadSnapshot
+  Adapter->>Store: 读取快照
+  Runtime->>Runtime: 执行未完成迁移
+  Runtime-->>App: 返回 SqliteDatabase
+  App->>Runtime: exec/query/transaction
+  Runtime->>Adapter: flush
+  Adapter->>Store: 保存最新快照
+```
+
 ## 六层边界
 
 ### weapp-vite 集成

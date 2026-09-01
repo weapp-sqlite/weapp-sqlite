@@ -3,6 +3,10 @@ title: 小程序 API
 description: "@weapp-sqlite/miniprogram 的六平台宿主协议"
 ---
 
+## 什么时候需要本包
+
+这是底层小程序宿主协议。普通业务不需要显式传入 `runtime`、`WXWebAssembly` 或 WASM 路径；weapp-vite 项目请使用统一的 `openSqlite()`。
+
 包名是 `@weapp-sqlite/miniprogram`，协议面向六个小程序平台。内置 adapter 共用文件系统边界，微信采用路径式 WASM，其余平台采用包内二进制 WASM。
 
 ## 平台与入口

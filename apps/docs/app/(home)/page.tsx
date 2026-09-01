@@ -17,7 +17,7 @@ export default function HomePage() {
             在多端小程序里，使用同一套 SQLite 业务代码
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-fd-muted-foreground">
-            weapp-sqlite 将异步数据库协议与 SQLite WASM 引擎解耦，保留宿主存储的选择权，覆盖 weapp-vite、Taro、uni-app、MPX 和 Web。
+            weapp-sqlite 将异步数据库协议与 SQLite WASM 引擎解耦，让 Web 和小程序使用同一套业务 API；平台差异由构建插件和 adapter 处理。
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/docs" className="inline-flex h-11 items-center rounded-lg bg-fd-primary px-5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90">
@@ -33,7 +33,15 @@ export default function HomePage() {
           <div className="mt-5 space-y-3">
             <Link href="/docs/getting-started" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
               <span className="font-medium text-fd-foreground">快速开始</span>
-              <span className="mt-1 block text-sm text-fd-muted-foreground">安装 core、WASM adapter，并跑通第一条查询。</span>
+              <span className="mt-1 block text-sm text-fd-muted-foreground">安装统一入口，定义迁移并跑通第一条查询。</span>
+            </Link>
+            <Link href="/docs/concepts" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
+              <span className="font-medium text-fd-foreground">核心概念</span>
+              <span className="mt-1 block text-sm text-fd-muted-foreground">理解事务、迁移、WASM 和多端持久化。</span>
+            </Link>
+            <Link href="/docs/debug-workbench" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
+              <span className="font-medium text-fd-foreground">调试工作台</span>
+              <span className="mt-1 block text-sm text-fd-muted-foreground">预览表结构、编辑数据并导入导出快照。</span>
             </Link>
             <Link href="/docs/multi-platform" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
               <span className="font-medium text-fd-foreground">多端接入</span>
