@@ -22,13 +22,13 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@babel/preset-react": "7.27.1",
+    "@babel/preset-react": "7.29.7",
     "@tarojs/cli": "4.2.1",
     "@tarojs/plugin-framework-react": "4.2.1",
     "@tarojs/plugin-platform-weapp": "4.2.1",
     "@tarojs/webpack5-runner": "4.2.1",
-    "@types/react": "18.3.12",
-    "@types/react-dom": "18.3.1",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
     "babel-preset-taro": "4.2.1"
   }
 }
