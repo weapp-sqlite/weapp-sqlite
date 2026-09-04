@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/core",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "宿主无关的异步 SQLite driver 协议与事务边界",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -14,7 +14,13 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "weapp", "weapp-sqlite", "driver", "miniprogram"],
+  "keywords": [
+    "sqlite",
+    "weapp",
+    "weapp-sqlite",
+    "driver",
+    "miniprogram"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {

@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/debug",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "开发期 SQLite 数据预览、调试和快照管理控制器",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -31,7 +31,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

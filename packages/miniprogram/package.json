@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/miniprogram",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "小程序 SQLite WASM 宿主协议与持久化 adapter",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -14,7 +14,12 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "wasm", "miniprogram", "weapp-sqlite"],
+  "keywords": [
+    "sqlite",
+    "wasm",
+    "miniprogram",
+    "weapp-sqlite"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
@@ -32,7 +37,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

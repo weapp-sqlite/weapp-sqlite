@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/weapp-vite",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "weapp-vite 全端统一 SQLite runtime 与构建插件",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -14,7 +14,13 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "weapp-vite", "miniprogram", "web", "wasm"],
+  "keywords": [
+    "sqlite",
+    "weapp-vite",
+    "miniprogram",
+    "web",
+    "wasm"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
@@ -51,7 +57,9 @@
   "main": "./dist/plugin.cjs",
   "module": "./dist/plugin.mjs",
   "types": "./dist/plugin.d.mts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
