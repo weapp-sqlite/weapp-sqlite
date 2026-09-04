@@ -18,7 +18,20 @@ weappSqlite({
 
 当前 lite WASM 为 546,045 bytes，发布胶水与 WASM 合计约 611 KB；示例微信主包约 104 KB，SQLite 分包约 606 KB。具体业务包体仍应运行 `wv analyze -p weapp --markdown --budget-check` 验证。
 
-需要 FTS3、normalize 或 sql.js 贡献数学/字符串函数时使用 full。full/lite 数据库文件互通，切换 variant 不需要迁移文件格式。
+需要 FTS3、normalize 或 sql.js 贡献数学/字符串函数时使用 full。full/lite 使用标准 SQLite 数据库文件格式，数据库文件可以互相导入导出；但文件格式互通不代表裁剪掉的引擎能力也互通。
+
+## full 与 lite 的能力边界
+
+| 能力 | `full` | `lite` | 影响 |
+| --- | --- | --- | --- |
+| 普通表、索引、事务、触发器、CTE、JSON1、参数绑定、BLOB、导入导出 | 支持 | 支持 | 常规 CRUD 和迁移不受影响 |
+| FTS3 全文检索 | 支持 | 不支持 | `CREATE VIRTUAL TABLE ... USING fts3`、查询和写入都会失败 |
+| SQLite normalized SQL | 支持 | 不支持 | 直接调用 sql.js `Statement.prototype.getNormalizedSQL()` 的诊断工具需要迁移 |
+| sql.js 贡献扩展函数 | 支持 | 不支持 | 例如 `reverse()`，以及额外数学、字符串和聚合函数 |
+
+选择 `lite` 前检查迁移脚本、查询和第三方 SQL 是否包含 `fts3`、`getNormalizedSQL()` 或额外贡献函数。普通 `LIKE`/`GLOB` 查询不依赖 FTS3，可以继续使用。
+
+已有数据库如果包含 FTS3 虚表，`lite` 仍可能读取其中的普通 SQLite 对象，但对该虚表执行查询、写入或迁移操作时会报“不支持模块”类错误；需要继续使用 `full`，或先迁移为普通表搜索/外部搜索方案。
 
 ## 已有普通分包
 
