@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import initSqlJs from 'sql.js'
 import { openSqliteWasmDatabase } from '@/index'
 
@@ -16,7 +17,7 @@ describe('sqlite wasm adapter', () => {
             files.set(name, data)
           },
         },
-        locateFile: file => new URL(`../node_modules/sql.js/dist/${file}`, import.meta.url).pathname,
+        locateFile: file => fileURLToPath(new URL(`../node_modules/sql.js/dist/${file}`, import.meta.url)),
       },
     )
 
@@ -39,7 +40,7 @@ describe('sqlite wasm adapter', () => {
             files.set(name, data)
           },
         },
-        locateFile: file => new URL(`../node_modules/sql.js/dist/${file}`, import.meta.url).pathname,
+        locateFile: file => fileURLToPath(new URL(`../node_modules/sql.js/dist/${file}`, import.meta.url)),
       },
     )
     await expect(reopened.query<{ name: string }>('SELECT name FROM items')).resolves.toEqual({

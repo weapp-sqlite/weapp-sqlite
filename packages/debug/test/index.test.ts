@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
 import initSqlJs from 'sql.js'
 import { createSqliteDebugController, SqliteDebugError } from '@/index'
@@ -14,7 +15,7 @@ function createHarness() {
     'debug-test',
     {
       storage,
-      locateFile: file => new URL(`../../wasm/node_modules/sql.js/dist/${file}`, import.meta.url).pathname,
+      locateFile: file => fileURLToPath(new URL(`../../wasm/node_modules/sql.js/dist/${file}`, import.meta.url)),
     },
   )
   return { files, storage, openDatabase }
