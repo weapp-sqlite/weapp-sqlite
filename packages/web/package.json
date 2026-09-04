@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/web",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "基于 IndexedDB 的 Web SQLite WASM 持久化 adapter",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -14,7 +14,13 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "wasm", "web", "indexeddb", "weapp-sqlite"],
+  "keywords": [
+    "sqlite",
+    "wasm",
+    "web",
+    "indexeddb",
+    "weapp-sqlite"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
@@ -32,7 +38,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

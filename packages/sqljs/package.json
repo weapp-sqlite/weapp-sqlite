@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/sqljs",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "weapp-sqlite 的 full 与 lite sql.js WASM 引擎资源",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -14,7 +14,13 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "sql.js", "wasm", "weapp", "miniprogram"],
+  "keywords": [
+    "sqlite",
+    "sql.js",
+    "wasm",
+    "weapp",
+    "miniprogram"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
@@ -41,7 +47,9 @@
   "main": "./dist/full.cjs",
   "module": "./dist/full.mjs",
   "types": "./dist/full.d.mts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
