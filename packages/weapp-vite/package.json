@@ -1,7 +1,7 @@
 {
   "name": "@weapp-sqlite/weapp-vite",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "weapp-vite 全端统一 SQLite runtime 与构建插件",
   "author": "weapp-sqlite contributors",
   "license": "MIT",

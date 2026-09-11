@@ -7,6 +7,10 @@
   dir: packages/core
   intents:
     - beginner-docs
+"@weapp-sqlite/core@0.1.2":
+  dir: packages/core
+  intents:
+    - upgrade-dependencies
 "@weapp-sqlite/debug@0.1.0":
   dir: packages/debug
   intents:
@@ -16,6 +20,10 @@
   dir: packages/debug
   intents:
     - beginner-docs
+"@weapp-sqlite/debug@0.1.2":
+  dir: packages/debug
+  intents:
+    - upgrade-dependencies
 "@weapp-sqlite/miniprogram@0.1.0":
   dir: packages/miniprogram
   intents:
@@ -28,10 +36,18 @@
   dir: packages/miniprogram
   intents:
     - beginner-docs
+"@weapp-sqlite/miniprogram@0.1.2":
+  dir: packages/miniprogram
+  intents:
+    - upgrade-dependencies
 "@weapp-sqlite/sqljs@0.2.0":
   dir: packages/sqljs
   intents:
     - eager-owls-report
+"@weapp-sqlite/sqljs@0.2.1":
+  dir: packages/sqljs
+  intents:
+    - upgrade-dependencies
 "@weapp-sqlite/wasm@0.1.0":
   dir: packages/wasm
   intents:
@@ -41,6 +57,10 @@
   dir: packages/wasm
   intents:
     - beginner-docs
+"@weapp-sqlite/wasm@0.1.2":
+  dir: packages/wasm
+  intents:
+    - upgrade-dependencies
 "@weapp-sqlite/weapp-vite@0.1.0":
   dir: packages/weapp-vite
   intents:
@@ -51,6 +71,10 @@
   intents:
     - beginner-docs
     - eager-owls-report
+"@weapp-sqlite/weapp-vite@0.2.1":
+  dir: packages/weapp-vite
+  intents:
+    - upgrade-dependencies
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:
@@ -60,3 +84,7 @@
   dir: packages/web
   intents:
     - beginner-docs
+"@weapp-sqlite/web@0.1.2":
+  dir: packages/web
+  intents:
+    - upgrade-dependencies

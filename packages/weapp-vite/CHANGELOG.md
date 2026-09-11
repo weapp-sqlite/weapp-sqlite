@@ -1,5 +1,19 @@
 # @weapp-sqlite/weapp-vite
 
+## 0.2.1
+
+### Patch Changes
+
+- 升级工作区构建工具与兼容依赖，保持 SQLite runtime 的公开 API 和跨宿主行为不变。
+
+- Updated dependencies:
+  - @weapp-sqlite/core@0.1.2
+  - @weapp-sqlite/debug@0.1.2
+  - @weapp-sqlite/miniprogram@0.1.2
+  - @weapp-sqlite/sqljs@0.2.1
+  - @weapp-sqlite/wasm@0.1.2
+  - @weapp-sqlite/web@0.1.2
+
 ## 0.2.0
 
 ### Minor Changes
