@@ -64,6 +64,54 @@ describe('weappSqlite plugin', () => {
     expect(emitFile.mock.calls[0]?.[0]).toMatchObject({ fileName: 'assets/sql-wasm-lite.wasm' })
   })
 
+  it('does not emit WASM during Vite serve and still serves the asset from middleware', async () => {
+    const plugin = weappSqlite({ wasm: { variant: 'lite' } })
+    hook(plugin, 'configResolved').call({}, {
+      command: 'serve',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+
+    const emitFile = vi.fn()
+    await hook(plugin, 'buildStart').call({ emitFile })
+    expect(emitFile).not.toHaveBeenCalled()
+
+    const use = vi.fn()
+    hook(plugin, 'configureServer').call({}, { middlewares: { use } })
+    expect(use).toHaveBeenCalledOnce()
+
+    const middleware = use.mock.calls[0]?.[0] as (
+      request: { url?: string },
+      response: { statusCode?: number, setHeader: (name: string, value: string) => void, end: (body: Uint8Array) => void },
+      next: (error?: Error) => void,
+    ) => Promise<void>
+    const setHeader = vi.fn<(name: string, value: string) => void>()
+    const end = vi.fn<(body: Uint8Array) => void>()
+    const next = vi.fn<(error?: Error) => void>()
+    const response: { statusCode?: number, setHeader: (name: string, value: string) => void, end: (body: Uint8Array) => void } = { setHeader, end }
+    await middleware({ url: '/assets/sql-wasm-lite.wasm?t=1' }, response, next)
+
+    expect(next).not.toHaveBeenCalled()
+    expect(response.statusCode).toBe(200)
+    expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/wasm')
+    expect(end).toHaveBeenCalledOnce()
+    const body = end.mock.calls[0]?.[0] as Uint8Array
+    expect(body).toBeInstanceOf(Uint8Array)
+    expect(body.byteLength).toBeGreaterThan(0)
+    expect(Array.from(body.subarray(0, 4))).toEqual([0, 97, 115, 109])
+  })
+
+  it('still emits WASM during Vite build', async () => {
+    const plugin = weappSqlite({ wasm: { variant: 'lite' } })
+    hook(plugin, 'configResolved').call({}, {
+      command: 'build',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    const emitFile = vi.fn()
+    await hook(plugin, 'buildStart').call({ emitFile })
+    expect(emitFile).toHaveBeenCalledOnce()
+    expect(emitFile.mock.calls[0]?.[0]).toMatchObject({ fileName: 'assets/sql-wasm-lite.wasm' })
+  })
+
   it('rejects builds that are not owned by weapp-vite', async () => {
     const plugin = weappSqlite()
     await expect(hook(plugin, 'configResolved').call({}, {} as never)).rejects.toThrow('requires a weapp-vite single-target')

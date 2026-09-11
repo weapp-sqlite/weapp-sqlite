@@ -375,6 +375,7 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
   let cleanupWasmTimer: ReturnType<typeof setTimeout> | undefined
   let projectRoot = process.cwd()
   let sourceRoot = 'src'
+  let isServe = false
 
   async function loadAsset() {
     if (!asset) {
@@ -437,6 +438,7 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       }
     },
     async configResolved(config) {
+      isServe = config.command === 'serve'
       target = resolveTarget(config)
       asset = targetAsset(target, wasm.variant)
       emittedAssetPath = `/assets/${asset}`
@@ -488,6 +490,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     async buildStart() {
       if (!asset) {
         throw new Error('The weapp-sqlite build started before the target was resolved.')
+      }
+      if (isServe) {
+        return
       }
       this.emitFile({
         type: 'asset',
