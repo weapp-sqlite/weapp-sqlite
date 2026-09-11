@@ -1,0 +1,72 @@
+{
+  "name": "weapp-sqlite",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "weapp-sqlite 的统一门面包",
+  "author": "weapp-sqlite contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/weapp-sqlite"
+  },
+  "bugs": {
+    "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
+  },
+  "keywords": ["sqlite", "weapp", "miniprogram", "wasm"],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.mts",
+      "import": "./dist/runtime.mjs",
+      "require": "./dist/runtime.cjs"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.mts",
+      "import": "./dist/adapter.mjs",
+      "require": "./dist/adapter.cjs"
+    },
+    "./debug": {
+      "types": "./dist/debug.d.mts",
+      "import": "./dist/debug.mjs",
+      "require": "./dist/debug.cjs"
+    },
+    "./advanced": {
+      "types": "./dist/advanced.d.mts",
+      "import": "./dist/advanced.mjs",
+      "require": "./dist/advanced.cjs"
+    },
+    "./workspace": {
+      "types": "./dist/workspace.d.mts",
+      "import": "./dist/workspace.mjs",
+      "require": "./dist/workspace.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": ["dist"],
+  "engines": { "node": ">=18.0.0" },
+  "scripts": {
+    "dev": "tsdown -w",
+    "build": "tsdown",
+    "test": "vitest run",
+    "release": "pnpm publish",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+  },
+  "dependencies": {
+    "@weapp-sqlite/weapp-vite": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

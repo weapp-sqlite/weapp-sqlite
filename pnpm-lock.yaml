@@ -488,6 +488,12 @@ importers:
         specifier: ^1.14.2
         version: 1.14.2
 
+  packages/weapp-sqlite:
+    dependencies:
+      '@weapp-sqlite/weapp-vite':
+        specifier: workspace:*
+        version: link:../weapp-vite
+
   packages/weapp-vite:
     dependencies:
       '@weapp-sqlite/core':

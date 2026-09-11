@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@weapp-sqlite/core": ["../core/dist/index.d.mts"],
+      "@weapp-sqlite/weapp-vite": ["../weapp-vite/dist/plugin.d.mts"],
+      "@weapp-sqlite/weapp-vite/runtime": ["../weapp-vite/dist/runtime.d.mts"],
+      "@weapp-sqlite/weapp-vite/adapter": ["../weapp-vite/dist/adapter.d.mts"],
+      "@weapp-sqlite/weapp-vite/debug": ["../weapp-vite/dist/debug.d.mts"],
+      "@weapp-sqlite/weapp-vite/advanced": ["../weapp-vite/dist/advanced.d.mts"],
+      "@weapp-sqlite/weapp-vite/workspace": ["../weapp-vite/dist/workspace.d.mts"]
+    }
+  },
+  "include": ["src", "test"]
+}

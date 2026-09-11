@@ -58,6 +58,7 @@ const homepage = 'https://github.com/weapp-sqlite/weapp-sqlite#readme'
 const bugsUrl = 'https://github.com/weapp-sqlite/weapp-sqlite/issues'
 const registry = 'https://registry.npmjs.org/'
 const publicPackages = new Map([
+  ['packages/weapp-sqlite', 'weapp-sqlite'],
   ['packages/core', '@weapp-sqlite/core'],
   ['packages/wasm', '@weapp-sqlite/wasm'],
   ['packages/sqljs', '@weapp-sqlite/sqljs'],
@@ -172,7 +173,7 @@ async function checkPublicPackage(directory: string, expectedName: string) {
 
 await checkPrivateWorkspaces()
 const packageDirectories = await listWorkspacePackageDirectories('packages')
-invariant(packageDirectories.length === publicPackages.size, 'packages/ contains an unexpected package directory.')
+invariant(packageDirectories.length === publicPackages.size, 'workspace contains an unexpected package directory.')
 for (const directory of packageDirectories) {
   invariant(publicPackages.has(directory), `${directory} is not in the public package allowlist.`)
 }
