@@ -12,15 +12,19 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dcloudio/uni-app": "3.0.0-alpha-5020520260829001",
-    "@dcloudio/uni-components": "3.0.0-alpha-5020520260829001",
-    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5020520260829001",
+    "@dcloudio/uni-app": "3.0.0-alpha-1000920260909822",
+    "@dcloudio/uni-components": "3.0.0-alpha-1000920260909822",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-1000920260909822",
+    "@vue/compiler-dom": "3.4.21",
+    "@vue/reactivity": "3.4.21",
+    "@vue/runtime-core": "3.4.21",
+    "@vue/runtime-dom": "3.4.21",
     "@weapp-sqlite/demo-shared": "workspace:*",
     "vue": "3.4.21"
   },
   "devDependencies": {
-    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5020520260829001",
-    "@vitejs/plugin-vue": "5.2.4",
-    "vite": "5.2.8"
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-1000920260909822",
+    "@vitejs/plugin-vue": "6.0.7",
+    "vite": "8.2.2"
   }
 }

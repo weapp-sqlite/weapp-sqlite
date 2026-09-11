@@ -11,7 +11,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     },
     {
       name: 'tsdown',
-      reason: '0.23 要求 Node.js >=22.18，仓库当前最低版本仍是 22.12',
+      reason: 'tsdown 0.23 要求 Node.js >=22.18；仓库已将最低版本提升至 22.22.1',
     },
   ],
   'apps/docs': [
@@ -21,7 +21,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     },
     {
       name: 'typescript',
-      reason: '与 workspace 的 TypeScript 6 编译基线保持一致',
+      reason: 'repoctl 与 typescript-eslint 当前要求 TypeScript 6.x',
     },
   ],
   'examples/mpx': [
@@ -92,7 +92,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       '@dcloudio/vite-plugin-uni',
     ].map(name => ({
       name,
-      reason: 'uni-app Vue3 alpha 依赖必须使用相同发布批次',
+      reason: 'uni-app 使用官方 vue3 通道，四个包必须保持同一发布批次',
     })),
     ...[
       '@vitejs/plugin-vue',
@@ -100,7 +100,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       'vue',
     ].map(name => ({
       name,
-      reason: '@dcloudio/vite-plugin-uni 固定要求 Vite 5.2.8 和 Vue 3.4.21 工具链',
+      reason: 'uni-app vue3 alpha 批次固定要求 Vite 8.2.2、plugin-vue 6.0.7 和 Vue 3.4.21',
     })),
   ],
 }

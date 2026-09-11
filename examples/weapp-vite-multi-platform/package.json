@@ -26,6 +26,6 @@
     "lit": "^3.3.3"
   },
   "devDependencies": {
-    "weapp-vite": "^7.0.3"
+    "weapp-vite": "^7.1.0"
   }
 }

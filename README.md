@@ -8,8 +8,8 @@
 
 ## 你需要准备什么
 
-- Node.js 22.12+
-- pnpm 11（使用 npm 时把 `pnpm add` 换成 `npm install`）
+- Node.js 22.22.1+
+- pnpm 12（使用 npm 时把 `pnpm add` 换成 `npm install`）
 - 一个可以正常运行的 weapp-vite 项目
 - 验收微信时登录微信开发者工具
 
@@ -115,7 +115,7 @@ pnpm deps:update  # 升级可安全升级的直接依赖并刷新 pnpm-lock.yaml
 pnpm validate     # 升级后执行完整构建、类型、API 和测试门禁
 ```
 
-维护命令会保护已验证的框架边界：TypeScript 维持 6.x，Taro 维持 4.2.1 + React 18，MPX 维持 Vue 2.7 + Babel 7 + Webpack 5.110.2，uni-app 维持同一 Vue3 alpha 发布批次与 Vite 5.2.8。命令会在输出中列出每项保护原因；框架升级应先完成对应迁移和 demo 构建，再调整 `scripts/dependency-policy.ts`。
+维护命令会保护已验证的框架边界：TypeScript 维持 6.x，Taro 维持 4.2.1 + React 18，MPX 维持 Vue 2.7 + Babel 7 + Webpack 5.110.2，uni-app 维持同一 Vue3 alpha 发布批次与 Vite 8.2.2。命令会在输出中列出每项保护原因；框架升级应先完成对应迁移和 demo 构建，再调整 `scripts/dependency-policy.ts`。
 
 文档站本地开发与部署：
 

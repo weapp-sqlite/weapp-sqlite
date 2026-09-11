@@ -75,15 +75,39 @@ async function readManifest(directory: string): Promise<PackageManifest> {
 }
 
 async function getOutdatedDependencies(): Promise<Record<string, OutdatedDependency>> {
-  const result = await runPnpm(['outdated', '--recursive', '--format', 'json'])
-
-  if (result.exitCode !== 0 && result.exitCode !== 1) {
-    throw new Error(result.stderr || `pnpm outdated 执行失败，退出码：${result.exitCode}`)
+  const outdated: Record<string, OutdatedDependency> = {}
+  for (const directory of await getWorkspaceDirectories()) {
+    const result = await runPnpm(['--dir', directory, 'outdated', '--format', 'json'])
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
+      throw new Error(result.stderr || `pnpm outdated 执行失败（${directory}），退出码：${result.exitCode}`)
+    }
+    if (result.stdout.trim() === '') continue
+    let report: Record<string, { current?: string, latest?: string }> 
+    try {
+      report = JSON.parse(result.stdout) as Record<string, { current?: string, latest?: string }>
+    }
+    catch (error) {
+      throw new Error(`无法解析 pnpm outdated 输出（${directory}）`, { cause: error })
+    }
+    const manifest = await readManifest(directory)
+    const declared = {
+      ...manifest.dependencies,
+      ...manifest.devDependencies,
+      ...manifest.optionalDependencies,
+    }
+    for (const [dependency, details] of Object.entries(report)) {
+      if (!details.current || !details.latest || details.current === details.latest) continue
+      // pnpm may report the registry's normal latest tag for an exact prerelease
+      // channel pin. Keep the declared channel when it is already installed.
+      const specifier = declared[dependency]
+      if (specifier && !specifier.startsWith('workspace:') && !specifier.startsWith('^') && !specifier.startsWith('~') && specifier === details.current) continue
+      const entry = outdated[dependency] ??= { current: details.current, latest: details.latest, dependentPackages: [] }
+      entry.dependentPackages.push({ location: path.resolve(repositoryRoot, directory), name: dependency })
+      entry.current = details.current
+      entry.latest = details.latest
+    }
   }
-
-  return result.stdout === ''
-    ? {}
-    : JSON.parse(result.stdout) as Record<string, OutdatedDependency>
+  return outdated
 }
 
 function getDirectDependencies(manifest: PackageManifest): string[] {

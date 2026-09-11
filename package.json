@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@12.3.4",
   "description": "面向小程序与 Web 宿主的可插拔 SQLite driver workspace",
   "author": "weapp-sqlite contributors",
   "repository": {
@@ -13,9 +13,15 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "wasm", "weapp", "miniprogram", "driver"],
+  "keywords": [
+    "sqlite",
+    "wasm",
+    "weapp",
+    "miniprogram",
+    "driver"
+  ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.22.1"
   },
   "scripts": {
     "build": "turbo run build",
@@ -23,7 +29,7 @@
     "test": "vitest run",
     "test:dev": "vitest",
     "lint": "turbo run lint",
-    "tsd": "turbo run tsd",
+    "tsd": "turbo run tsd --concurrency=1",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.acceptance.json",
     "format": "eslint . --fix",
     "check:publish": "tsx scripts/check-publish-packages.ts",
@@ -63,27 +69,27 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
-    "@playwright/test": "^1.62.1",
-    "@types/node": "^26.4.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.1",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "~5.0.0",
-    "@weapp-vite/miniprogram-automator": "^1.2.16",
+    "@weapp-vite/miniprogram-automator": "^1.2.17",
     "ci-info": "^4.4.0",
     "cross-env": "^10.1.0",
     "defu": "^6.1.7",
     "es-toolkit": "^1.52.0",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "execa": "^10.0.1",
     "husky": "^9.1.7",
-    "lint-staged": "^17.4.1",
+    "lint-staged": "^17.5.1",
     "only-allow": "^1.2.2",
     "pathe": "^2.0.3",
-    "pkg-types": "^2.3.2",
-    "repoctl": "^5.4.7",
-    "stylelint": "^17.14.1",
+    "pkg-types": "^2.3.3",
+    "repoctl": "^5.4.9",
+    "stylelint": "^17.15.0",
     "tailwindcss": "^4.3.3",
     "tsd": "^0.33.0",
-    "tsdown": "0.22.14",
+    "tsdown": "0.23.0",
     "tslib": "^2.8.1",
     "tsx": "^4.23.13",
     "turbo": "^2.10.12",

@@ -87,7 +87,7 @@
   },
   "devDependencies": {
     "@types/sql.js": "^1.4.11",
-    "weapp-vite": "^7.0.3"
+    "weapp-vite": "^7.1.0"
   },
   "publishConfig": {
     "access": "public",
