@@ -366,6 +366,7 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
   const debug = normalizeDebugOptions(options)
   const wasm = normalizeWasmOptions(options)
   let target: WeappVitePlatform | undefined
+  let isWebServe = false
   let asset: string | undefined
   let emittedAssetPath: string | undefined
   let bytes: Uint8Array | undefined
@@ -438,6 +439,7 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     },
     async configResolved(config) {
       target = resolveTarget(config)
+      isWebServe = target === 'web' && config.command === 'serve'
       asset = targetAsset(target, wasm.variant)
       emittedAssetPath = `/assets/${asset}`
       if (target === 'weapp' && wasm.weappPackage !== 'main') {
@@ -488,6 +490,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     async buildStart() {
       if (!asset) {
         throw new Error('The weapp-sqlite build started before the target was resolved.')
+      }
+      if (isWebServe) {
+        return
       }
       this.emitFile({
         type: 'asset',

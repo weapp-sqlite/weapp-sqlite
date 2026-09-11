@@ -12,6 +12,12 @@ function hook<T extends keyof Plugin>(plugin: Plugin, name: T) {
   return value as unknown as (...args: unknown[]) => unknown
 }
 
+type TestMiddleware = (request: { url?: string }, response: {
+  end: (body: Uint8Array) => void
+  setHeader: (name: string, value: string) => void
+  statusCode: number
+}, next: () => void) => Promise<void>
+
 describe('weappSqlite plugin', () => {
   const temporaryDirectories: string[] = []
 
@@ -46,6 +52,58 @@ describe('weappSqlite plugin', () => {
     const source = String(await hook(plugin, 'load').call({}, resolved))
     expect(source).toContain('createWebSqliteRuntimeAdapter')
     expect(source).toContain('sql-wasm-browser.wasm')
+  })
+
+  it('does not emit WASM from Web serve mode', async () => {
+    const plugin = weappSqlite()
+    await hook(plugin, 'configResolved').call({}, {
+      command: 'serve',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    const emitFile = vi.fn(() => {
+      throw new Error('context method emitFile() is not supported in serve mode')
+    })
+    await expect(hook(plugin, 'buildStart').call({ emitFile })).resolves.toBeUndefined()
+    expect(emitFile).not.toHaveBeenCalled()
+  })
+
+  it('serves the Web WASM asset through middleware in serve mode', async () => {
+    const plugin = weappSqlite()
+    await hook(plugin, 'configResolved').call({}, {
+      command: 'serve',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    let middleware: TestMiddleware | undefined
+    hook(plugin, 'configureServer').call({}, {
+      middlewares: { use: (handler: TestMiddleware) => { middleware = handler } },
+    } as never)
+    const response = {
+      end: vi.fn(),
+      setHeader: vi.fn(),
+      statusCode: 0,
+    }
+    const next = vi.fn()
+    await middleware!({ url: '/assets/sql-wasm-browser.wasm' }, response, next)
+    expect(next).not.toHaveBeenCalled()
+    expect(response.statusCode).toBe(200)
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Type', 'application/wasm')
+    expect(response.end).toHaveBeenCalledWith(expect.any(Uint8Array))
+    expect((response.end.mock.calls[0]?.[0] as Uint8Array).byteLength).toBeGreaterThan(0)
+  })
+
+  it('passes unrelated Web serve requests to the next middleware', async () => {
+    const plugin = weappSqlite()
+    await hook(plugin, 'configResolved').call({}, {
+      command: 'serve',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    let middleware: TestMiddleware | undefined
+    hook(plugin, 'configureServer').call({}, {
+      middlewares: { use: (handler: TestMiddleware) => { middleware = handler } },
+    } as never)
+    const next = vi.fn()
+    await middleware!({ url: '/assets/other.wasm' }, {} as never, next)
+    expect(next).toHaveBeenCalledOnce()
   })
 
   it('selects the lite engine and asset for every target', async () => {
