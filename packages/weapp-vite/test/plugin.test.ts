@@ -192,13 +192,15 @@ describe('weappSqlite plugin', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-wasm-package-'))
     temporaryDirectories.push(root)
     await mkdir(path.join(root, 'src'), { recursive: true })
-    await writeFile(path.join(root, 'src/app.json.ts'), 'import { subPackages } from \'weapp-vite/auto-routes\'\nexport default { subPackages }\n')
+    await writeFile(path.join(root, 'src/app.vue'), '<script setup lang="ts">\nimport routes from \'weapp-vite/auto-routes\'\ndefineAppJson({ subPackages: routes.subPackages })\n</script>\n')
     const plugin = weappSqlite({ wasm: { variant: 'lite', weappPackage: { mode: 'generated-subpackage' } } })
     await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
     const markRoutesDirty = vi.fn()
     const ensureRoutesFresh = vi.fn()
     const markManifestDirty = vi.fn()
-    const loadManifest = vi.fn(async () => ({ json: {} }))
+    const loadManifest = vi.fn(async () => ({
+      json: { subPackages: [{ root: '__weapp_sqlite__', pages: ['__entry__/index'] }] },
+    }))
     await hook(plugin, 'configResolved').call({}, {
       root,
       weappVite: { name: 'weapp-vite', runtime: 'miniprogram', platform: 'weapp' },
@@ -234,6 +236,31 @@ describe('weappSqlite plugin', () => {
     vi.advanceTimersByTime(30_000)
     await expect(readFile(path.join(root, 'src/__weapp_sqlite__/runtime.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('rejects generated SQLite WASM subpackages missing from the resolved app manifest', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-missing-generated-package-'))
+    temporaryDirectories.push(root)
+    const plugin = weappSqlite({ wasm: { weappPackage: { mode: 'generated-subpackage' } } })
+    await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
+
+    await expect(hook(plugin, 'configResolved').call({}, {
+      root,
+      weappVite: { name: 'weapp-vite', runtime: 'miniprogram', platform: 'weapp' },
+      plugins: [{
+        name: 'weapp-vite:context',
+        api: {
+          ctx: {
+            configService: { weappViteConfig: {} },
+            autoRoutesService: { markDirty: vi.fn(), ensureFresh: vi.fn() },
+            scanService: { markDirty: vi.fn(), loadAppEntry: async () => ({ json: {} }) },
+          },
+        },
+      }],
+    } as never)).rejects.toThrow('missing from the resolved app.json.subPackages')
+
+    await expect(readdir(path.join(root, 'src/__weapp_sqlite__'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readdir(path.join(root, 'src/__weapp_sqlite_loader__'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('binds SQLite assets to an existing normal subpackage', async () => {
@@ -293,7 +320,6 @@ describe('weappSqlite plugin', () => {
     temporaryDirectories.push(root)
     await mkdir(path.join(root, 'src/__weapp_sqlite__'), { recursive: true })
     await writeFile(path.join(root, 'src/__weapp_sqlite__/user.ts'), 'export {}')
-    await writeFile(path.join(root, 'src/app.json.ts'), 'import \'weapp-vite/auto-routes\'\nexport default {}\n')
     const plugin = weappSqlite({ wasm: { weappPackage: { mode: 'generated-subpackage' } } })
     await expect(hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })).rejects.toThrow('conflicts with user files')
   })

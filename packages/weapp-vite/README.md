@@ -27,7 +27,7 @@ weappSqlite({
 })
 ```
 
-自动分包默认 root 为 `__weapp_sqlite__`，要求 `app.json.ts` 接入 `weapp-vite/auto-routes`。静态 `app.json` 可使用 `{ mode: 'existing-subpackage', root: 'shared' }` 绑定已声明的普通分包；独立分包会被拒绝。`openSqlite()` 不变，lite 的 `getSqliteRuntimeInfo().engine` 为 `sql.js-wasm-lite`。
+自动分包默认 root 为 `__weapp_sqlite__`，通过 weapp-vite 自动路由写入最终 `app.json`，应用配置可来自 `app.json.ts`、`app.json.js` 或 `app.vue` 中的 `defineAppJson()`；最终清单缺少生成分包时构建失败。静态 `app.json` 可使用 `{ mode: 'existing-subpackage', root: 'shared' }` 绑定已声明的普通分包；独立分包会被拒绝。`openSqlite()` 不变，lite 的 `getSqliteRuntimeInfo().engine` 为 `sql.js-wasm-lite`。
 
 ```ts
 import { openSqlite } from '@weapp-sqlite/weapp-vite/runtime'
