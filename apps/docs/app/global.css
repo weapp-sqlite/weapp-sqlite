@@ -2,6 +2,54 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
+:root {
+  --ws-ink: #08141d;
+  --ws-panel: #0d2029;
+  --ws-panel-soft: #102a34;
+  --ws-line: rgba(154, 213, 203, 0.18);
+  --ws-mint: #9ee7bd;
+  --ws-acid: #d7ff68;
+  --ws-coral: #ff9c78;
+  --ws-paper: #eef4ef;
+}
+
+body {
+  background: var(--ws-ink);
+}
+
+::selection {
+  background: var(--ws-acid);
+  color: var(--ws-ink);
+}
+
+.workspace-grid {
+  background-image: linear-gradient(var(--ws-line) 1px, transparent 1px), linear-gradient(90deg, var(--ws-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.workspace-noise {
+  background-image: radial-gradient(rgba(215, 255, 104, 0.13) 0.7px, transparent 0.7px);
+  background-size: 9px 9px;
+}
+
+.docs-shell {
+  background: var(--ws-paper);
+}
+
+.docs-shell pre {
+  border: 1px solid rgba(8, 20, 29, 0.16);
+  box-shadow: 8px 8px 0 rgba(8, 20, 29, 0.08);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-dot { animation: pulse-dot 2.4s ease-in-out infinite; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(215, 255, 104, 0.45); }
+  50% { box-shadow: 0 0 0 7px rgba(215, 255, 104, 0); }
+}
+
 html {
   scrollbar-gutter: stable;
 }

@@ -1,59 +1,7 @@
 import Link from 'next/link';
-import Image from 'next/image';
-
+import { ArrowUpRight, Braces, Database, Layers3, TerminalSquare } from 'lucide-react';
+import { WorkbenchDemo } from '@/components/workbench-demo';
+const capabilities = [['01', '一套 API', '业务代码只认识 openSqlite()，平台差异留在 adapter。', Braces], ['02', '可靠的本地数据', '事务、迁移和 flush 让离线数据有清晰的生命周期。', Database], ['03', '可见的开发过程', '在 Web 调试工作台里浏览表、执行 SQL、导入导出快照。', TerminalSquare], ['04', '按目标构建', 'WASM 与存储策略跟随 Web 或小程序产物注入。', Layers3]] as const;
 export default function HomePage() {
-  return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-6 py-16 lg:px-8">
-      <div className="grid items-center gap-14 lg:grid-cols-[1.1fr_0.9fr]">
-        <section>
-          <div className="mb-8 flex items-center gap-4">
-            <Image src="/weapp-sqlite-avatar.svg" alt="weapp-sqlite" width={64} height={64} priority />
-            <div>
-              <p className="text-sm font-medium uppercase tracking-[0.18em] text-fd-muted-foreground">Open source</p>
-              <p className="text-sm text-fd-muted-foreground">SQLite for mini programs and Web</p>
-            </div>
-          </div>
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-fd-foreground md:text-6xl">
-            在多端小程序里，使用同一套 SQLite 业务代码
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-fd-muted-foreground">
-            weapp-sqlite 将异步数据库协议与 SQLite WASM 引擎解耦，让 Web 和小程序使用同一套业务 API；平台差异由构建插件和 adapter 处理。
-          </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link href="/docs" className="inline-flex h-11 items-center rounded-lg bg-fd-primary px-5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90">
-              阅读文档
-            </Link>
-            <a href="https://github.com/weapp-sqlite/weapp-sqlite" className="inline-flex h-11 items-center rounded-lg border border-fd-border px-5 text-sm font-medium text-fd-foreground transition-colors hover:bg-fd-accent">
-              查看 GitHub
-            </a>
-          </div>
-        </section>
-        <section className="border border-fd-border bg-fd-card p-6 shadow-sm">
-          <p className="text-sm font-medium text-fd-muted-foreground">从这里开始</p>
-          <div className="mt-5 space-y-3">
-            <Link href="/docs/getting-started" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
-              <span className="font-medium text-fd-foreground">快速开始</span>
-              <span className="mt-1 block text-sm text-fd-muted-foreground">安装统一入口，定义迁移并跑通第一条查询。</span>
-            </Link>
-            <Link href="/docs/concepts" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
-              <span className="font-medium text-fd-foreground">核心概念</span>
-              <span className="mt-1 block text-sm text-fd-muted-foreground">理解事务、迁移、WASM 和多端持久化。</span>
-            </Link>
-            <Link href="/docs/debug-workbench" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
-              <span className="font-medium text-fd-foreground">调试工作台</span>
-              <span className="mt-1 block text-sm text-fd-muted-foreground">预览表结构、编辑数据并导入导出快照。</span>
-            </Link>
-            <Link href="/docs/multi-platform" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
-              <span className="font-medium text-fd-foreground">多端接入</span>
-              <span className="mt-1 block text-sm text-fd-muted-foreground">查看四套 demo 的构建命令与宿主边界。</span>
-            </Link>
-            <Link href="/docs/deployment" className="block rounded-lg border border-fd-border p-4 transition-colors hover:bg-fd-accent">
-              <span className="font-medium text-fd-foreground">部署说明</span>
-              <span className="mt-1 block text-sm text-fd-muted-foreground">了解 WASM 静态资源和 Cloudflare 静态站点部署。</span>
-            </Link>
-          </div>
-        </section>
-      </div>
-    </main>
-  );
+  return <main className="workspace-grid min-h-screen overflow-hidden bg-[#08141d] text-[#eef8f2]"><nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-10"><Link href="/" className="font-mono text-sm font-semibold tracking-tight">weapp-sqlite<span className="text-[#d7ff68]">/</span><span className="ml-2 text-xs font-normal text-[#719b92]">docs</span></Link><div className="flex items-center gap-5 text-xs text-[#9ac0b8]"><Link href="/docs" className="hover:text-white">文档</Link><Link href="/tutorial" className="hover:text-white">新手教程</Link><a href="https://github.com/weapp-sqlite/weapp-sqlite" className="flex items-center gap-1 hover:text-white">GitHub <ArrowUpRight size={13} /></a></div></nav><section className="relative mx-auto grid max-w-7xl gap-14 px-6 pb-24 pt-16 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:px-10 lg:pt-24"><div className="absolute -left-24 top-12 h-72 w-72 rounded-full bg-[#9ee7bd]/10 blur-3xl" /><div className="relative"><div className="mb-7 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[.22em] text-[#9ee7bd]"><span className="h-2 w-2 rounded-full bg-[#d7ff68]" /> local-first sqlite runtime</div><h1 className="max-w-xl text-5xl font-semibold leading-[.98] tracking-[-.045em] text-white md:text-7xl">一套 SQLite，<br /><span className="text-[#d7ff68]">跑在每一端。</span></h1><p className="mt-7 max-w-lg text-lg leading-8 text-[#9ac0b8]">让 Web 和小程序共享同一套异步数据库 API。WASM、持久化、迁移和平台差异，都交给运行时处理。</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/tutorial" className="inline-flex items-center gap-2 rounded-md bg-[#d7ff68] px-5 py-3 text-sm font-semibold text-[#08141d] transition hover:bg-[#e7ff9a]">15 分钟开始 <ArrowUpRight size={16} /></Link><Link href="/docs" className="inline-flex items-center rounded-md border border-white/20 px-5 py-3 text-sm font-medium text-white transition hover:bg-white/10">浏览文档</Link></div><div className="mt-9 flex items-center gap-3 font-mono text-[11px] text-[#648c84]"><span className="rounded border border-white/10 px-2 py-1">Web</span><span>+</span><span className="rounded border border-white/10 px-2 py-1">WeChat</span><span>+</span><span className="rounded border border-white/10 px-2 py-1">SQLite WASM</span></div></div><div className="relative workspace-noise rounded-3xl p-2"><WorkbenchDemo /></div></section><section className="border-y border-white/10 bg-[#0b1d26] px-6 py-16 lg:px-10"><div className="mx-auto max-w-7xl"><div className="mb-10 flex flex-wrap items-end justify-between gap-4"><div><p className="font-mono text-[11px] uppercase tracking-[.2em] text-[#9ee7bd]">why it works</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">把平台复杂度放到正确的边界。</h2></div><p className="max-w-sm text-sm leading-6 text-[#719b92]">从页面代码到宿主文件系统，每一层都有清晰职责。你只需要关心数据。</p></div><div className="grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 md:grid-cols-2">{capabilities.map(([num, title, copy, Icon]) => <div key={num} className="bg-[#0b1d26] p-6 transition hover:bg-[#102a34]"><div className="flex items-start justify-between"><span className="font-mono text-xs text-[#648c84]">{num}</span><Icon size={20} strokeWidth={1.5} className="text-[#9ee7bd]" /></div><h3 className="mt-12 text-xl font-medium text-white">{title}</h3><p className="mt-2 max-w-sm text-sm leading-6 text-[#719b92]">{copy}</p></div>)}</div></div></section><section className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="grid gap-10 lg:grid-cols-[.7fr_1.3fr]"><div><p className="font-mono text-[11px] uppercase tracking-[.2em] text-[#9ee7bd]">the short path</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">15 分钟，跑通第一条查询。</h2><p className="mt-4 text-sm leading-6 text-[#719b92]">教程按真实项目顺序组织。每一步都有代码、预期结果和继续阅读入口。</p><Link href="/tutorial" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-[#d7ff68] hover:underline">打开新手教程 <ArrowUpRight size={15} /></Link></div><div className="grid gap-3 sm:grid-cols-2">{['安装统一入口', '定义第一个迁移', '执行参数化查询', '在 Web 与小程序运行'].map((item, index) => <Link href="/tutorial" key={item} className="group rounded-xl border border-white/10 bg-[#0d2029] p-5 transition hover:border-[#9ee7bd]/50"><span className="font-mono text-xs text-[#648c84]">0{index + 1}</span><div className="mt-8 flex items-center justify-between text-sm text-white"><span>{item}</span><ArrowUpRight size={15} className="text-[#719b92] transition group-hover:text-[#d7ff68]" /></div></Link>)}</div></div></section><footer className="border-t border-white/10 px-6 py-8 lg:px-10"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-xs text-[#648c84]"><span className="font-mono">weapp-sqlite / documentation</span><span>Built for local data that needs to travel.</span></div></footer></main>;
 }

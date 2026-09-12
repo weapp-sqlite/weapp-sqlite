@@ -1,0 +1,126 @@
+---
+title: 15 分钟新手教程
+description: 从空项目到第一条跨端 SQLite 查询
+---
+
+这是一条面向第一次使用 `weapp-sqlite` 的实操路径。完成后，你会得到一个可在 Web 和小程序中复用的 `notes` 数据模块。
+
+## 你会完成什么
+
+安装统一入口、配置构建插件、创建迁移、写入一条 note，并在页面读取它。最后会在 Web 调试工作台中查看表结构和 SQL 结果。
+
+## 1. 安装集成包
+
+在已经可以运行的 weapp-vite 项目中执行：
+
+```bash
+pnpm add @weapp-sqlite/weapp-vite
+```
+
+在 `vite.config.ts` 注册插件：
+
+```ts
+import { weappSqlite } from '@weapp-sqlite/weapp-vite'
+import { defineConfig } from 'weapp-vite'
+
+export default defineConfig({
+  plugins: [weappSqlite()],
+})
+```
+
+## 2. 定义第一个迁移
+
+新建 `src/sqlite.ts`。迁移只会按版本执行一次；已经发布的版本不要改写，修改表结构时新增版本。
+
+```ts
+import type { SqliteMigration } from '@weapp-sqlite/core'
+
+export const migrations = [
+  {
+    version: 1,
+    name: 'create_notes',
+    up: transaction => transaction.exec(
+      'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
+    ),
+  },
+] satisfies readonly SqliteMigration[]
+```
+
+## 3. 打开数据库并查询
+
+所有数据库方法都是异步的。用参数绑定传值，不要把用户输入拼进 SQL 字符串。
+
+```ts
+import { openSqlite } from '@weapp-sqlite/weapp-vite/runtime'
+import { migrations } from './sqlite'
+
+const database = await openSqlite({ name: 'app.sqlite', migrations })
+
+await database.exec('INSERT INTO notes (body) VALUES (?)', ['Hello SQLite'])
+const result = await database.query<{ id: number; body: string }>(
+  'SELECT id, body FROM notes ORDER BY id DESC',
+)
+
+console.log(result.rows)
+await database.close()
+```
+
+第一次打开会加载已有快照并执行未完成迁移。`close()` 会先 flush 脏数据，再释放连接。
+
+## 4. 在页面里处理状态
+
+把打开动作放在应用初始化或页面生命周期中，明确处理 loading、ready 和 failed：
+
+```ts
+try {
+  const database = await openSqlite({ name: 'app.sqlite', migrations })
+  const { rows } = await database.query<{ body: string }>(
+    'SELECT body FROM notes ORDER BY id DESC',
+  )
+  setNotes(rows)
+} catch (error) {
+  console.error(error)
+}
+```
+
+## 5. 在 Web 中验证持久化
+
+运行 Web 构建并打开页面。刷新后再次读取，`notes` 里的数据仍然存在，因为 Web adapter 使用 IndexedDB 保存数据库快照。
+
+```bash
+pnpm build:web
+```
+
+微信项目使用同一份业务代码构建：
+
+```bash
+pnpm build:weapp
+```
+
+平台支持结论请以[支持矩阵与验收](./acceptance)为准；构建成功不等于每个宿主都已完成真实运行验收。
+
+## 6. 打开调试工作台
+
+开发构建中启用工作台：
+
+```ts
+weappSqlite({
+  debug: {
+    enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+    page: {
+      route: '__weapp_sqlite_debug/index/index',
+      configFile: './src/sqlite-debug.config.ts',
+    },
+  },
+})
+```
+
+工作台可以浏览表结构、执行 SQL、检查迁移状态，以及导入导出 SQLite/CSV/JSON。它只适用于开发和验收构建，生产构建默认不会生成管理页面。
+
+## 遇到错误怎么办
+
+- `SQLITE_RUNTIME_UNSUPPORTED`：宿主缺少文件系统、WebAssembly 或 TypedArray 能力。
+- `SQLITE_ENGINE_INIT_FAILED`：检查构建产物是否包含正确的 WASM 文件。
+- `SQLITE_OPEN_OPTIONS_CONFLICT`：同名数据库已打开，但配置不同。
+
+下一步可以阅读[核心概念](./concepts)、[调试工作台](./debug-workbench)或[weapp-vite API](./api/weapp-vite)。
