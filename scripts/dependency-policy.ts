@@ -47,7 +47,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     },
     {
       name: 'webpack',
-      reason: '5.110.3 与 MPX 2 的 SplitChunks 扩展不兼容，生产构建会在 chunksSet 处失败',
+      reason: 'Webpack 5.110.3 起（含当前 latest 5.111.0）与 MPX 2 的 SplitChunks 扩展不兼容，生产构建会在 chunksSet 处失败',
     },
     {
       name: 'webpack-cli',
@@ -96,6 +96,10 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     })),
     ...[
       '@vitejs/plugin-vue',
+      '@vue/compiler-dom',
+      '@vue/reactivity',
+      '@vue/runtime-core',
+      '@vue/runtime-dom',
       'vite',
       'vue',
     ].map(name => ({

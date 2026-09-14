@@ -16,7 +16,7 @@ when a host needs native APIs, filesystem rules, or a different engine.
 
 ## Commands
 
-Use Node.js 22.12+ and pnpm 11:
+Use Node.js 22.22.1+ and pnpm 12:
 
 ```bash
 pnpm install
