@@ -1,7 +1,7 @@
 {
   "name": "weapp-sqlite",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "weapp-sqlite 的统一门面包",
   "author": "weapp-sqlite contributors",
   "license": "MIT",
@@ -14,13 +14,24 @@
   "bugs": {
     "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues"
   },
-  "keywords": ["sqlite", "weapp", "miniprogram", "wasm"],
+  "keywords": [
+    "sqlite",
+    "weapp",
+    "miniprogram",
+    "wasm"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
-      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
-      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./runtime": {
       "types": "./dist/runtime.d.mts",
@@ -51,8 +62,12 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "files": ["dist"],
-  "engines": { "node": ">=18.0.0" },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "tsdown -w",
     "build": "tsdown",

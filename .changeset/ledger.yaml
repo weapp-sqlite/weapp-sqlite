@@ -24,6 +24,10 @@
   dir: packages/debug
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/docs@0.1.0":
+  dir: apps/docs
+  intents:
+    - bright-docs-workbench
 "@weapp-sqlite/miniprogram@0.1.0":
   dir: packages/miniprogram
   intents:
@@ -75,6 +79,11 @@
   dir: packages/weapp-vite
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/weapp-vite@0.2.2":
+  dir: packages/weapp-vite
+  intents:
+    - clean-app-config
+    - upgrade-weapp-vite-dev
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:
@@ -88,3 +97,7 @@
   dir: packages/web
   intents:
     - upgrade-dependencies
+weapp-sqlite@0.1.1:
+  dir: packages/weapp-sqlite
+  intents:
+    - quiet-sqlite-facade
