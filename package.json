@@ -1,5 +1,5 @@
 {
-  "name": "weapp-sqlite",
+  "name": "@weapp-sqlite/monorepo",
   "type": "module",
   "version": "0.0.0",
   "private": true,

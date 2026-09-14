@@ -99,6 +99,34 @@ async function listWorkspacePackageDirectories(parent: string) {
     .map(entry => `${parent}/${entry.name}`)
 }
 
+async function listWorkspaceDirectories() {
+  return [
+    '.',
+    ...await listWorkspacePackageDirectories('apps'),
+    ...await listWorkspacePackageDirectories('examples'),
+    ...await listWorkspacePackageDirectories('packages'),
+  ]
+}
+
+async function checkUniquePackageNames() {
+  const owners = new Map<string, string[]>()
+  for (const directory of await listWorkspaceDirectories()) {
+    const { name } = await readManifest(directory)
+    if (!name) {
+      continue
+    }
+    const existing = owners.get(name) ?? []
+    existing.push(directory)
+    owners.set(name, existing)
+  }
+  for (const [name, directories] of owners) {
+    invariant(
+      directories.length === 1,
+      `package name ${name} is used by multiple workspace projects: ${directories.join(', ')}`,
+    )
+  }
+}
+
 async function checkPrivateWorkspaces() {
   const directories = [
     '.',
@@ -171,6 +199,7 @@ async function checkPublicPackage(directory: string, expectedName: string) {
   }
 }
 
+await checkUniquePackageNames()
 await checkPrivateWorkspaces()
 const packageDirectories = await listWorkspacePackageDirectories('packages')
 invariant(packageDirectories.length === publicPackages.size, 'workspace contains an unexpected package directory.')
