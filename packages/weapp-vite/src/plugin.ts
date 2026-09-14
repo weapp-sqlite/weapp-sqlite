@@ -104,16 +104,6 @@ async function ensureOwnedDirectory(directory: string) {
   await writeFile(markerPath, GENERATED_WASM_MARKER)
 }
 
-async function assertGeneratedSubpackageAppConfig(projectRoot: string, srcRoot: string) {
-  const appConfigPath = path.join(projectRoot, srcRoot, 'app.json.ts')
-  const source = await readFile(appConfigPath, 'utf8').catch((error) => {
-    throw new Error(`Generated SQLite WASM subpackages require app.json.ts: ${appConfigPath}`, { cause: error })
-  })
-  if (!source.includes('weapp-vite/auto-routes')) {
-    throw new Error('Generated SQLite WASM subpackages require app.json.ts to use weapp-vite/auto-routes.')
-  }
-}
-
 async function generateWasmSubpackage(
   projectRoot: string,
   srcRoot: string,
@@ -328,6 +318,16 @@ function compilerFromConfig(config: ResolvedConfig) {
   const contextPlugin = config.plugins.find(plugin => plugin.name === 'weapp-vite:context') as (Plugin & { readonly api?: WeappVitePluginApi }) | undefined
   return contextPlugin?.api?.ctx
 }
+function findWasmSubpackage(
+  appJson: { subPackages?: unknown, subpackages?: unknown },
+  root: string,
+) {
+  const subPackages = [
+    ...(Array.isArray(appJson.subPackages) ? appJson.subPackages : []),
+    ...(Array.isArray(appJson.subpackages) ? appJson.subpackages : []),
+  ] as Array<{ root?: string, independent?: boolean }>
+  return subPackages.find(item => typeof item.root === 'string' && normalizePackageRoot(item.root) === root)
+}
 
 async function registerGeneratedWasmSubpackage(config: ResolvedConfig, state: WasmSubpackageState) {
   const compiler = compilerFromConfig(config)
@@ -340,7 +340,10 @@ async function registerGeneratedWasmSubpackage(config: ResolvedConfig, state: Wa
   compiler.autoRoutesService.markDirty()
   await compiler.autoRoutesService.ensureFresh()
   compiler.scanService.markDirty()
-  await compiler.scanService.loadAppEntry()
+  const app = await compiler.scanService.loadAppEntry()
+  if (!findWasmSubpackage(app.json, state.root)) {
+    throw new Error(`The generated SQLite WASM subpackage is missing from the resolved app.json.subPackages: ${state.root}`)
+  }
 }
 
 async function validateExistingWasmSubpackage(config: ResolvedConfig, root: string) {
@@ -349,11 +352,7 @@ async function validateExistingWasmSubpackage(config: ResolvedConfig, root: stri
     throw new Error('Existing SQLite WASM subpackages require the weapp-vite compiler context.')
   }
   const app = await compiler.scanService.loadAppEntry()
-  const subPackages = [
-    ...(Array.isArray(app.json.subPackages) ? app.json.subPackages : []),
-    ...(Array.isArray(app.json.subpackages) ? app.json.subpackages : []),
-  ] as Array<{ root?: string, independent?: boolean }>
-  const matched = subPackages.find(item => typeof item.root === 'string' && normalizePackageRoot(item.root) === root)
+  const matched = findWasmSubpackage(app.json, root)
   if (!matched) {
     throw new Error(`The SQLite WASM subpackage root is missing from app.json.subPackages: ${root}`)
   }
@@ -420,7 +419,6 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       }
       if (wasm.weappPackage !== 'main' && wasm.weappPackage.mode === 'generated-subpackage') {
         const root = wasmSubpackageRoot(wasm.weappPackage)
-        await assertGeneratedSubpackageAppConfig(projectRoot, sourceRoot)
         ownWasmSubpackage(await generateWasmSubpackage(projectRoot, sourceRoot, wasm.weappPackage, wasm.variant))
         weapp.autoRoutes = debugAutoRoutes(weapp.autoRoutes, root)
         weapp.subPackages = { ...weapp.subPackages, [root]: weapp.subPackages?.[root] ?? {} }
@@ -453,7 +451,13 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
         }
         emittedAssetPath = `/${wasmSubpackage.root}/assets/${asset}`
         if (wasm.weappPackage.mode === 'generated-subpackage') {
-          await registerGeneratedWasmSubpackage(config, wasmSubpackage)
+          try {
+            await registerGeneratedWasmSubpackage(config, wasmSubpackage)
+          }
+          catch (error) {
+            cleanupWasmOnExit?.()
+            throw error
+          }
         }
       }
       else if (wasmSubpackage && cleanupWasmOnExit) {

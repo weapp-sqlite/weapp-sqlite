@@ -52,7 +52,7 @@ weappSqlite({
 })
 ```
 
-lite 保留表、索引、事务、触发器、CTE、JSON1、ALTER、参数绑定、BLOB 和数据库导入导出，不提供 FTS3、normalize 与 sql.js 贡献数学/字符串函数。自动分包要求 `app.json.ts` 使用 `weapp-vite/auto-routes`；静态 `app.json` 项目可绑定已有普通分包。详见[小程序 SQLite 方案与包体选择](https://sqlite.weapp.dev/docs/miniprogram-sqlite-options)。
+lite 保留表、索引、事务、触发器、CTE、JSON1、ALTER、参数绑定、BLOB 和数据库导入导出，不提供 FTS3、normalize 与 sql.js 贡献数学/字符串函数。自动分包通过 weapp-vite 自动路由写入最终 `app.json`，应用配置可来自 `app.json.ts`、`app.json.js` 或 `app.vue` 中的 `defineAppJson()`；最终清单缺少生成分包时构建失败。静态 `app.json` 项目仍可绑定已有普通分包。详见[小程序 SQLite 方案与包体选择](https://sqlite.weapp.dev/docs/miniprogram-sqlite-options)。
 
 ```ts
 import { openSqlite } from '@weapp-sqlite/weapp-vite/runtime'
