@@ -45,6 +45,29 @@ function createHarness() {
 }
 
 describe('debug row identity and atomic writes', () => {
+  it('keeps generated hidden columns out of the visible page and rowid locator', async () => {
+    const { controller } = createHarness()
+    try {
+      await controller.execute(
+        'CREATE TABLE notes (body TEXT, __weapp_sqlite_rowid TEXT GENERATED ALWAYS AS (body || \'-generated\') STORED)',
+        undefined,
+        { allowWrite: true },
+      )
+      await controller.insertRow('notes', { body: 'first' }, { allowWrite: true })
+
+      const page = await controller.readTable('notes')
+      expect(page.columns).toEqual(['body'])
+      expect(page.rows).toEqual([{ body: 'first' }])
+      expect(page.rowLocators).toEqual([{ kind: 'rowid', value: 1 }])
+
+      await controller.updateRow('notes', page.rowLocators[0]!, { body: 'changed' }, { allowWrite: true })
+      await expect(controller.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'changed' }] })
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
   it.each([
     { name: 'nullable text key', definition: 'id TEXT PRIMARY KEY', keys: ['id'] },
     { name: 'nullable composite key', definition: 'a TEXT, b TEXT, PRIMARY KEY (a, b)', keys: ['a', 'b'] },

@@ -960,7 +960,12 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       const locatorSelect = details.capabilities.locator === 'rowid' && details.rowIdentity.rowidColumn
         ? `${quoteIdentifier(details.rowIdentity.rowidColumn)} AS ${quoteIdentifier(rowidAlias)}, `
         : ''
-      const result = await read(`SELECT ${locatorSelect}* FROM ${quoteIdentifier(tableName)}${where.sql}${order} LIMIT ? OFFSET ?`, [...where.parameters, limit, offset])
+      // table_xinfo marks generated/hidden columns separately from the visible
+      // table shape. Project visible columns explicitly so a hidden column
+      // cannot collide with the temporary rowid alias and returned row keys
+      // stay aligned with `page.columns`.
+      const projection = columns.length > 0 ? columns.map(quoteIdentifier).join(', ') : '*'
+      const result = await read(`SELECT ${locatorSelect}${projection} FROM ${quoteIdentifier(tableName)}${where.sql}${order} LIMIT ? OFFSET ?`, [...where.parameters, limit, offset])
       const rows = result.rows.map((row) => {
         if (details.capabilities.locator !== 'rowid') {
           return row as Record<string, unknown>
