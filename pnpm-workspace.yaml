@@ -5,6 +5,9 @@ packages:
   - templates/*
   - '!**/test/**'
 minimumReleaseAge: 0
+overrides:
+  '@tarojs/cli>axios': 1.20.0
+  hono: 4.13.7
 versioning:
   changelog:
     storage: repository

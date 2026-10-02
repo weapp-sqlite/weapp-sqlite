@@ -35,7 +35,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     },
     {
       name: '@mpxjs/core',
-      reason: '2.11.1 是当前最新版，且 peer dependency 要求 Vue 2.7',
+      reason: 'MPX 2.11.1 的 peer dependency 要求 Vue 2.7；升级到其他主版本前需完成 MPX 构建兼容性验证',
     },
     {
       name: '@mpxjs/webpack-plugin',
@@ -72,7 +72,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       'babel-preset-taro',
     ].map(name => ({
       name,
-      reason: 'Taro 依赖必须整组同版；4.2.1 是当前最新版',
+      reason: 'Taro 依赖必须整组同版；当前保持 4.2.1，升级到 4.3.x 前需完成示例构建和 peer 兼容性验证',
     })),
     ...[
       '@types/react',
@@ -81,7 +81,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       'react-dom',
     ].map(name => ({
       name,
-      reason: '@tarojs/react 4.2.1 的 peer dependency 要求 React ^18',
+      reason: '当前 Taro 4.2.1 的 peer dependency 要求 React ^18；升级 Taro 或 React 前需完成整组验证',
     })),
   ],
   'examples/uni-app': [
@@ -104,7 +104,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       'vue',
     ].map(name => ({
       name,
-      reason: 'uni-app vue3 alpha 批次固定要求 Vite 8.2.2、plugin-vue 6.0.7 和 Vue 3.4.21',
+      reason: 'uni-app 使用固定的 Vue 3 alpha 批次，要求 Vite 8.2.2、plugin-vue 6.0.7 和 Vue 3.4.21；升级需切换并验证完整发布批次',
     })),
   ],
 }
