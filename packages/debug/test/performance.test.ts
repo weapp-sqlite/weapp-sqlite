@@ -93,4 +93,43 @@ describe('query performance diagnostics', () => {
       await controller.close()
     }
   })
+
+  it('accepts read-only CTEs, bounds their result, and rejects CTE writes', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({
+      databaseName: 'performance-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      enabled: true,
+      limits: { maxRows: 1 },
+    })
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (body) VALUES (?), (?)', ['one', 'two'], { allowWrite: true })
+
+      const query = await controller.query(
+        'WITH filtered (id, body) AS (SELECT id, body FROM notes WHERE body = ?) SELECT id, body FROM filtered',
+        ['one'],
+      )
+      expect(query.rows).toEqual([{ id: 1, body: 'one' }])
+
+      const analysis = await controller.analyzeQuery(
+        'WITH filtered AS (SELECT id, body FROM notes WHERE body = ?) SELECT id FROM filtered',
+        ['one'],
+      )
+      expect(analysis.sql).toContain('WITH filtered')
+      expect(analysis.nodes.length).toBeGreaterThan(0)
+
+      await expect(controller.query(
+        'WITH changed AS (SELECT id FROM notes) UPDATE notes SET body = ? WHERE id IN (SELECT id FROM changed)',
+        ['unsafe'],
+      )).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
+      await expect(controller.analyzeQuery(
+        'WITH changed AS (SELECT id FROM notes) DELETE FROM notes WHERE id IN (SELECT id FROM changed)',
+      )).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
+    }
+    finally {
+      await controller.close()
+    }
+  })
 })

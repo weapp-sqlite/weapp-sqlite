@@ -143,6 +143,54 @@ function normalizeSql(sql: string) {
   return separators[0] === undefined ? value : value.slice(0, separators[0]).trim()
 }
 
+/**
+ * Returns the top-level statement keyword, including the statement following
+ * a WITH clause. SQLite permits data-changing statements in a CTE, so using
+ * only the first token (`WITH`) would either reject read queries or make it
+ * possible to accidentally allow `WITH ... UPDATE` through the read gate.
+ */
+function statementKeyword(sql: string) {
+  const code = sqlCode(sql).trimStart().toLowerCase()
+  const first = /^([a-z]+)/.exec(code)?.[1] ?? ''
+  if (first !== 'with') {
+    return first
+  }
+
+  let depth = 0
+  for (let index = first.length; index < code.length; index += 1) {
+    const current = code[index]
+    if (current === '(') {
+      depth += 1
+      continue
+    }
+    if (current !== ')') {
+      continue
+    }
+    if (depth > 0) {
+      depth -= 1
+    }
+    if (depth !== 0) {
+      continue
+    }
+
+    // A CTE column list closes before its AS keyword. The query body closes
+    // before either another CTE (comma) or the main statement keyword.
+    let next = index + 1
+    while (next < code.length && /\s/.test(code[next] ?? '')) {
+      next += 1
+    }
+    if (code[next] === ',') {
+      continue
+    }
+    const token = /^[a-z]+/.exec(code.slice(next))?.[0] ?? ''
+    if (token === 'as' || token === 'not') {
+      continue
+    }
+    return token
+  }
+  return ''
+}
+
 function assertForbiddenSql(sql: string, write = false) {
   const normalized = sqlCode(sql).toLowerCase()
   const forbidden = /\b(?:attach|detach|load_extension)\b|pragma\s+(?:(?:main|temp)\s*\.\s*)?(?:writable_schema|database_list)\b|vacuum(?:\s+[a-z_][a-z0-9_]*)?\s+into\b/
@@ -157,7 +205,8 @@ function assertForbiddenSql(sql: string, write = false) {
 function assertReadSql(sql: string) {
   assertForbiddenSql(sql)
   const normalized = sqlCode(sql).trim().toLowerCase()
-  if (!/^(?:select|explain|pragma)\b/.test(normalized)) {
+  const keyword = statementKeyword(sql)
+  if (!['select', 'explain', 'pragma'].includes(keyword)) {
     throw new SqliteDebugError('SQLITE_DEBUG_READ_ONLY_SQL', 'Read mode only allows SELECT, EXPLAIN, and safe PRAGMA statements.')
   }
   if (normalized.startsWith('pragma')) {
@@ -170,8 +219,7 @@ function assertReadSql(sql: string) {
 
 function assertAnalyzableSql(sql: string) {
   assertReadSql(sql)
-  const normalized = sqlCode(sql).trimStart().toLowerCase()
-  if (!/^select\b/.test(normalized)) {
+  if (statementKeyword(sql) !== 'select') {
     throw new SqliteDebugError('SQLITE_DEBUG_READ_ONLY_SQL', 'Query analysis only accepts SELECT statements.')
   }
 }
@@ -989,7 +1037,7 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     async query(sql, parameters) {
       const normalized = normalizeSql(sql)
       assertReadSql(normalized)
-      const querySql = sqlCode(normalized).trimStart().toLowerCase().startsWith('select')
+      const querySql = statementKeyword(normalized) === 'select'
         ? `SELECT * FROM (${normalized}) LIMIT ${limits.maxRows + 1}`
         : normalized
       return read(querySql, parameters)
