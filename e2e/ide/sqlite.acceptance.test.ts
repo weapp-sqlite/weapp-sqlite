@@ -15,6 +15,7 @@ interface PageAcceptance {
 
 const runtimeProvider = process.env['WEAPP_VITE_E2E_RUNTIME_PROVIDER'] === 'headless' ? 'headless' : 'devtools'
 const wsEndpoint = process.env['WEAPP_VITE_E2E_WS_ENDPOINT']?.trim()
+const devtoolsCliPath = process.env['WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH']?.trim()
 const launcher = new Launcher()
 const runtimeLogs: string[] = []
 const runtimeFailures: string[] = []
@@ -74,6 +75,7 @@ beforeAll(async () => {
     ? await launcher.connect({ platform: 'wechat', wsEndpoint, timeout: 120_000 }) as MiniProgram
     : await launcher.launch({
       platform: 'wechat',
+      ...(devtoolsCliPath ? { cliPath: devtoolsCliPath } : {}),
       projectPath: path.join(demoRoot, 'dist/weapp'),
       runtimeProvider,
       trustProject: true,
@@ -100,7 +102,10 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await miniProgram?.close()
+  // This test may attach to the user's existing DevTools session through
+  // WEAPP_VITE_E2E_WS_ENDPOINT. Disconnect the automator transport only;
+  // MiniProgram.close() sends Tool.close and can close the user's IDE.
+  miniProgram?.disconnect()
 })
 
 it('runs provider-compatible SQLite acceptance', async () => {

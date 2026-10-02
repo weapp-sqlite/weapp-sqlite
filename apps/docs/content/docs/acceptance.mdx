@@ -37,6 +37,44 @@ Web suite 对生产静态产物执行重置、首次运行、刷新和持久化�
 
 Headless 只用于逻辑预检，不计入任何平台支持证据。截图用于保存证据，不做跨系统像素比较。
 
+## 真实 DevTools 的登录态与会话保护
+
+真实微信 DevTools 验收必须使用与当前桌面登录态相同的官方 CLI。macOS 默认路径是
+`/Applications/wechatwebdevtools.app/Contents/MacOS/cli`；如果电脑安装在其他位置，先确认
+该路径属于当前打开的微信开发者工具，再在同一个 shell 中显式设置：
+
+```bash
+export WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli
+export WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1
+pnpm acceptance:devtools:doctor
+```
+
+`WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH` 要同时传给 doctor、启动和验收命令，避免命令读取旧的
+`~/.weapp-ide-cli/config.json` 路径而拉起另一份 DevTools。验收脚本不得改写全局 CLI 配置、
+删除用户目录、清理登录缓存或切换 profile；发现 CLI 路径失效时应停止并修正环境。
+
+启动已登录的目标项目后，只创建一个 automator 会话并固定使用 10989 端口。后续 suite 通过
+同一个 WebSocket 复用会话：
+
+```bash
+WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli \
+WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1 \
+WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 \
+pnpm acceptance:devtools
+
+WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli \
+WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1 \
+WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 \
+pnpm acceptance:debug:devtools
+```
+
+`--no-open-recovery` 与 `WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1` 都表示禁止失败后的
+自动关闭并重开。共享登录态时优先使用环境变量，确保 build、doctor 和测试流程保持同一设置。
+测试 teardown 只能调用 automator 的 `disconnect()` 断开 WebSocket；禁止调用
+`miniProgram.close()`、`weapp close`、`weapp quit`、`closeIde` 或按进程名终止 DevTools，
+这些操作会关闭项目或 IDE，可能触发重新登录。登录失效应报告为环境阻塞，等待用户在同一
+DevTools 窗口完成登录后再重试。
+
 ## 新手执行顺序
 
 第一次验收建议按以下顺序执行，遇到失败时只处理当前阶段：
@@ -44,17 +82,18 @@ Headless 只用于逻辑预检，不计入任何平台支持证据。截图用�
 1. `pnpm install`，确保依赖完整。
 2. `pnpm acceptance:build`，确认七个目标都能构建。
 3. `pnpm acceptance:web` 和 `pnpm acceptance:debug:web`，先在浏览器验证业务和工作台。
-4. 运行 `pnpm acceptance:devtools:doctor`，确认微信 DevTools 已登录且项目配置正确。
+4. 设置上面的 CLI 路径和 `WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1`，再运行
+   `pnpm acceptance:devtools:doctor`，确认微信 DevTools 已登录且项目配置正确。
 5. 执行 `pnpm acceptance:devtools` 和 `pnpm acceptance:debug:devtools`。
 
-如果 DevTools 已经由 `wv ide auto --project ./dist/weapp --port 10989` 打开，可以复用当前 automator 会话，避免测试再次启动 IDE：
+如果 DevTools 已经由官方 CLI `weapp auto --project ./dist/weapp --auto-port 10989` 打开，可以复用当前 automator 会话，避免测试再次启动 IDE：
 
 ```bash
 WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 pnpm acceptance:devtools
 WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 pnpm acceptance:debug:devtools
 ```
 
-设置 `WEAPP_VITE_E2E_WS_ENDPOINT` 只改变测试连接入口；未设置时仍走 `Launcher.launch()` 的默认 CLI 启动流程。若 `doctor` 能读取 CLI、登录和 HTTP 服务端口，但 automator 仍提示连接失败，应先确认该端口对应目标项目，再通过 `wv ide auto` 重新启用自动化。
+设置 `WEAPP_VITE_E2E_WS_ENDPOINT` 只改变测试连接入口；未设置时仍走 `Launcher.launch()` 的默认 CLI 启动流程。正式验收优先复用 10989，避免重复启动 IDE。若 `doctor` 能读取 CLI、登录和 HTTP 服务端口，但 automator 仍提示连接失败，应先确认该端口对应目标项目和当前 CLI 路径，再通过官方 CLI 重新启用自动化；不要通过关闭或重启 IDE 来碰运气。
 6. 准备真机报告并执行 `pnpm acceptance:mobile:prepare`，完成 iOS/Android 手工步骤后再运行 `pnpm acceptance:verify`。
 
 ## 真机验收

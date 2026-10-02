@@ -24,6 +24,7 @@ interface PageAcceptance {
 
 const launcher = new Launcher()
 const wsEndpoint = process.env['WEAPP_VITE_E2E_WS_ENDPOINT']?.trim()
+const devtoolsCliPath = process.env['WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH']?.trim()
 const runtimeLogs: string[] = []
 const runtimeFailures: string[] = []
 let miniProgram: MiniProgram
@@ -91,6 +92,7 @@ beforeAll(async () => {
     ? await launcher.connect({ platform: 'wechat', wsEndpoint, timeout: 120_000 }) as MiniProgram
     : await launcher.launch({
       platform: 'wechat',
+      ...(devtoolsCliPath ? { cliPath: devtoolsCliPath } : {}),
       projectPath: path.join(demoRoot, 'dist/weapp'),
       runtimeProvider: 'devtools',
       trustProject: true,
@@ -117,7 +119,9 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await miniProgram?.close()
+  // Keep the user's DevTools process and login session intact. MiniProgram
+  // close() sends Tool.close, so teardown must only disconnect automator.
+  miniProgram?.disconnect()
 })
 
 it('manages and persists SQLite through the generated DevTools workspace', async () => {
