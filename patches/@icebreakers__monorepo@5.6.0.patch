@@ -1,0 +1,13 @@
+diff --git a/dist/commands-D4xZQ5t-.mjs b/dist/commands-D4xZQ5t-.mjs
+index 154d99547dd613ce4f046e572ac71c1ab9a663e2..71b6762fe3535aa9eb631a5bca9b70fd1a5a7460 100644
+--- a/dist/commands-D4xZQ5t-.mjs
++++ b/dist/commands-D4xZQ5t-.mjs
+@@ -2928,7 +2928,7 @@ async function readPendingIntentCommits(options) {
+ 	return uniqueCommits(commits);
+ }
+ async function readWorkspaceVersions(cwd) {
+-	const packages = await getWorkspacePackages(cwd);
++	const packages = await getWorkspacePackages(cwd, { ignorePrivatePackage: false });
+ 	const versions = /* @__PURE__ */ new Map();
+ 	for (const pkg of packages) try {
+ 		const manifest = JSON.parse(await readFile(pkg.pkgJsonPath, "utf8"));
