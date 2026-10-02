@@ -1,5 +1,37 @@
 # @weapp-sqlite/weapp-vite
 
+## 0.3.0
+
+### Minor Changes
+
+- 新增迁移与外键只读诊断，面板可查看待执行、未知版本、迁移名称冲突、外键约束开关和完整性违规；工作台配置的迁移定义会同步用于诊断。
+
+- 完善事务失败与持久化恢复，使用无副作用快照和原生语句只读信息，新增事务化批量执行与只读迁移诊断，并提供自定义引擎升级说明。
+
+- 新增受管调试会话、独立 Devframe 面板、多数据库切换、SQL 历史与执行计划。
+
+### Patch Changes
+
+- 自动发现的运行时数据库复用 `openSqlite()` 的迁移定义，Devframe 面板中的迁移与外键诊断可以覆盖未显式写入工作台配置的数据库。
+
+- 修复小程序业务 runtime 打包时误引用 DevTools 调试分包的问题，避免真实微信开发工具运行时报跨分包模块缺失。
+
+- 修正发布元数据中的内部 DevTools peer 依赖协议，确保自动发布流程可正常校验。
+
+- 面板关闭时受控释放运行时调试会话，保留业务数据库连接，并增强 WebSocket 释放确认与生命周期幂等性。
+
+- 撤销调试写入前同时核对数据库 revision 与持久化快照指纹，外部快照发生变化时拒绝恢复过期数据。
+
+- 修复 watch 重建时误删生成的 SQLite 调试页面与 WASM 加载文件的问题，并在 watcher 退出时统一释放调试资源。
+
+- Updated dependencies:
+  - @weapp-sqlite/core@0.2.0
+  - @weapp-sqlite/debug@0.2.0
+  - @weapp-sqlite/miniprogram@0.2.0
+  - @weapp-sqlite/sqljs@0.3.0
+  - @weapp-sqlite/wasm@0.2.0
+  - @weapp-sqlite/web@0.2.0
+
 ## 0.2.2
 
 ### Patch Changes

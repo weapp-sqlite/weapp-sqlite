@@ -11,6 +11,10 @@
   dir: packages/core
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/core@0.2.0":
+  dir: packages/core
+  intents:
+    - purple-pumas-call
 "@weapp-sqlite/debug@0.1.0":
   dir: packages/debug
   intents:
@@ -24,6 +28,39 @@
   dir: packages/debug
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/debug@0.2.0":
+  dir: packages/debug
+  intents:
+    - bright-cursors-browse
+    - bright-index-diagnose
+    - bright-keys-diagnose
+    - itchy-insects-remember
+    - keen-trees-diagnose
+    - large-page-cache
+    - quiet-queries-diagnose
+    - sour-pots-jump
+    - stable-page-order
+    - tidy-hidden-columns
+    - tidy-snapshots-undo
+    - wise-keys-diagnose
+"@weapp-sqlite/devtools@0.1.0":
+  dir: packages/devtools
+  intents:
+    - bright-cursors-browse
+    - bright-keys-diagnose
+    - calm-sockets
+    - keen-trees-diagnose
+    - preauth-devtools
+    - quiet-panels-share
+    - quiet-queries-diagnose
+    - small-jokes-lick
+    - soft-panel-release
+    - sour-pots-jump
+    - sql-history-input
+    - stale-session-panel
+    - strict-runtime-bridge
+    - tidy-devtools-lifecycle
+    - wise-keys-diagnose
 "@weapp-sqlite/docs@0.1.0":
   dir: apps/docs
   intents:
@@ -44,6 +81,10 @@
   dir: packages/miniprogram
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/miniprogram@0.2.0":
+  dir: packages/miniprogram
+  intents:
+    - khaki-snakes-brake
 "@weapp-sqlite/sqljs@0.2.0":
   dir: packages/sqljs
   intents:
@@ -52,6 +93,10 @@
   dir: packages/sqljs
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/sqljs@0.3.0":
+  dir: packages/sqljs
+  intents:
+    - purple-pumas-call
 "@weapp-sqlite/wasm@0.1.0":
   dir: packages/wasm
   intents:
@@ -65,6 +110,10 @@
   dir: packages/wasm
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/wasm@0.2.0":
+  dir: packages/wasm
+  intents:
+    - purple-pumas-call
 "@weapp-sqlite/weapp-vite@0.1.0":
   dir: packages/weapp-vite
   intents:
@@ -84,6 +133,18 @@
   intents:
     - clean-app-config
     - upgrade-weapp-vite-dev
+"@weapp-sqlite/weapp-vite@0.3.0":
+  dir: packages/weapp-vite
+  intents:
+    - active-runtime-diagnostics
+    - bright-keys-diagnose
+    - clean-runtime-boundary
+    - famous-boats-pretend
+    - purple-pumas-call
+    - soft-panel-release
+    - sour-pots-jump
+    - tidy-snapshots-undo
+    - watch-debug-route
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:
@@ -97,7 +158,15 @@
   dir: packages/web
   intents:
     - upgrade-dependencies
+"@weapp-sqlite/web@0.2.0":
+  dir: packages/web
+  intents:
+    - khaki-snakes-brake
 weapp-sqlite@0.1.1:
   dir: packages/weapp-sqlite
   intents:
     - quiet-sqlite-facade
+weapp-sqlite@0.2.0:
+  dir: packages/weapp-sqlite
+  intents:
+    - purple-pumas-call
