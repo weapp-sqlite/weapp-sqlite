@@ -16,7 +16,10 @@ export interface SqliteDevtoolsClient {
 /** Connects the panel to the host Devframe RPC namespace. */
 export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
   const rpc = await getDevframeRpcClient({ otpParam: false })
-  const authenticated = await authenticateWithUrlOtp(rpc).catch(() => false)
+  // A Vite DevTools host can pre-authorize the scoped client and provide no
+  // OTP in the panel URL. Preserve that trusted state; only perform the OTP
+  // exchange when the host still needs authentication.
+  const authenticated = rpc.isTrusted || await authenticateWithUrlOtp(rpc).catch(() => false)
   if (!authenticated || !rpc.isTrusted) {
     rpc.close?.()
     throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_UNAUTHORIZED', 'Devframe did not authorize the SQLite panel.')
