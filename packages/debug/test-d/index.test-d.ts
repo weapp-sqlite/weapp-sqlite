@@ -3,11 +3,16 @@ import type {
   SqliteDebugColumn,
   SqliteDebugController,
   SqliteDebugExecutionResult,
+  SqliteDebugForeignKeyDiagnostics,
   SqliteDebugImportPreview,
   SqliteDebugIndex,
+  SqliteDebugMigrationDiagnostics,
   SqliteDebugMigrationStatus,
   SqliteDebugPage,
+  SqliteDebugQueryAnalysis,
   SqliteDebugQueryResult,
+  SqliteDebugSession,
+  SqliteDebugSessionScope,
   SqliteDebugSnapshotMetadata,
   SqliteDebugTable,
   SqliteDebugTableArtifact,
@@ -18,6 +23,10 @@ import type {
 import { expectType } from 'tsd'
 import { createSqliteDebugController } from '..'
 
+declare const session: SqliteDebugSession
+expectType<Promise<string>>(session.runExclusive(async (scope: SqliteDebugSessionScope) => scope.database.name))
+expectType<Promise<void>>(session.close())
+
 const controller = createSqliteDebugController({
   databaseName: 'demo',
   openDatabase: async () => ({ } as SqliteConnection & never),
@@ -25,6 +34,7 @@ const controller = createSqliteDebugController({
   enabled: true,
 })
 expectType<SqliteDebugController>(controller)
+expectType<SqliteDebugController>(createSqliteDebugController({ databaseName: 'demo', session, enabled: true }))
 expectType<Promise<readonly SqliteDebugTable[]>>(controller.listTables())
 expectType<Promise<readonly SqliteDebugColumn[]>>(controller.describeTable('notes'))
 expectType<Promise<SqliteDebugPage>>(controller.readTable('notes', { limit: 50, offset: 0 }))
@@ -50,8 +60,11 @@ expectType<boolean>(controller.getUndoState().available)
 expectType<SqliteDebugUndoState>(controller.getUndoState())
 expectType<Promise<void>>(controller.undoLastDestructiveChange())
 expectType<Promise<SqliteDebugQueryResult>>(controller.query('SELECT * FROM notes WHERE id = ?', [1]))
+expectType<Promise<SqliteDebugQueryAnalysis>>(controller.analyzeQuery('SELECT * FROM notes WHERE id = ?', [1]))
 expectType<Promise<SqliteDebugExecutionResult>>(controller.execute('DELETE FROM notes WHERE id = ?', [1], { allowWrite: true }))
 expectType<Promise<SqliteDebugMigrationStatus>>(controller.getMigrationStatus())
+expectType<Promise<SqliteDebugMigrationDiagnostics>>(controller.getMigrationDiagnostics())
+expectType<Promise<SqliteDebugForeignKeyDiagnostics>>(controller.getForeignKeyDiagnostics())
 expectType<Promise<void>>(controller.resetDatabase())
 expectType<Promise<Uint8Array>>(controller.exportDatabase().then(snapshot => snapshot.bytes))
 expectType<Promise<SqliteDebugSnapshotMetadata>>(controller.importDatabase(new Uint8Array(), { replace: true }))

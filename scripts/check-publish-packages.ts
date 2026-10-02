@@ -65,6 +65,7 @@ const publicPackages = new Map([
   ['packages/web', '@weapp-sqlite/web'],
   ['packages/miniprogram', '@weapp-sqlite/miniprogram'],
   ['packages/debug', '@weapp-sqlite/debug'],
+  ['packages/devtools', '@weapp-sqlite/devtools'],
   ['packages/weapp-vite', '@weapp-sqlite/weapp-vite'],
 ])
 

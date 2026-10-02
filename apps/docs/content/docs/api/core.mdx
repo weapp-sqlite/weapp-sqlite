@@ -28,9 +28,53 @@ interface SqliteDatabase {
 }
 ```
 
-`flush()` 会在内部队列中等待所有已提交写入落到宿主 storage，适合调试导出或应用退出前建立快照。
+`flush()` 会在内部队列中等待所有已提交写入落到宿主 storage，适合调试导出或应用退出前建立快照。提交后的持久化失败是否能通过重试 `flush()` 完成，取决于连接 adapter 是否保留待保存状态；官方 WASM、Web 和小程序 adapter 提供这一保证，自定义 `SqliteConnection` 需要自行遵守该约定。
 
 `SqliteParameters` 支持位置数组或命名对象；标量包括字符串、数字、`bigint`、`boolean`、二进制数据和 `null`。
+
+事务句柄内的操作按调用顺序执行。回调结束时句柄失效，此前已启动的操作会先排空，再提交或回滚。任何操作失败都会使事务回滚，即使回调捕获了该异常。活动事务期间再次调用数据库的 `transaction()` 会拒绝；不支持嵌套事务，回调内应使用传入的事务句柄。
+
+## `execMany`
+
+```ts
+function execMany(
+  target: SqliteDatabase | SqliteTransaction,
+  sql: string,
+  parameterSets: readonly SqliteParameters[],
+): Promise<readonly SqliteExecResult[]>
+```
+
+传入数据库时用一个事务执行整个批次，传入事务句柄时复用外层事务。结果与参数集顺序一致，首个失败会停止后续执行，空批次返回 `[]`。使用绑定参数，成功批次只在事务提交后保存；本接口不提供准备语句复用保证。
+
+```ts
+import { execMany } from '@weapp-sqlite/weapp-vite/runtime'
+
+const results = await execMany(database, 'INSERT INTO notes (body) VALUES (?)', [
+  ['第一条'],
+  ['第二条'],
+])
+```
+
+## `getMigrationStatus`
+
+```ts
+function getMigrationStatus(
+  database: SqliteDatabase,
+  migrations?: readonly SqliteMigration[],
+): Promise<SqliteMigrationStatus>
+```
+
+这是只读诊断，不创建迁移表，也不执行 `up`。可从 core 或统一 runtime 导入。
+
+| 字段 | 内容 |
+| --- | --- |
+| `tablePresent` | 迁移历史表是否存在 |
+| `applied` | 全部历史记录，包含 `version`、`name`、`appliedAt` |
+| `pending` | 尚未应用的定义，仅包含 `version`、`name`，按版本升序 |
+| `unknown` | 历史中存在、传入定义中不存在的记录 |
+| `conflicts` | 同版本名称冲突，包含 `version`、`appliedName`、`expectedName` |
+
+未传入定义时默认使用空数组，已有历史都会列入 `unknown`；这不表示数据库损坏。
 
 ## `migrate`
 
@@ -43,7 +87,12 @@ function migrate(
 
 迁移按 `version` 升序执行，成功版本写入 `__weapp_sqlite_migrations`。版本号必须为正整数且唯一；重复或非法版本会立即抛错。
 
+同一 `SqliteDatabase` 对象上的迁移和状态读取串行协调。名称冲突会在执行任何新迁移前报错，未知历史版本只参与诊断。每条迁移独立提交：后续迁移失败不会撤销已经完成的版本，重试从未完成的版本继续。该协调不提供跨连接、跨页面或跨进程锁；需要这些范围的互斥时，应在宿主或应用层提供协调。
+
 ## 错误类型
 
 - `SqliteClosedError`：数据库已关闭后仍有操作。
-- `SqliteTransactionError`：嵌套事务或回滚失败。
+- `SqliteTransactionError`：活动事务冲突、过期事务句柄或回滚失败。回滚失败会保留原始和清理错误，此后仅允许关闭连接，不会保存未知事务状态。
+- `SqlitePersistenceError`：事务已提交，但持久化失败。`committed` 恒为 `true`，`cause` 保留存储错误；在 adapter 保留待保存状态的前提下应重试 `flush()`，不要重新执行事务。
+
+完整恢复示例见[升级指南](/docs/upgrading)。

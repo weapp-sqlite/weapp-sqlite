@@ -29,9 +29,11 @@ const debug = createSqliteDebugController({
 控制器提供四组能力：
 
 - 浏览：`listTables()`、`describeTable()`、`getTableCapabilities()`、`listIndexes()`、`readTable()`。
+
+`readTable()` 的总行数按当前数据库 revision 和筛选条件短暂缓存，连续翻页不会重复扫描同一组筛选结果；任意业务或调试写入、快照替换和重置都会使缓存失效。若传入的 `offset` 已超过最后一页，返回结果会将其夹到最后一个有效页；空表返回 `offset: 0`。返回的 `limit` 是应用 `maxRows` 约束后的实际页大小，调用方应使用它计算下一页的偏移量。
 - 数据与结构：`insertRow()`、`updateRow()`、`deleteRows()`、`createTable()`、`renameTable()`、`dropTable()`、`truncateTable()`、列管理和索引管理。
 - 导入导出：`exportDatabase()`、`importDatabase()`、`exportTable()`、`previewTableImport()`、`importTable()`。
-- 诊断：`query()`、`execute()`、`getMigrationStatus()`、`getUndoState()`、`undoLastDestructiveChange()`、`resetDatabase()` 和 `close()`。
+- 诊断：`query()`、`analyzeQuery()`、`execute()`、`getMigrationStatus()`、`getMigrationDiagnostics()`、`getForeignKeyDiagnostics()`、`getUndoState()`、`undoLastDestructiveChange()`、`resetDatabase()` 和 `close()`。
 
 控制器只有在 `enabled: true` 时才执行操作，省略或传入 `false` 都返回 `SQLITE_DEBUG_DISABLED`。`query()` 只允许 `SELECT`、`EXPLAIN` 和明确列入安全白名单的只读 `PRAGMA`；写入必须同时传入 `{ allowWrite: true }`。`ATTACH`、`DETACH`、`load_extension`、`writable_schema` 和 `VACUUM INTO` 始终拒绝。参数必须通过绑定参数传入，表名和列名由控制器转义。
 
@@ -40,5 +42,9 @@ const debug = createSqliteDebugController({
 默认返回上限为 500 行、1 MiB，导入上限为 16 MiB。每次写入前必须创建不超过 `maxUndoBytes` 的快照，成功后成为本会话唯一撤销点；快照失败时写入被阻止。删除表、清空、删除列、批量删除和 replace 导入还必须提供完整表名确认。
 
 SQLite 导出会先 `flush()`，返回原始快照、SHA-256、迁移版本和运行时元数据。CSV 遵循 RFC 4180、UTF-8 BOM，并区分 NULL 与空字符串；JSON 使用版本化带类型值保留 INTEGER、REAL、TEXT、BLOB 和 NULL。CSV/JSON 导入先预览和映射，`create`、`append`、`replace` 都在事务内执行，失败不保留部分数据。
+
+`analyzeQuery(sql, parameters)` 只接受 `SELECT`，使用同一组绑定参数调用 `EXPLAIN QUERY PLAN`，返回节点层级、索引名称、耗时和诊断计数。它不会执行原查询；`full-table-scan`、`temporary-b-tree` 和 `automatic-index` 会作为警告返回。
+
+`getMigrationDiagnostics()` 在传入控制器的 `migrations` 定义和数据库中的迁移历史之间做只读比对，返回已应用、待执行、未知版本、名称冲突、最新版本和健康状态；不会创建迁移表，也不会执行迁移回调。`getForeignKeyDiagnostics()` 读取 `PRAGMA foreign_keys`、每张表的 `foreign_key_list` 和全库 `foreign_key_check`，返回约束、违规行及“外键关闭/存在违规”警告，不修改数据库。
 
 调试面板应由编译期开关控制。生产构建不应注册调试路由、SQL 写入口或导入接口。

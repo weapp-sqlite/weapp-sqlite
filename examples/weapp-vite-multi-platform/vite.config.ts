@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [weappSqlite({
     debug: {
       enabled: debugEnabled,
+      devtools: process.env['WEAPP_SQLITE_DEVTOOLS'] === '1',
       page: {
         route: '__weapp_sqlite_debug/index/index',
         configFile: './src/sqlite-debug.config.ts',
@@ -23,7 +24,9 @@ export default defineConfig({
     alias: {
       '@weapp-sqlite/core': path.resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
       '@weapp-sqlite/wasm': path.resolve(import.meta.dirname, '../../packages/wasm/src/index.ts'),
+      '@weapp-sqlite/web/runtime': path.resolve(import.meta.dirname, '../../packages/web/src/runtime.ts'),
       '@weapp-sqlite/web': path.resolve(import.meta.dirname, '../../packages/web/src/index.ts'),
+      '@weapp-sqlite/miniprogram/runtime': path.resolve(import.meta.dirname, '../../packages/miniprogram/src/runtime.ts'),
       '@weapp-sqlite/miniprogram': path.resolve(import.meta.dirname, '../../packages/miniprogram/src/index.ts'),
       '@weapp-sqlite/debug': path.resolve(import.meta.dirname, '../../packages/debug/src/index.ts'),
       '@weapp-sqlite/weapp-vite/runtime': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/runtime.ts'),
@@ -31,6 +34,7 @@ export default defineConfig({
       '@weapp-sqlite/weapp-vite/adapter': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/adapter.ts'),
       '@weapp-sqlite/weapp-vite/advanced': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/advanced.ts'),
       '@weapp-sqlite/weapp-vite/workspace': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/workspace.ts'),
+      '@weapp-sqlite/weapp-vite/devtools-runtime': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/devtools-runtime.ts'),
       '@weapp-sqlite/weapp-vite': path.resolve(import.meta.dirname, '../../packages/weapp-vite/src/plugin.ts'),
     },
   },

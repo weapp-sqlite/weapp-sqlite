@@ -49,7 +49,13 @@ for (const target of targets) {
   await collect(output)
   for (const file of files.filter(file => /\.(?:js|wxml|html|css|wxss)$/.test(file))) {
     const content = await readFile(file, 'utf8')
-    if (/__weapp_sqlite_debug|SQLite 数据工作台|debug-sql|createSqliteDebugController|createSqliteDebugWorkspacePage|SQLITE_DEBUG_|saveFileToDisk|shareFileMessage|chooseMessageFile/.test(content)) {
+    // The Web target always bundles @weapp-vite/web's general mini-program
+    // polyfill.  That polyfill legitimately exposes generic file APIs such as
+    // `saveFileToDisk` and `chooseMessageFile`, so matching those names alone
+    // would reject every otherwise production-safe Web build.  Match markers
+    // owned by the SQLite debug package instead; these remain stable even when
+    // the production bundler minifies function names.
+    if (/__weapp_sqlite_debug|SQLite 数据工作台|debug-sql|createSqliteDebugController|createSqliteDebugWorkspacePage|SQLITE_DEBUG_|(?:Web|MiniProgram)SqliteDebugFile|(?:WEB|MINIPROGRAM)_SQLITE_DEBUG_FILE_/.test(content)) {
       throw new Error(`Production ${target} output contains SQLite debug capability: ${file}`)
     }
   }

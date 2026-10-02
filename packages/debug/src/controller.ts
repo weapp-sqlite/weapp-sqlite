@@ -1,4 +1,5 @@
 import type { SqliteDatabase, SqliteParameters, SqliteScalar } from '@weapp-sqlite/core'
+import type { SqliteDebugSessionScope } from './session'
 import type {
   SqliteDebugColumnDefinition,
   SqliteDebugController,
@@ -6,19 +7,27 @@ import type {
   SqliteDebugDestructiveOptions,
   SqliteDebugExecutionResult,
   SqliteDebugFilter,
+  SqliteDebugForeignKeyConstraint,
+  SqliteDebugForeignKeyDiagnostics,
+  SqliteDebugForeignKeyViolation,
   SqliteDebugImportMapping,
   SqliteDebugLimits,
+  SqliteDebugMigrationDiagnostics,
   SqliteDebugMigrationStatus,
   SqliteDebugOrder,
   SqliteDebugPage,
+  SqliteDebugQueryAnalysis,
+  SqliteDebugQueryPlanNode,
   SqliteDebugQueryResult,
   SqliteDebugRowLocator,
   SqliteDebugSnapshot,
   SqliteDebugSnapshotMetadata,
   SqliteDebugTableCapabilities,
 } from './types'
+import { execMany, getMigrationStatus as getCoreMigrationStatus } from '@weapp-sqlite/core'
 import { encodeDebugTable, parseDebugTable } from './codecs'
 import { SqliteDebugError } from './errors'
+import { createOwnedSqliteDebugSession } from './session'
 
 const SQLITE_HEADER = 'SQLite format 3\0'
 const SQLITE_HEADER_BYTES = Uint8Array.from(SQLITE_HEADER, character => character.charCodeAt(0))
@@ -40,6 +49,7 @@ const READ_ONLY_PRAGMAS = new Set([
   'encoding',
   'foreign_key_check',
   'foreign_key_list',
+  'foreign_keys',
   'freelist_count',
   'function_list',
   'index_info',
@@ -133,13 +143,13 @@ function normalizeSql(sql: string) {
   return separators[0] === undefined ? value : value.slice(0, separators[0]).trim()
 }
 
-function assertForbiddenSql(sql: string) {
+function assertForbiddenSql(sql: string, write = false) {
   const normalized = sqlCode(sql).toLowerCase()
   const forbidden = /\b(?:attach|detach|load_extension)\b|pragma\s+(?:(?:main|temp)\s*\.\s*)?(?:writable_schema|database_list)\b|vacuum(?:\s+[a-z_][a-z0-9_]*)?\s+into\b/
   if (forbidden.test(normalized)) {
     throw new SqliteDebugError('SQLITE_DEBUG_FORBIDDEN_SQL', 'This SQL operation is not available from the debug controller.')
   }
-  if (/\b(?:sqlite_\w*|__weapp_sqlite_migrations)\b|["`[](?:sqlite_\w*|__weapp_sqlite_migrations)["`\]]/i.test(sql)) {
+  if (write && /\b(?:sqlite_\w*|__weapp_sqlite_migrations)\b|["`[](?:sqlite_\w*|__weapp_sqlite_migrations)["`\]]/i.test(sql)) {
     throw new SqliteDebugError('SQLITE_DEBUG_PROTECTED_OBJECT', 'SQLite system objects and the migration table are protected from debug writes.')
   }
 }
@@ -152,9 +162,101 @@ function assertReadSql(sql: string) {
   }
   if (normalized.startsWith('pragma')) {
     const match = /^pragma\s+(?:(?:main|temp)\s*\.\s*)?([a-z_][a-z0-9_]*)\b/.exec(normalized)
-    if (!match?.[1] || !READ_ONLY_PRAGMAS.has(match[1]) || normalized.includes('=')) {
+    if (!match?.[1] || !READ_ONLY_PRAGMAS.has(match[1]) || normalized.includes('=') || (normalized.includes('(') && !['table_info', 'table_xinfo', 'index_info', 'index_xinfo', 'index_list', 'foreign_key_list', 'integrity_check', 'quick_check', 'foreign_key_check'].includes(match[1]))) {
       throw new SqliteDebugError('SQLITE_DEBUG_READ_ONLY_SQL', 'Read mode only allows explicitly safe PRAGMA statements.')
     }
+  }
+}
+
+function assertAnalyzableSql(sql: string) {
+  assertReadSql(sql)
+  const normalized = sqlCode(sql).trimStart().toLowerCase()
+  if (!/^select\b/.test(normalized)) {
+    throw new SqliteDebugError('SQLITE_DEBUG_READ_ONLY_SQL', 'Query analysis only accepts SELECT statements.')
+  }
+}
+
+function planNumber(value: unknown, fallback: number) {
+  const result = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(result) ? Math.trunc(result) : fallback
+}
+
+function planText(value: unknown) {
+  return typeof value === 'string' ? value : value == null ? '' : String(value)
+}
+
+function planNode(row: Record<string, unknown>, fallbackId: number): SqliteDebugQueryPlanNode {
+  const id = planNumber(row['id'], fallbackId)
+  const parent = planNumber(row['parent'], -1)
+  const notUsed = planNumber(row['notused'] ?? row['notUsed'], 0)
+  const detail = planText(row['detail'])
+  const temporary = /\buse\s+temp(?:orary)?\s+b-tree\b/i.test(detail)
+  const search = /^\s*search\b/i.test(detail)
+  const scan = /^\s*scan\b/i.test(detail)
+  const kind: SqliteDebugQueryPlanNode['kind'] = temporary ? 'temporary-b-tree' : search ? 'search' : scan ? 'scan' : 'other'
+  const tableMatch = /^\s*(?:scan|search)\s+(?:table\s+)?(?:["`]([^"`]+)["`]|\[([^\]]+)\]|([^\s(]+))/i.exec(detail)
+  const table = tableMatch?.[1] ?? tableMatch?.[2] ?? tableMatch?.[3]
+  const indexMatch = /\busing\s+(?:(?:covering|automatic)\s+)?index\s+(?:["`]([^"`]+)["`]|\[([^\]]+)\]|([^\s(]+))/i.exec(detail)
+  const index = indexMatch?.[1] ?? indexMatch?.[2] ?? indexMatch?.[3] ?? (/\busing\s+integer\s+primary\s+key\b/i.test(detail) ? 'INTEGER PRIMARY KEY' : undefined)
+  const node: SqliteDebugQueryPlanNode = {
+    id,
+    parent,
+    notUsed,
+    detail,
+    depth: 0,
+    kind,
+    ...(table ? { table } : {}),
+    ...(index ? { index } : {}),
+  }
+  // Depth is filled after all parent links are known. Keeping this helper pure
+  // makes malformed plans (cycles or missing parents) safe to display.
+  return node
+}
+
+function planDepths(nodes: readonly SqliteDebugQueryPlanNode[]) {
+  const byId = new Map(nodes.map(node => [node.id, node]))
+  const depths = new Map<number, number>()
+  function depth(id: number, path: ReadonlySet<number>): number {
+    const existing = depths.get(id)
+    if (existing !== undefined) {
+      return existing
+    }
+    const node = byId.get(id)
+    if (!node || node.parent === id || path.has(id)) {
+      depths.set(id, 0)
+      return 0
+    }
+    const nextPath = new Set(path)
+    nextPath.add(id)
+    const value = byId.has(node.parent) ? depth(node.parent, nextPath) + 1 : 0
+    depths.set(id, value)
+    return value
+  }
+  return nodes.map(node => ({ ...node, depth: depth(node.id, new Set()) }))
+}
+
+function analyzePlan(rows: readonly Record<string, unknown>[]) {
+  const nodes = planDepths(rows.map((row, index) => planNode(row, index)))
+  const indexes = [...new Set(nodes.flatMap(node => node.index ? [node.index] : []))]
+  const fullTableScans = nodes.filter(node => node.kind === 'scan' && node.table && !node.index && !/\bscan\s+constant\s+row\b/i.test(node.detail)).length
+  const temporaryBtrees = nodes.filter(node => node.kind === 'temporary-b-tree').length
+  const automaticIndexes = nodes.filter(node => node.detail.match(/\busing\s+automatic\s+index\b/i)).length
+  const warnings = [
+    ...(fullTableScans > 0 ? ['full-table-scan' as const] : []),
+    ...(temporaryBtrees > 0 ? ['temporary-b-tree' as const] : []),
+    ...(automaticIndexes > 0 ? ['automatic-index' as const] : []),
+  ]
+  return {
+    nodes,
+    diagnostics: {
+      fullTableScans,
+      temporaryBtrees,
+      automaticIndexes,
+      indexes,
+      warnings,
+      fullTableScan: fullTableScans > 0,
+      temporaryBTree: temporaryBtrees > 0,
+    },
   }
 }
 
@@ -427,13 +529,23 @@ function compileOrder(columns: readonly string[], orderBy: readonly SqliteDebugO
   return orderBy.length === 0 ? '' : ` ORDER BY ${orderBy.map(order => `${quoteIdentifier(order.column)} ${order.direction.toUpperCase()}`).join(', ')}`
 }
 
-function locatorWhere(locator: SqliteDebugRowLocator, primaryKey: readonly string[]) {
+interface TableRowIdentity {
+  readonly primaryKey: readonly string[]
+  readonly reliablePrimaryKey: boolean
+  readonly rowidColumn: string | undefined
+}
+
+function locatorWhere(locator: SqliteDebugRowLocator, identity: TableRowIdentity) {
   if (locator.kind === 'rowid') {
-    return { sql: 'rowid = ?', parameters: [locator.value] satisfies SqliteScalar[] }
+    if (!identity.rowidColumn || (typeof locator.value !== 'bigint' && !Number.isSafeInteger(locator.value))) {
+      throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', 'The row locator does not match an accessible SQLite rowid.')
+    }
+    return { sql: `${quoteIdentifier(identity.rowidColumn)} = ?`, parameters: [locator.value] satisfies SqliteScalar[] }
   }
+  const primaryKey = identity.primaryKey
   const keys = Object.keys(locator.values)
-  if (primaryKey.length === 0 || keys.length !== primaryKey.length || primaryKey.some(key => !Object.hasOwn(locator.values, key))) {
-    throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', 'The row locator does not match the table primary key.')
+  if (!identity.reliablePrimaryKey || keys.length !== primaryKey.length || primaryKey.some(key => !Object.hasOwn(locator.values, key) || locator.values[key] == null)) {
+    throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', 'The row locator does not match a reliable table primary key.')
   }
   return {
     sql: primaryKey.map(column => `${quoteIdentifier(column)} IS ?`).join(' AND '),
@@ -499,9 +611,17 @@ function coerceImportedValue(value: SqliteScalar, type: SqliteDebugColumnDefinit
 
 export function createSqliteDebugController(options: SqliteDebugControllerOptions): SqliteDebugController {
   const limits = { ...DEFAULT_LIMITS, ...options.limits }
-  let databasePromise: Promise<SqliteDatabase> | undefined
+  const session = options.session ?? createOwnedSqliteDebugSession(options)
+  let currentScope: SqliteDebugSessionScope | undefined
   let closed = false
-  let undo: { readonly bytes?: Uint8Array, readonly operation: string, readonly createdAt: string } | undefined
+  let lastRevision = 0
+  let undo: { readonly bytes?: Uint8Array, readonly operation: string, readonly createdAt: string, readonly revision: number } | undefined
+  // Counting a filtered table is often much more expensive than reading one
+  // page. Keep counts for the current database revision so page navigation
+  // does not repeat the same full scan. The session revision changes for every
+  // application or debug write, snapshot replacement, and reset.
+  let totalCacheRevision: number | undefined
+  const totalCache = new Map<string, number>()
 
   function assertEnabled() {
     if (options.enabled !== true) {
@@ -509,12 +629,16 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     }
   }
 
-  async function database() {
+  function scope() {
     assertEnabled()
-    if (closed) {
-      throw new SqliteDebugError('SQLITE_DEBUG_DISABLED', 'The debug controller is closed.')
+    if (closed || !currentScope) {
+      throw new SqliteDebugError('SQLITE_DEBUG_DISABLED', 'The debug controller is closed or outside an operation.')
     }
-    return databasePromise ??= options.openDatabase()
+    return currentScope
+  }
+
+  async function database() {
+    return scope().database
   }
 
   async function read(sql: string, parameters?: SqliteParameters) {
@@ -528,9 +652,16 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     return { ...result, elapsedMs: Date.now() - started } satisfies SqliteDebugQueryResult
   }
 
-  async function objectRecord(tableName: string) {
+  function assertDiagnosticResultSize(value: { readonly rows: readonly unknown[] }) {
+    assertResultSize(value, limits)
+    if (value.rows.length > limits.maxRows) {
+      throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The result exceeds ${limits.maxRows} rows.`)
+    }
+  }
+
+  async function objectRecord(tableName: string, executor?: Pick<SqliteDatabase, 'query'>) {
     quoteIdentifier(tableName)
-    const current = await database()
+    const current = executor ?? await database()
     const result = await current.query<{ name: string, type: string, sql: string | null }>(
       'SELECT name, type, sql FROM sqlite_schema WHERE name = ? AND type IN (\'table\', \'view\')',
       [tableName],
@@ -542,30 +673,45 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     return record
   }
 
-  async function tableDetails(tableName: string) {
-    const object = await objectRecord(tableName)
-    const current = await database()
-    const info = await current.query<{ name: string, type: string, notnull: number, pk: number, dflt_value: unknown }>(`PRAGMA table_info(${quoteIdentifier(tableName)})`)
-    const primaryKey = info.rows.filter(column => Number(column.pk) > 0).sort((left, right) => Number(left.pk) - Number(right.pk)).map(column => String(column.name))
-    const withoutRowid = /\bWITHOUT\s+ROWID\b/i.test(object.sql ?? '')
+  async function tableDetails(tableName: string, executor?: Pick<SqliteDatabase, 'query'>) {
+    const current = executor ?? await database()
+    const object = await objectRecord(tableName, current)
+    const columns = await current.query<{ name: string, type: string, notnull: number, pk: number, dflt_value: unknown, hidden: number }>(`PRAGMA main.table_xinfo(${quoteIdentifier(tableName)})`)
+    const info = columns.rows.filter(column => Number(column.hidden) === 0)
+    const keyColumns = info.filter(column => Number(column.pk) > 0).sort((left, right) => Number(left.pk) - Number(right.pk))
+    const primaryKey = keyColumns.map(column => String(column.name))
+    const tables = await current.query<{ schema: string, name: string, wr: number }>(`PRAGMA main.table_list(${quoteIdentifier(tableName)})`)
+    const table = tables.rows.find(table => table.schema === 'main' && table.name === object.name)
+    const withoutRowid = Number(table?.wr) === 1
+    let reliablePrimaryKey = primaryKey.length > 0 && (withoutRowid || keyColumns.every(column => Number(column.notnull) === 1))
+    if (!reliablePrimaryKey && table && !withoutRowid && keyColumns.length === 1 && keyColumns[0]?.type.trim().toUpperCase() === 'INTEGER') {
+      const indexes = await current.query<{ origin: string }>(`PRAGMA main.index_list(${quoteIdentifier(tableName)})`)
+      // INTEGER PRIMARY KEY DESC has its own index and does not alias the rowid.
+      reliablePrimaryKey = !indexes.rows.some(index => index.origin === 'pk')
+    }
+    const columnNames = new Set(columns.rows.map(column => column.name.toLowerCase()))
+    const rowidColumn = object.type === 'table' && table && !withoutRowid
+      ? ['rowid', '_rowid_', 'oid'].find(alias => !columnNames.has(alias))
+      : undefined
+    const locator = object.type === 'view' ? 'none' : reliablePrimaryKey ? 'primary-key' : rowidColumn ? 'rowid' : 'none'
     const capabilities: SqliteDebugTableCapabilities = {
       tableName,
       objectType: object.type === 'view' ? 'view' : 'table',
       readable: true,
-      writable: object.type === 'table' && (primaryKey.length > 0 || !withoutRowid),
-      locator: object.type === 'view' ? 'none' : primaryKey.length > 0 ? 'primary-key' : withoutRowid ? 'none' : 'rowid',
+      writable: object.type === 'table' && locator !== 'none',
+      locator,
       primaryKey,
       supportsRenameColumn: object.type === 'table',
       supportsDropColumn: object.type === 'table',
-      ...(object.type === 'view' ? { reason: 'Views are read-only.' } : withoutRowid && primaryKey.length === 0 ? { reason: 'This table has no usable row locator.' } : {}),
+      ...(object.type === 'view' ? { reason: 'Views are read-only.' } : locator === 'none' ? { reason: 'This table has no reliable primary key or accessible SQLite rowid.' } : {}),
     }
-    return { object, info: info.rows, capabilities }
+    return { object, info, capabilities, rowIdentity: { primaryKey, reliablePrimaryKey, rowidColumn } satisfies TableRowIdentity }
   }
 
   async function createUndoSnapshot(operation: string) {
     const current = await database()
     await current.flush()
-    const bytes = await options.storage.load(options.databaseName)
+    const bytes = await scope().loadSnapshot()
     if (bytes && bytes.byteLength > limits.maxUndoBytes) {
       throw new SqliteDebugError('SQLITE_DEBUG_UNDO_TOO_LARGE', `The database exceeds the ${limits.maxUndoBytes} byte undo limit.`)
     }
@@ -576,34 +722,20 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     }
   }
 
-  async function writeOperation<T>(operation: string, callback: (current: SqliteDatabase) => Promise<T>) {
+  async function writeOperation<T>(operation: string, callback: (current: SqliteDebugSessionScope['database']) => Promise<T>) {
     const previous = await createUndoSnapshot(operation)
     const result = await callback(await database())
-    undo = previous
+    undo = { ...previous, revision: scope().revision }
     return result
   }
 
-  async function replaceSnapshot(bytes: Uint8Array, failureCode: 'SQLITE_DEBUG_IMPORT_FAILED' | 'SQLITE_DEBUG_UNDO_UNAVAILABLE') {
-    const current = await database()
-    await current.close()
-    databasePromise = undefined
-    let replacement: SqliteDatabase | undefined
+  async function replaceSnapshot(bytes: Uint8Array | undefined, failureCode: 'SQLITE_DEBUG_IMPORT_FAILED' | 'SQLITE_DEBUG_UNDO_UNAVAILABLE') {
     try {
-      await options.storage.save(options.databaseName, bytes)
-      replacement = await database()
-      const validation = await replacement.query<{ quick_check: string }>('PRAGMA quick_check')
-      if (validation.rows[0]?.quick_check !== 'ok') {
-        throw new Error('SQLite quick_check did not return ok.')
-      }
-      return replacement
+      await scope().replaceSnapshot(bytes)
+      return scope().database
     }
     catch (error) {
-      databasePromise = undefined
-      try {
-        await replacement?.close()
-      }
-      catch {}
-      throw new SqliteDebugError(failureCode, 'The SQLite snapshot could not be opened.', { cause: error })
+      throw new SqliteDebugError(failureCode, 'The SQLite snapshot replacement failed.', { cause: error })
     }
   }
 
@@ -613,24 +745,123 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     }
   }
 
-  async function migrationStatus(current: SqliteDatabase): Promise<SqliteDebugMigrationStatus> {
-    const exists = await current.query<{ name: string }>(
-      'SELECT name FROM sqlite_schema WHERE type = \'table\' AND name = ?',
-      [MIGRATIONS_TABLE],
-    )
-    if (exists.rows.length === 0) {
-      return { tablePresent: false, versions: [] }
-    }
-    const result = await current.query<{ version: number, name: string, applied_at: string }>(
-      `SELECT version, name, applied_at FROM ${quoteIdentifier(MIGRATIONS_TABLE)} ORDER BY version`,
-    )
+  async function migrationStatus(current: SqliteDebugSessionScope['database']): Promise<SqliteDebugMigrationStatus> {
+    const status = await getCoreMigrationStatus(current as SqliteDatabase)
     return {
-      tablePresent: true,
-      versions: result.rows.map(row => ({ version: Number(row.version), name: row.name, appliedAt: row.applied_at })),
+      tablePresent: status.tablePresent,
+      versions: status.applied,
     }
   }
 
-  async function metadata(bytes: Uint8Array, current: SqliteDatabase): Promise<SqliteDebugSnapshotMetadata> {
+  async function migrationDiagnostics(current: SqliteDebugSessionScope['database']): Promise<SqliteDebugMigrationDiagnostics> {
+    const status = await getCoreMigrationStatus(current as SqliteDatabase, options.migrations ?? [])
+    assertResultSize(status, limits)
+    if (status.applied.length > limits.maxRows) {
+      throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The migration history exceeds ${limits.maxRows} rows.`)
+    }
+    const expected = [...(options.migrations ?? [])]
+      .sort((left, right) => left.version - right.version)
+      .map(({ version, name }) => ({ version, name }))
+    const hasExpectedMigrations = options.migrations !== undefined
+    const latestAppliedVersion = status.applied.at(-1)?.version
+    const latestExpectedVersion = expected.at(-1)?.version
+    const warnings = [
+      ...(expected.length > 0 && !status.tablePresent ? ['history-missing' as const] : []),
+      ...(status.pending.length > 0 ? ['pending-migrations' as const] : []),
+      ...(hasExpectedMigrations && status.unknown.length > 0 ? ['unknown-migrations' as const] : []),
+      ...(hasExpectedMigrations && status.conflicts.length > 0 ? ['migration-conflicts' as const] : []),
+    ]
+    return {
+      tablePresent: status.tablePresent,
+      applied: status.applied,
+      expected,
+      pending: status.pending,
+      unknown: status.unknown,
+      conflicts: status.conflicts,
+      ...(latestAppliedVersion === undefined ? {} : { latestAppliedVersion }),
+      ...(latestExpectedVersion === undefined ? {} : { latestExpectedVersion }),
+      healthy: warnings.length === 0,
+      warnings,
+    }
+  }
+
+  async function foreignKeyDiagnostics(current: SqliteDebugSessionScope['database']): Promise<SqliteDebugForeignKeyDiagnostics> {
+    const tableResult = await current.query<{ name: string, type: string }>(
+      'SELECT name, type FROM sqlite_schema WHERE type IN (\'table\', \'view\') AND name NOT LIKE \'sqlite_%\' AND name <> ? ORDER BY name',
+      [MIGRATIONS_TABLE],
+    )
+    assertResultSize(tableResult, limits)
+    if (tableResult.rows.length > limits.maxRows) {
+      throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The schema exceeds ${limits.maxRows} objects.`)
+    }
+    assertDiagnosticResultSize(tableResult)
+    const tables = tableResult.rows.filter(row => row.type === 'table').map(row => String(row.name))
+    const constraints: SqliteDebugForeignKeyConstraint[] = []
+    for (const table of tables) {
+      const result = await current.query<{
+        id: number
+        seq: number
+        table: string
+        from: string | null
+        to: string | null
+        on_update: string
+        on_delete: string
+        match: string
+      }>(`PRAGMA main.foreign_key_list(${quoteIdentifier(table)})`)
+      assertResultSize(result, limits)
+      if (result.rows.length > limits.maxRows) {
+        throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The foreign-key constraints exceed ${limits.maxRows} rows.`)
+      }
+      assertDiagnosticResultSize(result)
+      constraints.push(...result.rows.map(row => ({
+        table,
+        id: planNumber(row.id, 0),
+        sequence: planNumber(row.seq, 0),
+        referencedTable: String(row.table ?? ''),
+        from: row.from == null ? null : String(row.from),
+        to: row.to == null ? null : String(row.to),
+        onUpdate: String(row.on_update ?? ''),
+        onDelete: String(row.on_delete ?? ''),
+        match: String(row.match ?? ''),
+      })))
+    }
+    const pragma = await current.query<Record<string, unknown>>('PRAGMA foreign_keys')
+    assertDiagnosticResultSize(pragma)
+    const pragmaValue = pragma.rows[0] ? Object.values(pragma.rows[0])[0] : 0
+    const enabled = Number(pragmaValue) === 1
+    const violationResult = await current.query<{
+      table: string
+      rowid: number | bigint | string | null
+      parent: string
+      fkid: number
+    }>('PRAGMA foreign_key_check')
+    assertResultSize(violationResult, limits)
+    if (violationResult.rows.length > limits.maxRows) {
+      throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The foreign-key violations exceed ${limits.maxRows} rows.`)
+    }
+    assertDiagnosticResultSize(violationResult)
+    const violations: SqliteDebugForeignKeyViolation[] = violationResult.rows.map(row => ({
+      table: String(row.table ?? ''),
+      rowid: row.rowid ?? null,
+      parent: String(row.parent ?? ''),
+      foreignKeyId: planNumber(row.fkid, 0),
+    }))
+    const warnings = [
+      ...(!enabled && constraints.length > 0 ? ['foreign-keys-disabled' as const] : []),
+      ...(violations.length > 0 ? ['foreign-key-violations' as const] : []),
+    ]
+    return {
+      enabled,
+      constraints,
+      violations,
+      tableCount: tables.length,
+      constrainedTableCount: new Set(constraints.map(constraint => constraint.table)).size,
+      healthy: warnings.length === 0,
+      warnings,
+    }
+  }
+
+  async function metadata(bytes: Uint8Array, current: SqliteDebugSessionScope['database']): Promise<SqliteDebugSnapshotMetadata> {
     const migrations = await migrationStatus(current)
     return {
       databaseName: options.databaseName,
@@ -642,7 +873,7 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     }
   }
 
-  return {
+  const implementation: SqliteDebugController = {
     async listTables() {
       const result = await read('SELECT name, type, sql FROM sqlite_schema WHERE type IN (\'table\', \'view\') AND name NOT LIKE \'sqlite_%\' AND name <> ? ORDER BY name', [MIGRATIONS_TABLE])
       return result.rows.map(row => ({ name: String(row['name']), type: String(row['type']), sql: row['sql'] == null ? null : String(row['sql']) }))
@@ -681,18 +912,43 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     },
     async readTable(tableName, pageOptions = {}) {
       const limit = bounded(pageOptions.limit, 50, limits.maxRows)
-      const offset = bounded(pageOptions.offset, 0, Number.MAX_SAFE_INTEGER)
+      const requestedOffset = bounded(pageOptions.offset, 0, Number.MAX_SAFE_INTEGER)
       const current = await database()
       const details = await tableDetails(tableName)
       const columns = details.info.map(column => String(column.name))
       const where = compileWhere(columns, pageOptions.filters, pageOptions.search)
       const order = compileOrder(columns, pageOptions.orderBy)
-      const totalResult = await current.query<{ total: number }>(`SELECT count(*) AS total FROM ${quoteIdentifier(tableName)}${where.sql}`, where.parameters)
+      const revision = scope().revision
+      if (totalCacheRevision !== revision) {
+        totalCacheRevision = revision
+        totalCache.clear()
+      }
+      const cacheKey = JSON.stringify([tableName, where.sql, jsonSafe(where.parameters)])
+      let total = totalCache.get(cacheKey)
+      if (total === undefined) {
+        const totalResult = await current.query<{ total: number }>(`SELECT count(*) AS total FROM ${quoteIdentifier(tableName)}${where.sql}`, where.parameters)
+        total = Number(totalResult.rows[0]?.total ?? 0)
+        if (totalCache.size >= 32) {
+          const oldest = totalCache.keys().next().value
+          if (oldest !== undefined) {
+            totalCache.delete(oldest)
+          }
+        }
+        totalCache.set(cacheKey, total)
+      }
+      // A write can remove rows while the user is on a later page. Returning
+      // the last valid page keeps the response self-consistent and prevents
+      // the panel from displaying an empty page with an out-of-range offset.
+      const offset = total === 0 || limit === 0
+        ? 0
+        : Math.min(requestedOffset, Math.floor((total - 1) / limit) * limit)
       let rowidAlias = '__weapp_sqlite_rowid'
       while (columns.includes(rowidAlias)) {
         rowidAlias += '_'
       }
-      const locatorSelect = details.capabilities.locator === 'rowid' ? `rowid AS ${quoteIdentifier(rowidAlias)}, ` : ''
+      const locatorSelect = details.capabilities.locator === 'rowid' && details.rowIdentity.rowidColumn
+        ? `${quoteIdentifier(details.rowIdentity.rowidColumn)} AS ${quoteIdentifier(rowidAlias)}, `
+        : ''
       const result = await read(`SELECT ${locatorSelect}* FROM ${quoteIdentifier(tableName)}${where.sql}${order} LIMIT ? OFFSET ?`, [...where.parameters, limit, offset])
       const rows = result.rows.map((row) => {
         if (details.capabilities.locator !== 'rowid') {
@@ -707,7 +963,7 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
         columns,
         rows,
         rowLocators: details.capabilities.locator === 'none' ? [] : rowLocators,
-        total: Number(totalResult.rows[0]?.total ?? 0),
+        total,
         limit,
         offset,
       }
@@ -722,9 +978,22 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
         : normalized
       return read(querySql, parameters)
     },
+    async analyzeQuery(sql, parameters) {
+      const normalized = normalizeSql(sql)
+      assertAnalyzableSql(normalized)
+      const started = Date.now()
+      const current = await database()
+      const result = await current.query(`EXPLAIN QUERY PLAN ${normalized}`, parameters)
+      assertResultSize(result, limits)
+      if (result.rows.length > limits.maxRows) {
+        throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The result exceeds ${limits.maxRows} rows.`)
+      }
+      const plan = analyzePlan(result.rows)
+      return { sql: normalized, ...plan, elapsedMs: Date.now() - started } satisfies SqliteDebugQueryAnalysis
+    },
     async execute(sql, parameters, executeOptions = {}) {
       const normalized = normalizeSql(sql)
-      assertForbiddenSql(normalized)
+      assertForbiddenSql(normalized, true)
       assertWrite(executeOptions)
       const started = Date.now()
       const result = await writeOperation('Execute write SQL', current => current.exec(normalized, parameters))
@@ -753,37 +1022,40 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     async updateRow(tableName, locator, values, writeOptions) {
       assertWrite(writeOptions)
       assertMutableIdentifier(tableName)
-      const details = await tableDetails(tableName)
-      assertWritable(details.capabilities)
-      const columns = Object.keys(values)
-      const available = new Set(details.info.map(column => String(column.name)))
-      if (columns.length === 0 || columns.some(column => !available.has(column))) {
-        throw new SqliteDebugError('SQLITE_DEBUG_INVALID_MAPPING', 'Update requires valid column values.')
-      }
-      const where = locatorWhere(locator, details.capabilities.primaryKey)
       const started = Date.now()
-      const result = await writeOperation(`Update row in ${tableName}`, current => current.exec(
-        `UPDATE ${quoteIdentifier(tableName)} SET ${columns.map(column => `${quoteIdentifier(column)} = ?`).join(', ')} WHERE ${where.sql}`,
-        [...columns.map(column => values[column] ?? null), ...where.parameters],
-      ))
-      if (result.changes !== 1) {
-        throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', `Expected to update one row, but SQLite changed ${result.changes}.`)
-      }
+      const result = await writeOperation(`Update row in ${tableName}`, current => current.transaction(async (transaction) => {
+        const details = await tableDetails(tableName, transaction)
+        assertWritable(details.capabilities)
+        const columns = Object.keys(values)
+        const available = new Set(details.info.map(column => String(column.name)))
+        if (columns.length === 0 || columns.some(column => !available.has(column))) {
+          throw new SqliteDebugError('SQLITE_DEBUG_INVALID_MAPPING', 'Update requires valid column values.')
+        }
+        const where = locatorWhere(locator, details.rowIdentity)
+        const updated = await transaction.exec(
+          `UPDATE ${quoteIdentifier(tableName)} SET ${columns.map(column => `${quoteIdentifier(column)} = ?`).join(', ')} WHERE ${where.sql}`,
+          [...columns.map(column => values[column] ?? null), ...where.parameters],
+        )
+        if (updated.changes !== 1) {
+          throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', `Expected to update one row, but SQLite changed ${updated.changes}.`)
+        }
+        return updated
+      }))
       return { ...result, elapsedMs: Date.now() - started }
     },
     async deleteRows(tableName, locators, destructiveOptions) {
       assertMutableIdentifier(tableName)
       assertDestructive(tableName, destructiveOptions)
-      const details = await tableDetails(tableName)
-      assertWritable(details.capabilities)
       if (locators.length === 0) {
         throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', 'Select at least one row to delete.')
       }
       const started = Date.now()
       const result = await writeOperation(`Delete ${locators.length} row(s) from ${tableName}`, current => current.transaction(async (transaction) => {
+        const details = await tableDetails(tableName, transaction)
+        assertWritable(details.capabilities)
         let changes = 0
         for (const locator of locators) {
-          const where = locatorWhere(locator, details.capabilities.primaryKey)
+          const where = locatorWhere(locator, details.rowIdentity)
           const deleted = await transaction.exec(`DELETE FROM ${quoteIdentifier(tableName)} WHERE ${where.sql}`, where.parameters)
           if (deleted.changes !== 1) {
             throw new SqliteDebugError('SQLITE_DEBUG_ROW_CONFLICT', `A selected row in "${tableName}" changed before deletion.`)
@@ -895,10 +1167,16 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     async getMigrationStatus() {
       return migrationStatus(await database())
     },
+    async getMigrationDiagnostics() {
+      return migrationDiagnostics(await database())
+    },
+    async getForeignKeyDiagnostics() {
+      return foreignKeyDiagnostics(await database())
+    },
     async exportDatabase(): Promise<SqliteDebugSnapshot> {
       const current = await database()
       await current.flush()
-      const bytes = await options.storage.load(options.databaseName)
+      const bytes = await scope().loadSnapshot()
       if (!bytes) {
         throw new SqliteDebugError('SQLITE_DEBUG_STORAGE_UNSUPPORTED', 'The database has not produced a persistent SQLite snapshot yet.')
       }
@@ -916,47 +1194,11 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       if (!isSqliteFile(bytes)) {
         throw new SqliteDebugError('SQLITE_DEBUG_INVALID_IMPORT', 'The import is not a SQLite database file.')
       }
-      const current = await database()
-      await current.flush()
-      const previous = await options.storage.load(options.databaseName)
-      await current.close()
-      databasePromise = undefined
-      let replacement: SqliteDatabase | undefined
-      try {
-        await options.storage.save(options.databaseName, bytes)
-        replacement = await database()
-        const validation = await replacement.query<{ quick_check: string }>('PRAGMA quick_check')
-        if (validation.rows[0]?.quick_check !== 'ok') {
-          throw new Error('SQLite quick_check did not return ok.')
-        }
-        if (previous && previous.byteLength <= limits.maxUndoBytes) {
-          undo = { bytes: Uint8Array.from(previous), operation: 'Import SQLite database', createdAt: new Date().toISOString() }
-        }
-        return metadata(bytes, replacement)
-      }
-      catch (error) {
-        databasePromise = undefined
-        if (replacement) {
-          try {
-            await replacement.close()
-          }
-          catch {}
-        }
-        try {
-          if (previous) {
-            await options.storage.save(options.databaseName, previous)
-          }
-          else {
-            await options.storage.remove(options.databaseName)
-          }
-          await database()
-        }
-        catch (rollbackError) {
-          databasePromise = undefined
-          throw new SqliteDebugError('SQLITE_DEBUG_IMPORT_FAILED', 'The imported SQLite database failed validation and the previous snapshot could not be reopened.', { cause: rollbackError })
-        }
-        throw new SqliteDebugError('SQLITE_DEBUG_IMPORT_FAILED', 'The imported SQLite database could not be opened; the previous snapshot was restored.', { cause: error })
-      }
+      const previous = await createUndoSnapshot('Import SQLite database')
+      const replacement = await replaceSnapshot(bytes, 'SQLITE_DEBUG_IMPORT_FAILED')
+      undo = { ...previous, revision: scope().revision }
+      const persisted = await scope().loadSnapshot()
+      return metadata(persisted ?? bytes, replacement)
     },
     async exportTable(tableName, exportOptions) {
       const details = await tableDetails(tableName)
@@ -1044,18 +1286,14 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
         }
         const columnSql = definitions.map(column => quoteIdentifier(column.name)).join(', ')
         const placeholders = definitions.map(() => '?').join(', ')
-        let inserted = 0
-        for (const row of parsed.rows) {
-          const values = mappings.map((mapping, index) => coerceImportedValue(row[mapping.source] ?? null, definitions[index]?.type ?? 'TEXT'))
-          const result = await transaction.exec(`INSERT INTO ${quoteIdentifier(importOptions.tableName)} (${columnSql}) VALUES (${placeholders})`, values)
-          inserted += result.changes
-        }
-        return inserted
+        const parameterSets = parsed.rows.map(row => mappings.map((mapping, index) => coerceImportedValue(row[mapping.source] ?? null, definitions[index]?.type ?? 'TEXT')))
+        const results = await execMany(transaction, `INSERT INTO ${quoteIdentifier(importOptions.tableName)} (${columnSql}) VALUES (${placeholders})`, parameterSets)
+        return results.reduce((inserted, result) => inserted + result.changes, 0)
       }))
       return { tableName: importOptions.tableName, mode: importOptions.mode, insertedRows }
     },
     getUndoState() {
-      return undo
+      return undo && undo.revision === lastRevision
         ? { available: true, operation: undo.operation, createdAt: undo.createdAt, byteLength: undo.bytes?.byteLength ?? 0 }
         : { available: false }
     },
@@ -1064,37 +1302,48 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       if (!undo) {
         throw new SqliteDebugError('SQLITE_DEBUG_UNDO_UNAVAILABLE', 'No debug write is available to undo in this session.')
       }
-      const snapshot = undo
-      if (snapshot.bytes) {
-        await replaceSnapshot(snapshot.bytes, 'SQLITE_DEBUG_UNDO_UNAVAILABLE')
+      if (undo.revision !== scope().revision) {
+        undo = undefined
+        throw new SqliteDebugError('SQLITE_DEBUG_UNDO_STALE', 'The database changed after this debug operation. Its snapshot can no longer be restored safely.')
       }
-      else {
-        const current = await database()
-        await current.close()
-        databasePromise = undefined
-        await options.storage.remove(options.databaseName)
-        await database()
-      }
+      await replaceSnapshot(undo.bytes, 'SQLITE_DEBUG_UNDO_UNAVAILABLE')
       undo = undefined
     },
     async resetDatabase() {
-      await writeOperation('Reset database', async (current) => {
-        await current.close()
-        databasePromise = undefined
-        await options.storage.remove(options.databaseName)
-        await database()
+      await writeOperation('Reset database', async () => {
+        await replaceSnapshot(undefined, 'SQLITE_DEBUG_IMPORT_FAILED')
       })
     },
     async close() {
-      if (closed) {
-        return
+      if (!closed) {
+        await session.close()
+        closed = true
+        undo = undefined
       }
-      closed = true
-      if (databasePromise) {
-        const current = await databasePromise
-        await current.close()
-      }
-      databasePromise = undefined
     },
   }
+
+  const wrapped = Object.fromEntries(Object.entries(implementation).map(([name, operation]) => {
+    if (name === 'getUndoState' || name === 'close') {
+      return [name, operation]
+    }
+    return [name, (...args: unknown[]) => Promise.resolve().then(() => {
+      assertEnabled()
+      if (closed) {
+        throw new SqliteDebugError('SQLITE_DEBUG_DISABLED', 'The debug controller is closed.')
+      }
+      return session.runExclusive(async (active) => {
+        currentScope = active
+        lastRevision = active.revision
+        try {
+          return await Reflect.apply(operation, implementation, args)
+        }
+        finally {
+          lastRevision = active.revision
+          currentScope = undefined
+        }
+      })
+    })]
+  }))
+  return wrapped as unknown as SqliteDebugController
 }

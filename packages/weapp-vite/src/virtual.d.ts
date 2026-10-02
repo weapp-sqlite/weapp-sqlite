@@ -4,3 +4,7 @@ declare module 'virtual:weapp-sqlite-runtime' {
   const adapter: SqliteRuntimeAdapter
   export default adapter
 }
+
+declare module 'virtual:weapp-sqlite-devtools' {
+  export function connectSqliteDevtools(): void
+}

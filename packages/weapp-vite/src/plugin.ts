@@ -8,6 +8,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { resolveSqliteWasmAsset, sqliteWasmAssetName } from '@weapp-sqlite/sqljs/node'
 import { resolveWeappViteHostMeta } from 'weapp-vite'
+import { createSqliteDevtoolsHost } from './devtools-plugin'
 import {
   GENERATED_PAGE_MARKER,
   workspacePageJson,
@@ -18,6 +19,8 @@ import {
 
 const VIRTUAL_RUNTIME_ID = 'virtual:weapp-sqlite-runtime'
 const RESOLVED_RUNTIME_ID = `\0${VIRTUAL_RUNTIME_ID}`
+const VIRTUAL_DEVTOOLS_ID = 'virtual:weapp-sqlite-devtools'
+const RESOLVED_DEVTOOLS_ID = `\0${VIRTUAL_DEVTOOLS_ID}`
 const SUPPORTED_TARGETS = new Set<WeappVitePlatform>(['web', 'weapp', 'alipay', 'tt', 'swan', 'jd', 'xhs'])
 const require = createRequire(import.meta.url)
 const DEFAULT_DEBUG_ROUTE = '__weapp_sqlite_debug/index/index'
@@ -57,9 +60,10 @@ function normalizeDebugOptions(options: WeappSqlitePluginOptions) {
       enabled: options.debug.enabled,
       route: options.debug.page?.route ?? DEFAULT_DEBUG_ROUTE,
       configFile: options.debug.page?.configFile ?? DEFAULT_DEBUG_CONFIG,
+      devtools: options.debug.devtools === true,
     }
   }
-  return { enabled: options.debug === true, route: DEFAULT_DEBUG_ROUTE, configFile: DEFAULT_DEBUG_CONFIG }
+  return { enabled: options.debug === true, route: DEFAULT_DEBUG_ROUTE, configFile: DEFAULT_DEBUG_CONFIG, devtools: false }
 }
 
 function normalizeWasmOptions(options: WeappSqlitePluginOptions) {
@@ -134,7 +138,14 @@ async function generateWasmSubpackage(
     'import type { SqlJsInitializer } from \'@weapp-sqlite/wasm\'',
     'let initializerPromise: Promise<SqlJsInitializer> | undefined',
     'export function loadSqliteInitializer() {',
-    `  return initializerPromise ??= require.async(${JSON.stringify(runtimeImport)}).then((module: { default?: SqlJsInitializer }) => module.default ?? module as unknown as SqlJsInitializer)`,
+    '  if (!initializerPromise) {',
+    `    const attempt = Promise.resolve().then(() => require.async(${JSON.stringify(runtimeImport)})).then((module: { default?: SqlJsInitializer }) => module.default ?? module as unknown as SqlJsInitializer)`,
+    '    initializerPromise = attempt',
+    '    void attempt.catch(() => {',
+    '      if (initializerPromise === attempt) initializerPromise = undefined',
+    '    })',
+    '  }',
+    '  return initializerPromise',
     '}',
     '',
   ].join('\n'))
@@ -260,6 +271,7 @@ function virtualRuntimeSource(
   variant: SqliteWasmVariant,
   assetPath: string,
   loaderPath?: string,
+  debugEnabled = false,
 ) {
   const engine = variant === 'full' ? 'sql.js-wasm' : 'sql.js-wasm-lite'
   const initializerImport = loaderPath
@@ -268,16 +280,19 @@ function virtualRuntimeSource(
   if (target === 'web') {
     return [
       'import { createWebSqliteRuntimeAdapterWithInitializer } from \'@weapp-sqlite/weapp-vite/advanced\'',
+      ...(debugEnabled ? ['import { createWebSqliteDebugFileAdapter } from \'@weapp-sqlite/web\''] : []),
       ...initializerImport,
       'export default createWebSqliteRuntimeAdapterWithInitializer({',
       `  engine: ${JSON.stringify(engine)},`,
       '  initializer,',
       `  wasmPath: ${JSON.stringify(assetPath)},`,
+      ...(debugEnabled ? ['  debugFiles: createWebSqliteDebugFileAdapter(),'] : []),
       '})',
     ].join('\n')
   }
   return [
     'import { createMiniProgramSqliteRuntimeAdapterWithInitializer } from \'@weapp-sqlite/weapp-vite/advanced\'',
+    ...(debugEnabled && target === 'weapp' ? ['import { createMiniProgramSqliteDebugFileAdapter } from \'@weapp-sqlite/miniprogram\''] : []),
     ...initializerImport,
     `export default createMiniProgramSqliteRuntimeAdapterWithInitializer({`,
     `  engine: ${JSON.stringify(engine)},`,
@@ -286,6 +301,7 @@ function virtualRuntimeSource(
     `  runtime: ${runtimeExpression(target)},`,
     `  webAssembly: ${webAssemblyExpression(target)},`,
     `  packageBinaryPath: ${JSON.stringify(assetPath)},`,
+    ...(debugEnabled && target === 'weapp' ? [`  debugFiles: createMiniProgramSqliteDebugFileAdapter({ platform: ${JSON.stringify(target)}, runtime: ${runtimeExpression(target)} }),`] : []),
     '})',
   ].join('\n')
 }
@@ -375,6 +391,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
   let cleanupWasmTimer: ReturnType<typeof setTimeout> | undefined
   let projectRoot = process.cwd()
   let sourceRoot = 'src'
+  const devtoolsHost = createSqliteDevtoolsHost()
+  let devtoolsEnabled = false
+  let watchBuild = false
 
   async function loadAsset() {
     if (!asset) {
@@ -438,6 +457,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     async configResolved(config) {
       target = resolveTarget(config)
       isWebServe = target === 'web' && config.command === 'serve'
+      watchBuild = Boolean(config.build?.watch)
+      devtoolsEnabled = debug.enabled && debug.devtools && (target === 'web' || target === 'weapp')
+        && config.mode !== 'production' && (config.command === 'serve' || watchBuild)
       asset = targetAsset(target, wasm.variant)
       emittedAssetPath = `/assets/${asset}`
       if (target === 'weapp' && wasm.weappPackage !== 'main') {
@@ -471,16 +493,37 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       if (debugPage) {
         await applyDebugRoutesToCompiler(config, debugPage)
       }
+      if (devtoolsEnabled) {
+        const server = await devtoolsHost.start()
+        config.logger.info(`SQLite DevTools: ${server.url}`)
+      }
     },
     resolveId(id) {
       if (id === VIRTUAL_RUNTIME_ID) {
         return RESOLVED_RUNTIME_ID
       }
+      if (id === VIRTUAL_DEVTOOLS_ID) {
+        return RESOLVED_DEVTOOLS_ID
+      }
       if (id === '@weapp-sqlite/sqljs/full' || id === '@weapp-sqlite/sqljs/lite') {
         return require.resolve(id)
       }
     },
-    load(id) {
+    async load(id) {
+      if (id === RESOLVED_DEVTOOLS_ID) {
+        if (!devtoolsEnabled) {
+          return 'export function connectSqliteDevtools() {}'
+        }
+        const server = await devtoolsHost.start()
+        const configuration = { endpoint: server.runtimeEndpoint, token: server.runtimeToken, target }
+        return [
+          'import { initializeSqliteDevtools } from "@weapp-sqlite/weapp-vite/devtools-runtime"',
+          `import workspace from ${JSON.stringify(path.resolve(projectRoot, debug.configFile))}`,
+          `const bridge = initializeSqliteDevtools({ ...${JSON.stringify(configuration)}, workspace })`,
+          'export function connectSqliteDevtools() { bridge.refresh() }',
+          ...(target === 'web' ? ['if (import.meta.hot) import.meta.hot.dispose(() => bridge.close())'] : []),
+        ].join('\n')
+      }
       if (id === RESOLVED_RUNTIME_ID) {
         if (!target) {
           throw new Error('The weapp-sqlite runtime was loaded before the target was resolved.')
@@ -488,7 +531,7 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
         if (!emittedAssetPath) {
           throw new Error('The weapp-sqlite asset path has not been resolved.')
         }
-        return virtualRuntimeSource(target, wasm.variant, emittedAssetPath, wasmSubpackage?.loaderPath)
+        return virtualRuntimeSource(target, wasm.variant, emittedAssetPath, wasmSubpackage?.loaderPath, debug.enabled === true)
       }
     },
     async buildStart() {
@@ -515,6 +558,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       }
     },
     configureServer(server: ViteDevServer) {
+      server.httpServer?.once('close', () => {
+        void devtoolsHost.close()
+      })
       server.middlewares.use(async (request, response, next) => {
         if (!asset || !emittedAssetPath || request.url?.split('?', 1)[0] !== emittedAssetPath) {
           next()
@@ -531,6 +577,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       })
     },
     async closeBundle() {
+      if (!watchBuild) {
+        await devtoolsHost.close()
+      }
       if (debugPage) {
         const markerPath = path.join(debugPage.directory, '.weapp-sqlite-generated')
         const marker = await readFile(markerPath, 'utf8').catch(() => undefined)
@@ -543,6 +592,9 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
         cleanupWasmTimer = setTimeout(cleanupWasmOnExit, 30_000)
         cleanupWasmTimer.unref?.()
       }
+    },
+    async closeWatcher() {
+      await devtoolsHost.close()
     },
   }
 }

@@ -17,7 +17,7 @@ function openSqliteWasmDatabase(
 ): Promise<SqliteDatabase>
 ```
 
-`initializer` 通常是 `sql.js` 的 `initSqlJs`。adapter 会缓存同一个 driver 的初始化 Promise，避免并发打开时重复加载 WASM 模块。
+`initializer` 推荐使用 `@weapp-sqlite/sqljs/full` 或 `/lite`。adapter 会缓存同一个 driver 的初始化 Promise，避免并发打开时重复加载 WASM 模块；失败后允许重试。原版 sql.js 初始化器需要迁移，详见[升级指南](/docs/upgrading)。
 
 ## `SqliteWasmDriverOptions`
 
@@ -39,8 +39,16 @@ interface SqliteWasmStorage {
 }
 ```
 
-首次 `load` 返回 `undefined` 会创建空数据库。每次写操作后，adapter 在 `flush` 阶段调用 `database.export()`，只有数据变脏时才会保存。
+首次 `load` 返回 `undefined` 会创建空数据库。写操作后，adapter 在 `flush` 阶段调用 `database.exportSnapshot()`，复制主数据库而不关闭连接，因此不会清空临时表或连接设置。保存失败不会清除待保存状态。
+
+## 自定义引擎协议
+
+`SqlJsDatabase` 必须提供 `exportSnapshot(): Uint8Array`。它必须返回独立字节副本，且不重建连接；不能将原版 sql.js 的 `export()` 直接作为实现。
+
+可选的 `execWithMetadata(sql, parameters)` 返回 `{ results, readOnly }`。内置 full、Web full 和 lite 使用 SQLite 的 `sqlite3_stmt_readonly` 判断每条实际执行的语句，而不是按 SQL 首词猜测。缺少此接口时，adapter 保守地将执行视作写入。
+
+`query()` 支持返回行的写入，包括 `INSERT/UPDATE/DELETE … RETURNING`，调用成功前会完成持久化；事务内的查询写入由外层提交后统一保存。普通 SELECT 不触发保存。多语句中途失败时可能已有部分操作执行，待保存状态会保留；需要全有或全无时使用事务。
 
 ## 参数转换
 
-adapter 将 `boolean` 转成 `0/1`，将 `bigint` 转成 number，将 `ArrayBuffer` 转成 `Uint8Array`，并保留位置数组与命名参数的形状。需要超出 JavaScript 安全整数范围的整数时，请在业务层评估 SQLite 和 sql.js 的数值精度边界。
+adapter 将 `boolean` 转成 `0/1`，将安全整数范围内的 `bigint` 转成 number，将 `ArrayBuffer` 转成 `Uint8Array`，并保留位置数组与命名参数的形状。超出 JavaScript 安全整数范围的 bigint 参数抛出 `RangeError`，不会静默舍入。这不是任意 int64 的精确绑定或读取接口。

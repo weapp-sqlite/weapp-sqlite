@@ -8,10 +8,19 @@ export interface SqlJsResult {
   readonly values: readonly (readonly unknown[])[]
 }
 
+export interface SqlJsExecutionResult {
+  readonly results: readonly SqlJsResult[]
+  readonly readOnly: boolean
+}
+
 export interface SqlJsDatabase {
   run: (sql: string, parameters?: SqlJsParameters) => SqlJsDatabase
   exec: (sql: string, parameters?: SqlJsParameters) => readonly SqlJsResult[]
   export: () => Uint8Array
+  /** Copies the main database without closing or resetting the connection. */
+  exportSnapshot: () => Uint8Array
+  /** Without metadata, the adapter conservatively treats queries as writes. */
+  execWithMetadata?: (sql: string, parameters?: SqlJsParameters) => SqlJsExecutionResult
   close: () => void
 }
 

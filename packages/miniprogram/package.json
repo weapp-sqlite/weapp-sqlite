@@ -32,6 +32,17 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.mts",
+      "import": {
+        "types": "./dist/runtime.d.mts",
+        "default": "./dist/runtime.mjs"
+      },
+      "require": {
+        "types": "./dist/runtime.d.cts",
+        "default": "./dist/runtime.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
@@ -52,14 +63,13 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json",
-    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+    "tsd": "pnpm build && tsd --typings dist/index.d.mts --files test-d/**/*.test-d.ts"
   },
   "dependencies": {
     "@weapp-sqlite/wasm": "workspace:*"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11",
-    "sql.js": "^1.14.2"
+    "@weapp-sqlite/sqljs": "workspace:*"
   },
   "publishConfig": {
     "access": "public",

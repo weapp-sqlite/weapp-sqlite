@@ -60,7 +60,25 @@
     "release": "pnpm publish",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
-    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+    "tsd": "pnpm build && tsd --typings dist/index.d.mts --files test-d/**/*.test-d.ts"
+  },
+  "tsd": {
+    "compilerOptions": {
+      "baseUrl": ".",
+      "lib": ["ESNext", "DOM", "DOM.Iterable"],
+      "module": "NodeNext",
+      "moduleResolution": "Bundler",
+      "paths": {
+        "@weapp-sqlite/core": ["../core/dist/index.d.mts"],
+        "@weapp-sqlite/weapp-vite": ["../weapp-vite/dist/plugin.d.mts"],
+        "@weapp-sqlite/weapp-vite/adapter": ["../weapp-vite/dist/adapter.d.mts"],
+        "@weapp-sqlite/weapp-vite/advanced": ["../weapp-vite/dist/advanced.d.mts"],
+        "@weapp-sqlite/weapp-vite/debug": ["../weapp-vite/dist/debug.d.mts"],
+        "@weapp-sqlite/weapp-vite/runtime": ["../weapp-vite/dist/runtime.d.mts"],
+        "@weapp-sqlite/weapp-vite/workspace": ["../weapp-vite/dist/workspace.d.mts"]
+      },
+      "skipLibCheck": true
+    }
   },
   "dependencies": {
     "@weapp-sqlite/weapp-vite": "workspace:*"

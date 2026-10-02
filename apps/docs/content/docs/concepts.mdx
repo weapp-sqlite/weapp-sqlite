@@ -70,7 +70,9 @@ await db.transaction(async transaction => {
 })
 ```
 
-回调抛出错误时会自动回滚。不要把需要一起成功的数据写入拆成多个没有事务保护的调用。
+回调抛出错误或任何内部操作失败时会自动回滚，即使回调捕获了该操作的异常。不要把需要一起成功的数据写入拆成多个没有事务保护的调用，或在回调结束后复用事务句柄。
+
+相同 SQL 的多组参数可以交给 `execMany(database, sql, parameterSets)`，自动放入一个事务；在已有事务里传入事务句柄即可。迁移状态可以通过 `getMigrationStatus(database, migrations)` 只读查看，不会创建表或执行迁移。
 
 ## 始终使用参数绑定
 
@@ -92,6 +94,8 @@ await db.query('SELECT * FROM notes WHERE title = ?', [title])
 - `await db.flush()` 用于在调试导出或建立快照前等待保存完成。
 - `await db.close()` 会先 flush，再关闭连接，并从同名连接注册表移除。
 - 关闭后再次 `openSqlite()` 会从持久化存储重新加载。
+
+提交和保存是两个阶段。事务提交成功后若保存失败，会抛出带 `committed: true` 的 `SqlitePersistenceError`；应排除存储故障并重试 `flush()`，不要重复执行业务事务。恢复示例见[升级指南](/docs/upgrading)。
 
 同一个数据库名称的并发 `openSqlite()` 会合并为一次初始化并返回共享实例。如果同名打开使用了不同 adapter 或不同迁移配置，会返回 `SQLITE_OPEN_OPTIONS_CONFLICT`。
 

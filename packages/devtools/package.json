@@ -1,0 +1,58 @@
+{
+  "name": "@weapp-sqlite/devtools",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "连接 Web 与小程序实时 SQLite 数据库的 Devframe 开发工具",
+  "author": "weapp-sqlite contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/weapp-sqlite/weapp-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weapp-sqlite/weapp-sqlite.git",
+    "directory": "packages/devtools"
+  },
+  "bugs": { "url": "https://github.com/weapp-sqlite/weapp-sqlite/issues" },
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs", "require": "./dist/index.cjs" },
+    "./runtime": { "types": "./dist/runtime.d.mts", "import": "./dist/runtime.mjs", "require": "./dist/runtime.cjs" },
+    "./client": { "types": "./dist/client.d.mts", "import": "./dist/client.mjs", "require": "./dist/client.cjs" },
+    "./protocol": { "types": "./dist/protocol.d.mts", "import": "./dist/protocol.mjs", "require": "./dist/protocol.cjs" }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": ["dist"],
+  "engines": { "node": ">=22.22.1" },
+  "scripts": {
+    "build": "tsdown && tsx build-client.ts",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "tsd": "pnpm build && tsd --typings dist/index.d.mts --files test-d/**/*.test-d.ts"
+  },
+  "tsd": {
+    "compilerOptions": {
+      "lib": ["ESNext", "DOM", "DOM.Iterable"],
+      "module": "NodeNext",
+      "moduleResolution": "Bundler",
+      "baseUrl": ".",
+      "paths": {
+        "@weapp-sqlite/core": ["../core/dist/index.d.mts"],
+        "@weapp-sqlite/debug": ["../debug/dist/index.d.mts"]
+      },
+      "skipLibCheck": true
+    }
+  },
+  "dependencies": {
+    "@vitejs/devtools": "0.7.6",
+    "@vitejs/devtools-kit": "0.7.6",
+    "@weapp-sqlite/debug": "workspace:*",
+    "devframe": "1.1.0",
+    "vite": "8.3.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": { "@types/ws": "^8.18.1" },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" }
+}

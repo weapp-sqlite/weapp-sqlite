@@ -21,6 +21,9 @@
     },
     {
       "path": "./packages/weapp-vite"
+    },
+    {
+      "path": "./packages/devtools"
     }
   ],
   "files": []

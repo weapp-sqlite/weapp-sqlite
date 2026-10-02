@@ -1,17 +1,14 @@
 import type { MiniProgramPlatform, MiniProgramSqliteWasmStorage } from '@weapp-sqlite/miniprogram'
 import type { SqliteWasmStorage, SqlJsInitializer } from '@weapp-sqlite/wasm'
-import type { SqliteRuntimeAdapter, SqliteRuntimeInfo, SqliteRuntimeTarget } from './types'
+import type { SqliteDebugFileAdapter, SqliteRuntimeAdapter, SqliteRuntimeInfo, SqliteRuntimeTarget } from './types'
 import {
-  createMiniProgramSqliteDebugFileAdapter,
   createMiniProgramSqliteWasmStorage,
   createMiniProgramSqlJsInitializer,
   MiniProgramSqliteUnsupportedError,
   probeMiniProgramSqliteCapabilities,
-} from '@weapp-sqlite/miniprogram'
+} from '@weapp-sqlite/miniprogram/runtime'
 import { createSqliteWasmDriver } from '@weapp-sqlite/wasm'
-import { createIndexedDbSqliteWasmStorage, createWebSqliteDebugFileAdapter, SqliteWebStorageUnavailableError } from '@weapp-sqlite/web'
-
-declare const __WEAPP_SQLITE_DEBUG__: boolean
+import { createIndexedDbSqliteWasmStorage, SqliteWebStorageUnavailableError } from '@weapp-sqlite/web/runtime'
 
 export type {
   SqliteRuntimeAdapter,
@@ -85,7 +82,16 @@ function createInitializerResolver(options: SqlJsRuntimeEngineOptions) {
     if (!options.loadInitializer) {
       throw new TypeError('A sql.js initializer or initializer loader is required.')
     }
-    return promise ??= options.loadInitializer()
+    if (!promise) {
+      const attempt = Promise.resolve().then(() => options.loadInitializer!())
+      promise = attempt
+      void attempt.catch(() => {
+        if (promise === attempt) {
+          promise = undefined
+        }
+      })
+    }
+    return promise
   }
 }
 
@@ -94,10 +100,10 @@ export interface CreateWebSqliteRuntimeAdapterWithInitializerOptions extends Sql
   readonly indexedDB?: IDBFactory
   readonly databaseName?: string
   readonly userAgent?: string
+  readonly debugFiles?: SqliteDebugFileAdapter
 }
 
 export function createWebSqliteRuntimeAdapterWithInitializer(options: CreateWebSqliteRuntimeAdapterWithInitializerOptions): SqliteRuntimeAdapter {
-  const debugEnabled = typeof __WEAPP_SQLITE_DEBUG__ !== 'undefined' && __WEAPP_SQLITE_DEBUG__
   let storage: ReturnType<typeof createIndexedDbSqliteWasmStorage> | undefined
   const resolveStorage = () => storage ??= createIndexedDbSqliteWasmStorage({
     ...(options.indexedDB === undefined ? {} : { indexedDB: options.indexedDB }),
@@ -151,17 +157,7 @@ export function createWebSqliteRuntimeAdapterWithInitializer(options: CreateWebS
         userAgent: options.userAgent ?? globalThis.navigator?.userAgent,
       }
     },
-    ...(debugEnabled
-      ? {
-          debugFiles: {
-            save: artifact => createWebSqliteDebugFileAdapter().save(artifact),
-            choose: async chooseOptions => createWebSqliteDebugFileAdapter().choose({
-              ...(chooseOptions?.maxBytes === undefined ? {} : { maxBytes: chooseOptions.maxBytes }),
-              ...(chooseOptions?.extensions === undefined ? {} : { accept: chooseOptions.extensions }),
-            }),
-          },
-        }
-      : {}),
+    ...(options.debugFiles === undefined ? {} : { debugFiles: options.debugFiles }),
   }
 }
 
@@ -171,6 +167,7 @@ export interface CreateMiniProgramSqliteRuntimeAdapterWithInitializerOptions ext
   readonly webAssembly?: unknown
   readonly packageBinaryPath?: string
   readonly directoryName?: string
+  readonly debugFiles?: SqliteDebugFileAdapter
 }
 
 function miniProgramRuntimeInfo(platform: MiniProgramPlatform, runtime: unknown, engine: string): SqliteRuntimeInfo {
@@ -193,7 +190,6 @@ function miniProgramRuntimeInfo(platform: MiniProgramPlatform, runtime: unknown,
 export function createMiniProgramSqliteRuntimeAdapterWithInitializer(
   options: CreateMiniProgramSqliteRuntimeAdapterWithInitializerOptions,
 ): SqliteRuntimeAdapter {
-  const debugEnabled = typeof __WEAPP_SQLITE_DEBUG__ !== 'undefined' && __WEAPP_SQLITE_DEBUG__
   const packageBinaryPath = options.packageBinaryPath ?? '/assets/sql-wasm.wasm'
   const hostOptions = {
     platform: options.platform,
@@ -206,17 +202,34 @@ export function createMiniProgramSqliteRuntimeAdapterWithInitializer(
   const resolveStorage = () => storage ??= createMiniProgramSqliteWasmStorage(hostOptions)
   const resolveInitializer = createInitializerResolver(options)
   let driver: ReturnType<typeof createSqliteWasmDriver> | undefined
-  const resolveDriver = async () => driver ??= createSqliteWasmDriver(
-    createMiniProgramSqlJsInitializer({ ...hostOptions, initializer: await resolveInitializer() }),
-    { storage: resolveStorage() },
-  )
+  const resolveDriver = async () => {
+    const initializer = await resolveInitializer()
+    return driver ??= createSqliteWasmDriver(
+      createMiniProgramSqlJsInitializer({ ...hostOptions, initializer }),
+      { storage: resolveStorage() },
+    )
+  }
 
   return {
     target: options.platform,
     kind: options.engine,
     async probe() {
-      await resolveInitializer()
       const report = await probeMiniProgramSqliteCapabilities(hostOptions)
+      // Capability probing must stay host-first. A headless or partially
+      // initialized host can report a precise unsupported capability (for
+      // example, a missing USER_DATA_PATH) even when the WASM initializer
+      // cannot run there. Loading the engine before this check turns that
+      // useful diagnostic into a generic initialization failure.
+      if (!report.supported) {
+        return {
+          target: report.platform,
+          supported: false,
+          ...(report.capability === undefined ? {} : { capability: report.capability }),
+          ...(report.code === undefined ? {} : { code: report.code }),
+          ...(report.message === undefined ? {} : { message: report.message }),
+        }
+      }
+      await resolveInitializer()
       return {
         target: report.platform,
         supported: report.supported,
@@ -241,8 +254,6 @@ export function createMiniProgramSqliteRuntimeAdapterWithInitializer(
     remove: name => resolveStorage().remove(name),
     getRuntimeInfo: async () => miniProgramRuntimeInfo(options.platform, options.runtime, options.engine),
     getDatabasePath: name => resolveStorage().getDatabasePath?.(name),
-    ...(debugEnabled && options.platform === 'weapp'
-      ? { debugFiles: createMiniProgramSqliteDebugFileAdapter({ platform: options.platform, runtime: options.runtime }) }
-      : {}),
+    ...(options.debugFiles === undefined ? {} : { debugFiles: options.debugFiles }),
   }
 }

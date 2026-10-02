@@ -1,3 +1,4 @@
+import type { MiniProgramFileSystemManager } from './storage'
 import type {
   MiniProgramHostAdapter,
   MiniProgramHostAdapterOptions,
@@ -7,17 +8,7 @@ import type {
   MiniProgramWebAssemblyRuntime,
 } from './types'
 import { MiniProgramSqliteUnsupportedError } from './errors'
-
-interface FileSystemError {
-  readonly errMsg?: string
-}
-
-interface MiniProgramFileSystemManager {
-  mkdir: (options: { dirPath: string, recursive: boolean, success: () => void, fail: (error: FileSystemError) => void }) => void
-  readFile: (options: { filePath: string, success: (result: { data: string | ArrayBuffer }) => void, fail: (error: FileSystemError) => void }) => void
-  writeFile: (options: { filePath: string, data: ArrayBuffer, success: () => void, fail: (error: FileSystemError) => void }) => void
-  unlink: (options: { filePath: string, success: () => void, fail: (error: FileSystemError) => void }) => void
-}
+import { createFileSystemStorage, readFile } from './storage'
 
 interface MiniProgramRuntime {
   readonly env?: { readonly USER_DATA_PATH?: string }
@@ -84,7 +75,26 @@ function resolveFileSystem(options: MiniProgramHostAdapterOptions) {
   if (typeof runtime.getFileSystemManager !== 'function') {
     throw failure(options, 'filesystem', 'MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE')
   }
-  return { fileSystem: runtime.getFileSystemManager(), runtime }
+  const fileSystem = runtime.getFileSystemManager()
+  if (!fileSystem || typeof fileSystem.readFile !== 'function') {
+    throw failure(options, 'filesystem', 'MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE')
+  }
+  return { fileSystem, runtime }
+}
+
+function resolveStorageFileSystem(options: MiniProgramHostAdapterOptions) {
+  const resolved = resolveFileSystem(options)
+  const required = ['mkdir', 'writeFile', 'unlink', 'rename'] as const
+  const missing = required.filter(member => typeof resolved.fileSystem[member] !== 'function')
+  if (missing.length > 0) {
+    throw new MiniProgramSqliteUnsupportedError(
+      options.platform,
+      'filesystem',
+      'MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE',
+      `${ERROR_CODES.MINIPROGRAM_SQLITE_FILESYSTEM_UNAVAILABLE} Missing: ${missing.join(', ')}.`,
+    )
+  }
+  return resolved
 }
 
 function resolveWebAssembly(options: MiniProgramHostAdapterOptions): MiniProgramWebAssemblyRuntime {
@@ -171,44 +181,13 @@ function normalizeInstantiationResult(
   throw failure(options, 'wasm-instantiation', 'MINIPROGRAM_SQLITE_WASM_INSTANTIATION_FAILED')
 }
 
-function isMissingFile(error: FileSystemError) {
-  return /no such file|not found/i.test(error.errMsg ?? '')
-}
-
-function isExistingDirectory(error: FileSystemError) {
-  return /file already exists/i.test(error.errMsg ?? '')
-}
-
-function readFile(fileSystem: MiniProgramFileSystemManager, filePath: string): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    fileSystem.readFile({
-      filePath,
-      success: ({ data }) => {
-        if (typeof data === 'string') {
-          reject(new TypeError(`Expected binary data from ${filePath}.`))
-          return
-        }
-        resolve(Uint8Array.from(new Uint8Array(data)))
-      },
-      fail: reject,
-    })
-  })
-}
-
-function databaseFileName(name: string) {
-  if (!name || !/^[\w.-]+$/.test(name) || name === '.' || name === '..') {
-    throw new TypeError('SQLite database names may only contain letters, numbers, dots, underscores, and hyphens.')
-  }
-  return name.endsWith('.sqlite') ? name : `${name}.sqlite`
-}
-
 export function createMiniProgramHostAdapter(
   factoryOptions: MiniProgramHostAdapterFactoryOptions,
 ): MiniProgramHostAdapter {
   return {
     async probe(options) {
       try {
-        const { runtime } = resolveFileSystem(options)
+        const { runtime } = resolveStorageFileSystem(options)
         if (!runtime.env?.USER_DATA_PATH) {
           throw failure(options, 'user-data-path', 'MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE')
         }
@@ -247,61 +226,13 @@ export function createMiniProgramHostAdapter(
       }
     },
     createStorage(options) {
-      const { fileSystem, runtime } = resolveFileSystem(options)
+      const { fileSystem, runtime } = resolveStorageFileSystem(options)
       const userDataPath = runtime.env?.USER_DATA_PATH
       if (!userDataPath) {
         throw failure(options, 'user-data-path', 'MINIPROGRAM_SQLITE_USER_DATA_PATH_UNAVAILABLE')
       }
       const directory = `${userDataPath}/${options.directoryName ?? 'weapp-sqlite'}`
-      let directoryPromise: Promise<void> | undefined
-      const ensureDirectory = () => directoryPromise ??= new Promise((resolve, reject) => {
-        fileSystem.mkdir({
-          dirPath: directory,
-          recursive: true,
-          success: resolve,
-          fail: error => isExistingDirectory(error) ? resolve() : reject(error),
-        })
-      })
-      const databasePath = (name: string) => `${directory}/${databaseFileName(name)}`
-
-      return {
-        getDatabasePath(name) {
-          return databasePath(name)
-        },
-        async load(name) {
-          await ensureDirectory()
-          try {
-            return await readFile(fileSystem, databasePath(name))
-          }
-          catch (error) {
-            if (isMissingFile(error as FileSystemError)) {
-              return undefined
-            }
-            throw error
-          }
-        },
-        async save(name, data) {
-          await ensureDirectory()
-          await new Promise<void>((resolve, reject) => {
-            fileSystem.writeFile({
-              filePath: databasePath(name),
-              data: Uint8Array.from(data).buffer,
-              success: resolve,
-              fail: reject,
-            })
-          })
-        },
-        async remove(name) {
-          await ensureDirectory()
-          await new Promise<void>((resolve, reject) => {
-            fileSystem.unlink({
-              filePath: databasePath(name),
-              success: resolve,
-              fail: error => isMissingFile(error) ? resolve() : reject(error),
-            })
-          })
-        },
-      }
+      return createFileSystemStorage(fileSystem, runtime, directory)
     },
     async loadPackageBinary(path, options) {
       const { fileSystem } = resolveFileSystem(options)

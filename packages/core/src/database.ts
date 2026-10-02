@@ -6,7 +6,7 @@ import type {
   SqliteRow,
   SqliteTransaction,
 } from './types'
-import { SqliteClosedError, SqliteTransactionError } from './errors'
+import { SqliteClosedError, SqlitePersistenceError, SqliteTransactionError } from './errors'
 
 function createQueue() {
   let tail = Promise.resolve()
@@ -27,10 +27,41 @@ function createQueue() {
   }
 }
 
-function createTransaction(connection: SqliteConnection): SqliteTransaction {
+function createTransaction(connection: SqliteConnection) {
+  let active = true
+  let pending = Promise.resolve()
+  let failure: { error: unknown } | undefined
+
+  function run<T>(operation: () => Promise<T>): Promise<T> {
+    if (!active) {
+      return Promise.reject(new SqliteTransactionError('SQLite transaction scope is no longer active.'))
+    }
+    const result = pending.then(() => {
+      if (failure) {
+        throw failure.error
+      }
+      return operation()
+    })
+    // Observe failures even when the callback does not await an operation.
+    pending = result.then(() => undefined, (error: unknown) => {
+      failure ??= { error }
+    })
+    return result
+  }
+
+  const transaction: SqliteTransaction = {
+    exec: (sql, parameters) => run(() => connection.exec(sql, parameters)),
+    query: <Row extends SqliteRow = SqliteRow>(sql: string, parameters?: SqliteParameters): Promise<SqliteQueryResult<Row>> => run(() => connection.query<Row>(sql, parameters)),
+  }
   return {
-    exec: (sql, parameters) => connection.exec(sql, parameters),
-    query: <Row extends SqliteRow = SqliteRow>(sql: string, parameters?: SqliteParameters): Promise<SqliteQueryResult<Row>> => connection.query<Row>(sql, parameters),
+    transaction,
+    async finish() {
+      active = false
+      await pending
+      if (failure) {
+        throw failure.error
+      }
+    },
   }
 }
 
@@ -38,10 +69,14 @@ export function createSqliteDatabase(name: string, connection: SqliteConnection)
   const runExclusive = createQueue()
   let closed = false
   let transactionActive = false
+  let transactionFailure: SqliteTransactionError | undefined
 
   function assertOpen() {
     if (closed) {
       throw new SqliteClosedError()
+    }
+    if (transactionFailure) {
+      throw transactionFailure
     }
   }
 
@@ -58,7 +93,9 @@ export function createSqliteDatabase(name: string, connection: SqliteConnection)
     query<Row extends SqliteRow = SqliteRow>(sql: string, parameters?: SqliteParameters) {
       return runExclusive(async () => {
         assertOpen()
-        return connection.query<Row>(sql, parameters)
+        const result = await connection.query<Row>(sql, parameters)
+        await connection.flush?.()
+        return result
       })
     },
     transaction<T>(callback: (transaction: SqliteTransaction) => Promise<T>) {
@@ -68,19 +105,42 @@ export function createSqliteDatabase(name: string, connection: SqliteConnection)
       return runExclusive(async () => {
         assertOpen()
         transactionActive = true
+        let began = false
         try {
           await connection.exec('BEGIN')
-          const result = await callback(createTransaction(connection))
+          began = true
+          const scope = createTransaction(connection)
+          let result: T
+          try {
+            result = await callback(scope.transaction)
+          }
+          catch (error) {
+            // Drain started work before rollback, preserving the callback error.
+            await scope.finish().catch(() => undefined)
+            throw error
+          }
+          await scope.finish()
           await connection.exec('COMMIT')
-          await connection.flush?.()
+          began = false
+          try {
+            await connection.flush?.()
+          }
+          catch (cause) {
+            throw new SqlitePersistenceError({ cause })
+          }
           return result
         }
         catch (error) {
-          try {
-            await connection.exec('ROLLBACK')
-          }
-          catch (rollbackError) {
-            throw new SqliteTransactionError('Transaction rollback failed.', { cause: rollbackError })
+          if (began) {
+            try {
+              await connection.exec('ROLLBACK')
+            }
+            catch (rollbackError) {
+              transactionFailure = new SqliteTransactionError('Transaction rollback failed. Close and reopen the database before continuing.', {
+                cause: new AggregateError([error, rollbackError], 'Transaction and rollback both failed.'),
+              })
+              throw transactionFailure
+            }
           }
           throw error
         }
@@ -100,7 +160,9 @@ export function createSqliteDatabase(name: string, connection: SqliteConnection)
         if (closed) {
           return
         }
-        await connection.flush?.()
+        if (!transactionFailure) {
+          await connection.flush?.()
+        }
         await connection.close()
         closed = true
       })

@@ -76,6 +76,8 @@ export interface WeappSqliteDebugPageOptions {
 export interface WeappSqliteDebugPluginOptions {
   readonly enabled: boolean
   readonly page?: WeappSqliteDebugPageOptions
+  /** 开发服务中启用独立 SQLite Devframe 面板。 */
+  readonly devtools?: boolean
 }
 
 export type SqliteWasmVariant = 'full' | 'lite'
@@ -114,6 +116,10 @@ export interface SqliteDebugRuntimeControllerOptions {
   }
 }
 
-export interface SqliteDebugWorkspaceOptions extends SqliteDebugRuntimeControllerOptions {}
+export type SqliteDebugWorkspaceOptions = SqliteDebugRuntimeControllerOptions | {
+  readonly databases: readonly SqliteDebugRuntimeControllerOptions[]
+  readonly defaultDatabase?: string
+  readonly enabled?: boolean
+}
 
 export type OpenedSqliteDatabase = SqliteDatabase

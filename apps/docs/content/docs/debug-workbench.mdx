@@ -11,6 +11,7 @@ description: 在开发构建中预览和管理本地 SQLite 数据
 
 ```bash
 pnpm add @weapp-sqlite/weapp-vite
+pnpm add -D @weapp-sqlite/devtools
 WEAPP_SQLITE_DEBUG=1 pnpm build:web
 ```
 
@@ -23,6 +24,7 @@ export default defineConfig({
   plugins: [weappSqlite({
     debug: {
       enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+      devtools: process.env.WEAPP_SQLITE_DEVTOOLS === '1',
       page: {
         route: '__weapp_sqlite_debug/index/index',
         configFile: './src/sqlite-debug.config.ts',
@@ -38,8 +40,11 @@ import { defineSqliteDebugWorkspace } from '@weapp-sqlite/weapp-vite/debug'
 import { migrations } from './sqlite'
 
 export default defineSqliteDebugWorkspace({
-  databaseName: 'app.sqlite',
-  migrations,
+  databases: [
+    { databaseName: 'app.sqlite', migrations },
+    { databaseName: 'analytics.sqlite', migrations: analyticsMigrations },
+  ],
+  defaultDatabase: 'app.sqlite',
 })
 ```
 
@@ -57,11 +62,19 @@ export default defineAppJson({
 
 调试构建完成后打开 `__weapp_sqlite_debug/index/index`。用户已有同名目录时，构建会报冲突并停止，不会覆盖文件。
 
+## 独立 Devframe 面板
+
+设置 `debug.devtools: true` 后，`weapp-vite` 开发服务会启动一个独立的 `@weapp-sqlite/devtools` 宿主，并在日志中输出带一次性认证码的面板 URL。面板先选择运行实例，再选择数据库；配置中的数据库列表会和 runtime 已打开的数据库合并。面板操作始终通过应用持有的真实连接执行。
+
+Web runtime 使用 loopback WebSocket，微信开发工具使用 `wx.connectSocket`。runtime token 只用于当前开发会话，面板认证由 Devframe 宿主持有。断线时待处理请求会失败，写操作不会自动重放；watch 重建复用已有端口和连接，开发服务退出时释放服务与调试会话。生产构建关闭 `debug` 后不会包含通信桥、token 或面板资源。
+
+已有 Vite DevTools 宿主也可以直接挂载 `createSqliteDevtoolsDevframe()` 返回的 definition；需要独立生命周期时使用 `startSqliteDevtoolsServer()`，并在 watcher 退出时调用返回对象的 `close()`。
+
 ## 你可以做什么
 
 ### 数据
 
-选择表后可以分页查看数据、搜索、组合筛选和排序，也可以新增、编辑和批量删除行。控制器优先使用完整主键定位行，没有主键时使用 `rowid`；视图和没有可靠定位符的对象只读。
+选择表后可以分页查看数据、搜索、组合筛选和排序，也可以新增、编辑和批量删除行。控制器优先使用完整主键定位行，没有主键时使用 `rowid`；视图和没有可靠定位符的对象只读。连续翻页会复用当前数据库 revision 下的筛选总数，写入或快照替换后自动重新计算；面板按 `readTable()` 返回的实际 `limit` 翻页，避免调试行数上限较小时跳过数据。
 
 ### 结构
 
@@ -74,6 +87,12 @@ SQLite 自动索引、`sqlite_*` 系统对象和 `__weapp_sqlite_migrations` 迁
 查询模式只允许 `SELECT`、`EXPLAIN` 和安全的只读 `PRAGMA`。写 SQL 必须显式确认并传入 `allowWrite: true`。`ATTACH`、`DETACH`、`load_extension`、`writable_schema` 和 `VACUUM INTO` 始终拒绝。
 
 所有值都使用绑定参数；表名和列名由控制器校验和转义。默认返回最多 500 行和 1 MiB，避免一次查询卡住页面。
+
+SQL 面板按数据库分别保存最近 50 次显式执行记录，记录耗时、状态和结果摘要，可清空并回填编辑器。执行计划使用绑定参数调用 `EXPLAIN QUERY PLAN`，只展示节点层级、索引和扫描详情，不执行原 SQL。
+
+性能诊断沿用相同的绑定参数，但只接受 `SELECT`。结果会统计全表扫描、临时 B-tree 和自动索引，并列出计划中使用的索引，帮助在增大数据量前发现潜在瓶颈。
+
+迁移和外键诊断使用当前运行实例的真实连接。迁移诊断会比较工作台配置中的 `migrations` 与历史表，标出缺失历史、待执行版本、未知版本和名称冲突；外键诊断会展示约束列、当前 `foreign_keys` 开关和 `foreign_key_check` 违规行。两项检查均为只读，不会运行迁移回调或写入业务数据。
 
 ### 操作记录与撤销
 
