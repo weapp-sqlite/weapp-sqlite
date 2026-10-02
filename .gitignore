@@ -43,6 +43,9 @@ config.ts.timestamp-*.mjs
 examples/weapp-vite-multi-platform/.generated
 examples/weapp-vite-multi-platform/.weapp-vite/mcp-runtime.json
 examples/weapp-vite-multi-platform/.weapp-vite/typed-router.d.ts
+examples/weapp-vite-multi-platform/.weapp-vite/components.d.ts
+examples/weapp-vite-multi-platform/.weapp-vite/mini-program.html-data.json
+examples/weapp-vite-multi-platform/.weapp-vite/typed-components.d.ts
 examples/weapp-vite-multi-platform/src/__weapp_sqlite_debug/
 artifacts/acceptance
 playwright-report
