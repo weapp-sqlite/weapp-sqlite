@@ -45,7 +45,6 @@ Headless 只用于逻辑预检，不计入任何平台支持证据。截图用�
 
 ```bash
 export WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli
-export WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1
 pnpm acceptance:devtools:doctor
 ```
 
@@ -59,18 +58,17 @@ pnpm acceptance:devtools:doctor
 
 ```bash
 WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli \
-WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1 \
 WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 \
 pnpm acceptance:devtools
 
 WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli \
-WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1 \
 WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 \
 pnpm acceptance:debug:devtools
 ```
 
-`--no-open-recovery` 与 `WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1` 都表示禁止失败后的
-自动关闭并重开。共享登录态时优先使用环境变量，确保 build、doctor 和测试流程保持同一设置。
+doctor 命令显式使用 `--no-open-recovery`，禁止失败后的自动关闭并重开；E2E 命令通过已有
+WebSocket 连接时不会触发 IDE recovery。共享登录态时使用同一个 CLI 路径和 WebSocket，确保
+build、doctor 和测试流程保持同一设置。
 测试 teardown 只能调用 automator 的 `disconnect()` 断开 WebSocket；禁止调用
 `miniProgram.close()`、`weapp close`、`weapp quit`、`closeIde` 或按进程名终止 DevTools，
 这些操作会关闭项目或 IDE，可能触发重新登录。登录失效应报告为环境阻塞，等待用户在同一
@@ -87,8 +85,8 @@ suite 前先检查该端口；如果端口已释放，重新执行上面的官�
 1. `pnpm install`，确保依赖完整。
 2. `pnpm acceptance:build`，确认七个目标都能构建。
 3. `pnpm acceptance:web` 和 `pnpm acceptance:debug:web`，先在浏览器验证业务和工作台。
-4. 设置上面的 CLI 路径和 `WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1`，再运行
-   `pnpm acceptance:devtools:doctor`，确认微信 DevTools 已登录且项目配置正确。
+4. 设置上面的 CLI 路径，再运行 `pnpm acceptance:devtools:doctor`，确认微信 DevTools 已登录
+   且项目配置正确。
 5. 执行 `pnpm acceptance:devtools` 和 `pnpm acceptance:debug:devtools`。
 
 如果 DevTools 已经由官方 CLI `weapp auto --project ./dist/weapp --auto-port 10989` 打开，可以复用当前 automator 会话，避免测试再次启动 IDE：
