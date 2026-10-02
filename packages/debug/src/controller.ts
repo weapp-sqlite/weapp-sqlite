@@ -572,14 +572,23 @@ function compileWhere(
   return { sql: clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '', parameters }
 }
 
-function compileOrder(columns: readonly string[], orderBy: readonly SqliteDebugOrder[] = []) {
+function compileOrder(
+  columns: readonly string[],
+  orderBy: readonly SqliteDebugOrder[] = [],
+  stableColumns: readonly string[] = [],
+) {
   const available = new Set(columns)
   for (const order of orderBy) {
     if (!available.has(order.column) || (order.direction !== 'asc' && order.direction !== 'desc')) {
       throw new SqliteDebugError('SQLITE_DEBUG_INVALID_FILTER', `Invalid order column or direction for "${order.column}".`)
     }
   }
-  return orderBy.length === 0 ? '' : ` ORDER BY ${orderBy.map(order => `${quoteIdentifier(order.column)} ${order.direction.toUpperCase()}`).join(', ')}`
+  const seen = new Set(orderBy.map(order => order.column))
+  const tieBreakers = stableColumns
+    .filter(column => !seen.has(column))
+    .map(column => ({ column, direction: 'asc' as const }))
+  const effectiveOrder = [...orderBy, ...tieBreakers]
+  return effectiveOrder.length === 0 ? '' : ` ORDER BY ${effectiveOrder.map(order => `${quoteIdentifier(order.column)} ${order.direction.toUpperCase()}`).join(', ')}`
 }
 
 interface TableRowIdentity {
@@ -976,7 +985,16 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       const details = await tableDetails(tableName)
       const columns = details.info.map(column => String(column.name))
       const where = compileWhere(columns, pageOptions.filters, pageOptions.search)
-      const order = compileOrder(columns, pageOptions.orderBy)
+      const stableColumns = details.capabilities.locator === 'primary-key'
+        ? details.capabilities.primaryKey
+        : details.capabilities.locator === 'rowid' && details.rowIdentity.rowidColumn
+          ? [details.rowIdentity.rowidColumn]
+          : []
+      // Offset pagination needs a deterministic order. Preserve the user's
+      // requested columns and append the full row locator as an ascending
+      // tie-breaker; objects without a reliable locator keep their natural
+      // SQLite order because there is no safe key to add.
+      const order = compileOrder(columns, pageOptions.orderBy, stableColumns)
       const revision = scope().revision
       if (totalCacheRevision !== revision) {
         totalCacheRevision = revision

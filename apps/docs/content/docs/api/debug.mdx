@@ -30,7 +30,7 @@ const debug = createSqliteDebugController({
 
 - 浏览：`listTables()`、`describeTable()`、`getTableCapabilities()`、`listIndexes()`、`readTable()`。
 
-`readTable()` 的总行数按当前数据库 revision 和筛选条件短暂缓存，连续翻页不会重复扫描同一组筛选结果；任意业务或调试写入、快照替换和重置都会使缓存失效。若传入的 `offset` 已超过最后一页，返回结果会将其夹到最后一个有效页；空表返回 `offset: 0`。返回的 `limit` 是应用 `maxRows` 约束后的实际页大小，调用方应使用它计算下一页的偏移量。
+`readTable()` 的总行数按当前数据库 revision 和筛选条件短暂缓存，连续翻页不会重复扫描同一组筛选结果；任意业务或调试写入、快照替换和重置都会使缓存失效。若传入的 `offset` 已超过最后一页，返回结果会将其夹到最后一个有效页；空表返回 `offset: 0`。返回的 `limit` 是应用 `maxRows` 约束后的实际页大小，调用方应使用它计算下一页的偏移量。为让大表的 offset 翻页保持稳定，未指定 `orderBy` 时按可用 `rowid` 或完整主键排序，显式排序会追加尚未出现的定位列作为升序 tie-breaker；视图和没有可靠定位符的对象保持 SQLite 自然顺序。
 - 数据与结构：`insertRow()`、`updateRow()`、`deleteRows()`、`createTable()`、`renameTable()`、`dropTable()`、`truncateTable()`、列管理和索引管理。
 - 导入导出：`exportDatabase()`、`importDatabase()`、`exportTable()`、`previewTableImport()`、`importTable()`。
 - 诊断：`query()`、`analyzeQuery()`、`execute()`、`getMigrationStatus()`、`getMigrationDiagnostics()`、`getForeignKeyDiagnostics()`、`getUndoState()`、`undoLastDestructiveChange()`、`resetDatabase()` 和 `close()`。

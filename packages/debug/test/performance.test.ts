@@ -112,6 +112,9 @@ describe('query performance diagnostics', () => {
         ['one'],
       )
       expect(query.rows).toEqual([{ id: 1, body: 'one' }])
+      await expect(controller.query(
+        'WITH all_rows AS (SELECT id FROM notes) SELECT id FROM all_rows',
+      )).rejects.toMatchObject({ code: 'SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED' })
 
       const analysis = await controller.analyzeQuery(
         'WITH filtered AS (SELECT id, body FROM notes WHERE body = ?) SELECT id FROM filtered',

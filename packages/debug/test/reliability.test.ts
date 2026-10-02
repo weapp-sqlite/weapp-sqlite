@@ -45,6 +45,47 @@ function createHarness() {
 }
 
 describe('debug row identity and atomic writes', () => {
+  it('adds a stable locator order to offset pages and leaves views untouched', async () => {
+    const { controller, statements } = createHarness()
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, bucket TEXT, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (id, bucket, body) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)', [3, 'same', 'third', 1, 'same', 'first', 2, 'same', 'second'], { allowWrite: true })
+
+      statements.length = 0
+      const first = await controller.readTable('notes', {
+        limit: 1,
+        orderBy: [{ column: 'bucket', direction: 'asc' }],
+      })
+      const second = await controller.readTable('notes', {
+        limit: 1,
+        offset: 1,
+        orderBy: [{ column: 'bucket', direction: 'asc' }],
+      })
+      expect(first.rows).toEqual([{ id: 1, bucket: 'same', body: 'first' }])
+      expect(second.rows).toEqual([{ id: 2, bucket: 'same', body: 'second' }])
+      expect(statements.some(statement => statement.includes('ORDER BY "bucket" ASC, "id" ASC'))).toBe(true)
+
+      statements.length = 0
+      await controller.readTable('notes', { limit: 1 })
+      expect(statements.some(statement => statement.includes('ORDER BY "id" ASC'))).toBe(true)
+
+      await controller.execute('CREATE TABLE composite (a TEXT, b INTEGER, body TEXT, PRIMARY KEY (a, b)) WITHOUT ROWID', undefined, { allowWrite: true })
+      statements.length = 0
+      await controller.readTable('composite', { limit: 1 })
+      expect(statements.some(statement => statement.includes('ORDER BY "a" ASC, "b" ASC'))).toBe(true)
+
+      await controller.execute('CREATE VIEW note_view AS SELECT id, bucket, body FROM notes', undefined, { allowWrite: true })
+      statements.length = 0
+      const viewPage = await controller.readTable('note_view', { limit: 1 })
+      expect(viewPage.rowLocators).toEqual([])
+      expect(statements.some(statement => statement.includes('FROM "note_view" LIMIT'))).toBe(true)
+      expect(statements.some(statement => statement.includes('FROM "note_view" ORDER BY'))).toBe(false)
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
   it('keeps generated hidden columns out of the visible page and rowid locator', async () => {
     const { controller } = createHarness()
     try {
