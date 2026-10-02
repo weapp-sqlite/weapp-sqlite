@@ -112,6 +112,44 @@ describe('unified SQLite runtime', () => {
     await expect(database.query('SELECT 1')).rejects.toThrow()
   })
 
+  it('keeps the previous connection usable when snapshot replacement cannot close it', async () => {
+    const { adapter } = createAdapter()
+    const originalOpen = adapter.open.bind(adapter)
+    const closeFailure = new Error('snapshot close failed')
+    let firstConnection = true
+    vi.spyOn(adapter, 'open').mockImplementation(async (name) => {
+      const connection = await originalOpen(name)
+      if (firstConnection) {
+        firstConnection = false
+        const close = connection.close
+        connection.close = vi.fn(async () => {
+          connection.close = close
+          throw closeFailure
+        })
+      }
+      return connection
+    })
+
+    const database = await openSqliteWithAdapter({ name: 'snapshot-close-failure', adapter }, adapter)
+    const controller = createDebugController('snapshot-close-failure', adapter)
+    await database.exec('CREATE TABLE notes (body TEXT)')
+    await database.exec('INSERT INTO notes VALUES (?)', ['before'])
+    const snapshot = await controller.exportDatabase()
+
+    await expect(controller.importDatabase(snapshot.bytes, { replace: true })).rejects.toMatchObject({
+      code: 'SQLITE_DEBUG_IMPORT_FAILED',
+      cause: closeFailure,
+    })
+    await expect(database.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'before' }] })
+    await database.exec('INSERT INTO notes VALUES (?)', ['after'])
+    await expect(database.query('SELECT body FROM notes ORDER BY rowid')).resolves.toMatchObject({
+      rows: [{ body: 'before' }, { body: 'after' }],
+    })
+
+    await controller.close()
+    await database.close()
+  })
+
   it('keeps another debug session usable when one panel disconnects', async () => {
     const { adapter } = createAdapter()
     const first = createDebugController('panel-shared', adapter)
