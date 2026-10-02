@@ -1169,19 +1169,20 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
         ? `${where.sql} AND ${cursorWhere.sql}`
         : where.sql || (cursorWhere.sql ? ` WHERE ${cursorWhere.sql}` : '')
       const whereParameters = [...where.parameters, ...cursorWhere.parameters]
-      // Fetch one sentinel row in cursor mode. This avoids an extra COUNT or
-      // OFFSET scan when the panel asks whether a deep page has a successor.
-      // The internal sentinel is removed before enforcing the public page
-      // limit, while the byte limit still protects the response.
-      const fetchLimit = pageOptions.cursor ? limit + 1 : limit
-      const rawResult = await current.query(`SELECT ${locatorSelect}${projection} FROM ${quoteIdentifier(tableName)}${whereSql}${order.sql} LIMIT ? OFFSET ?`, [...whereParameters, fetchLimit, offset])
+      // Cursor pages fetch only the requested projection. A separate SELECT 1
+      // sentinel below detects a successor without pulling a potentially huge
+      // BLOB from the next row into the result-size budget.
+      const rawResult = await current.query(`SELECT ${locatorSelect}${projection} FROM ${quoteIdentifier(tableName)}${whereSql}${order.sql} LIMIT ? OFFSET ?`, [...whereParameters, limit, offset])
       assertResultSize(rawResult, limits)
-      if (rawResult.rows.length > limits.maxRows + 1) {
+      if (rawResult.rows.length > limits.maxRows) {
         throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The result exceeds ${limits.maxRows} rows.`)
       }
-      const hasMore = pageOptions.cursor
-        ? rawResult.rows.length > limit
-        : offset + rawResult.rows.length < total
+      let hasMore = offset + rawResult.rows.length < total
+      if (pageOptions.cursor && limit > 0) {
+        const successor = await current.query(`SELECT 1 AS __weapp_sqlite_has_more FROM ${quoteIdentifier(tableName)}${whereSql}${order.sql} LIMIT 1 OFFSET ?`, [...whereParameters, limit])
+        assertResultSize(successor, limits)
+        hasMore = successor.rows.length > 0
+      }
       const resultRows = rawResult.rows.slice(0, limit)
       const rows = resultRows.map((row) => {
         if (details.capabilities.locator !== 'rowid') {

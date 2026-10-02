@@ -127,9 +127,8 @@ describe('debug row identity and atomic writes', () => {
       expect(second.rows.map(row => row['id'])).toEqual([2, 3])
       expect(second.hasMore).toBe(false)
       expect(second.nextCursor).toBeUndefined()
-      const pageSql = statements.at(-1) ?? ''
-      expect(pageSql).toContain('IS NULL')
-      expect(pageSql).toContain('LIMIT ? OFFSET ?')
+      expect(statements.some(statement => statement.includes('IS NULL'))).toBe(true)
+      expect(statements.some(statement => statement.includes('LIMIT ? OFFSET ?'))).toBe(true)
 
       const descending = await controller.readTable('notes', {
         limit: 2,
