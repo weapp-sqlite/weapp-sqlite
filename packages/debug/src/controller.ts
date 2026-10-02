@@ -240,7 +240,12 @@ function analyzePlan(rows: readonly Record<string, unknown>[]) {
   const indexes = [...new Set(nodes.flatMap(node => node.index ? [node.index] : []))]
   const fullTableScans = nodes.filter(node => node.kind === 'scan' && node.table && !node.index && !/\bscan\s+constant\s+row\b/i.test(node.detail)).length
   const temporaryBtrees = nodes.filter(node => node.kind === 'temporary-b-tree').length
-  const automaticIndexes = nodes.filter(node => node.detail.match(/\busing\s+automatic\s+index\b/i)).length
+  // SQLite 3.38+ may include the `COVERING` qualifier between `AUTOMATIC`
+  // and `INDEX` (for example, `USING AUTOMATIC COVERING INDEX (x=?)`).
+  // Keep this check independent from the optional index name parser: automatic
+  // indexes have no stable name, but still indicate planner work worth showing
+  // in the performance diagnostics.
+  const automaticIndexes = nodes.filter(node => node.detail.match(/\busing\s+automatic(?:\s+covering)?\s+index\b/i)).length
   const warnings = [
     ...(fullTableScans > 0 ? ['full-table-scan' as const] : []),
     ...(temporaryBtrees > 0 ? ['temporary-b-tree' as const] : []),

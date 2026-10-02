@@ -69,4 +69,28 @@ describe('query performance diagnostics', () => {
       await controller.close()
     }
   })
+
+  it('reports automatic covering indexes in join plans', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({
+      databaseName: 'performance-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      enabled: true,
+    })
+    try {
+      await controller.execute('CREATE TABLE parents (id INTEGER)', undefined, { allowWrite: true })
+      await controller.execute('CREATE TABLE children (parent_id INTEGER)', undefined, { allowWrite: true })
+
+      const analysis = await controller.analyzeQuery(
+        'SELECT parents.id FROM parents JOIN children ON parents.id = children.parent_id',
+      )
+      expect(analysis.nodes.some(node => /USING AUTOMATIC COVERING INDEX/i.test(node.detail))).toBe(true)
+      expect(analysis.diagnostics.automaticIndexes).toBeGreaterThan(0)
+      expect(analysis.diagnostics.warnings).toContain('automatic-index')
+    }
+    finally {
+      await controller.close()
+    }
+  })
 })
