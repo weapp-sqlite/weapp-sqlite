@@ -92,6 +92,13 @@ export function isSqliteDevtoolsWriteMethod(value: SqliteDevtoolsMethod) {
   return (SQLITE_DEVTOOLS_WRITE_METHODS as readonly string[]).includes(value)
 }
 
+export function isIdentifier(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) {
+    return false
+  }
+  return [...value].every(character => character.charCodeAt(0) >= 32)
+}
+
 export function serializeDevtoolsError(error: unknown): SqliteDevtoolsErrorData {
   if (error instanceof Error) {
     const candidate = 'code' in error && typeof error.code === 'string' ? error.code : ''
@@ -107,13 +114,6 @@ export function serializeDevtoolsError(error: unknown): SqliteDevtoolsErrorData 
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-export function isIdentifier(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 256) {
-    return false
-  }
-  return [...value].every(character => character.charCodeAt(0) >= 32)
 }
 
 export function validDatabaseNames(value: unknown): value is string[] {
