@@ -89,7 +89,9 @@ async function refreshTable() {
       request('listIndexes', tableName),
       request('readTable', tableName, {
         limit: state.current.limit,
-        offset: state.current.offset,
+        ...(state.current.cursorStack.length
+          ? { cursor: state.current.cursorStack.at(-1)! }
+          : { offset: state.current.offset }),
         ...(state.current.search ? { search: state.current.search } : {}),
         ...(state.current.filters.length ? { filters: state.current.filters } : {}),
         ...(state.current.orderColumn ? { orderBy: [{ column: state.current.orderColumn, direction: state.current.orderDirection }] } : {}),
@@ -142,6 +144,8 @@ async function runSql(kind: 'query' | 'execute' | 'explain' | 'analyze') {
       if (!state.accepts(ticket)) { return }
       Object.assign(current, { plan: undefined, analysis: undefined, sqlResult: undefined, sqlSummary: `${result.changes} 行受影响 · ${result.elapsedMs.toFixed(1)} ms` })
       summary = current.sqlSummary
+      current.offset = 0
+      current.cursorStack = []
       await refreshTable()
     }
     state.record(current, { sql, parameters: parameterText, kind, status: 'success', elapsedMs: performance.now() - started, summary })

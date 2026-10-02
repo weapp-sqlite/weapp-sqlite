@@ -4,11 +4,13 @@ import type {
   SqliteDebugController,
   SqliteDebugExecutionResult,
   SqliteDebugForeignKeyDiagnostics,
+  SqliteDebugForeignKeySchemaError,
   SqliteDebugImportPreview,
   SqliteDebugIndex,
   SqliteDebugMigrationDiagnostics,
   SqliteDebugMigrationStatus,
   SqliteDebugPage,
+  SqliteDebugPageCursor,
   SqliteDebugQueryAnalysis,
   SqliteDebugQueryPlanTemporaryBTreeOperation,
   SqliteDebugQueryResult,
@@ -39,6 +41,7 @@ expectType<SqliteDebugController>(createSqliteDebugController({ databaseName: 'd
 expectType<Promise<readonly SqliteDebugTable[]>>(controller.listTables())
 expectType<Promise<readonly SqliteDebugColumn[]>>(controller.describeTable('notes'))
 expectType<Promise<SqliteDebugPage>>(controller.readTable('notes', { limit: 50, offset: 0 }))
+expectType<Promise<SqliteDebugPage>>(controller.readTable('notes', { limit: 50, cursor: {} as SqliteDebugPageCursor }))
 expectType<Promise<SqliteDebugTableCapabilities>>(controller.getTableCapabilities('notes'))
 expectType<Promise<readonly SqliteDebugIndex[]>>(controller.listIndexes('notes'))
 expectType<Promise<SqliteDebugPage>>(controller.readTable('notes', { filters: [{ column: 'body', operator: 'contains', value: 'x' }], orderBy: [{ column: 'id', direction: 'desc' }] }))
@@ -64,10 +67,15 @@ expectType<Promise<SqliteDebugQueryResult>>(controller.query('SELECT * FROM note
 expectType<Promise<SqliteDebugQueryAnalysis>>(controller.analyzeQuery('SELECT * FROM notes WHERE id = ?', [1]))
 declare const analysis: SqliteDebugQueryAnalysis
 expectType<readonly SqliteDebugQueryPlanTemporaryBTreeOperation[]>(analysis.diagnostics.temporaryBTreeOperations)
+declare const page: SqliteDebugPage
+expectType<boolean>(page.hasMore)
+expectType<SqliteDebugPageCursor | undefined>(page.nextCursor)
 expectType<Promise<SqliteDebugExecutionResult>>(controller.execute('DELETE FROM notes WHERE id = ?', [1], { allowWrite: true }))
 expectType<Promise<SqliteDebugMigrationStatus>>(controller.getMigrationStatus())
 expectType<Promise<SqliteDebugMigrationDiagnostics>>(controller.getMigrationDiagnostics())
 expectType<Promise<SqliteDebugForeignKeyDiagnostics>>(controller.getForeignKeyDiagnostics())
+declare const foreignKeyDiagnostics: SqliteDebugForeignKeyDiagnostics
+expectType<readonly SqliteDebugForeignKeySchemaError[]>(foreignKeyDiagnostics.schemaErrors)
 expectType<Promise<void>>(controller.resetDatabase())
 expectType<Promise<Uint8Array>>(controller.exportDatabase().then(snapshot => snapshot.bytes))
 expectType<Promise<SqliteDebugSnapshotMetadata>>(controller.importDatabase(new Uint8Array(), { replace: true }))

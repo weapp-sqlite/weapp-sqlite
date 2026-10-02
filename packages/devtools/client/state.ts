@@ -6,6 +6,7 @@ import type {
   SqliteDebugIndex,
   SqliteDebugMigrationDiagnostics,
   SqliteDebugPage,
+  SqliteDebugPageCursor,
   SqliteDebugQueryAnalysis,
   SqliteDebugTable,
   SqliteDebugTableCapabilities,
@@ -37,6 +38,8 @@ export interface DatabaseState {
   orderColumn: string
   orderDirection: 'asc' | 'desc'
   offset: number
+  /** Cursors for pages after the initial page; one entry means page two. */
+  cursorStack: SqliteDebugPageCursor[]
   limit: number
   selectedRows: Set<number>
   sql: string
@@ -112,6 +115,7 @@ export class WorkspaceState {
         orderColumn: '',
         orderDirection: 'asc',
         offset: 0,
+        cursorStack: [],
         limit: 50,
         selectedRows: new Set(),
         sql: 'SELECT name, type FROM sqlite_schema ORDER BY name',
@@ -148,6 +152,7 @@ export class WorkspaceState {
       search: '',
       orderColumn: '',
       offset: 0,
+      cursorStack: [],
       selectedRows: new Set<number>(),
     })
   }

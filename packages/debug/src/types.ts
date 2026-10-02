@@ -65,9 +65,23 @@ export interface SqliteDebugOrder {
   readonly direction: 'asc' | 'desc'
 }
 
+/**
+ * A keyset pagination position produced by `readTable()`.
+ *
+ * The complete effective order is included so a cursor cannot accidentally be
+ * reused after the panel changes sorting. Values retain SQLite scalar types,
+ * including bigint, BLOB and NULL.
+ */
+export interface SqliteDebugPageCursor {
+  readonly orderBy: readonly SqliteDebugOrder[]
+  readonly values: readonly SqliteScalar[]
+}
+
 export interface SqliteDebugReadOptions {
   readonly limit?: number
   readonly offset?: number
+  /** Continue after the last row represented by this cursor. */
+  readonly cursor?: SqliteDebugPageCursor
   readonly filters?: readonly SqliteDebugFilter[]
   readonly orderBy?: readonly SqliteDebugOrder[]
   readonly search?: string
@@ -84,6 +98,10 @@ export interface SqliteDebugPage {
   readonly total: number
   readonly limit: number
   readonly offset: number
+  /** Whether another page is available after this page. */
+  readonly hasMore: boolean
+  /** Keyset position for the next page, when the table has a stable locator. */
+  readonly nextCursor?: SqliteDebugPageCursor
 }
 
 export interface SqliteDebugTableCapabilities {
@@ -244,13 +262,24 @@ export interface SqliteDebugForeignKeyViolation {
   readonly foreignKeyId: number
 }
 
-export type SqliteDebugForeignKeyDiagnosticWarning = 'foreign-keys-disabled' | 'foreign-key-violations'
+/**
+ * A foreign-key declaration that SQLite cannot validate against the current
+ * schema (for example, a parent key that is missing or not unique).
+ */
+export interface SqliteDebugForeignKeySchemaError {
+  readonly table: string
+  readonly message: string
+}
+
+export type SqliteDebugForeignKeyDiagnosticWarning = 'foreign-keys-disabled' | 'foreign-key-violations' | 'foreign-key-schema'
 
 /** Read-only foreign-key pragma and integrity-check information. */
 export interface SqliteDebugForeignKeyDiagnostics {
   readonly enabled: boolean
   readonly constraints: readonly SqliteDebugForeignKeyConstraint[]
   readonly violations: readonly SqliteDebugForeignKeyViolation[]
+  /** Foreign-key schema mismatches found while running `foreign_key_check`. */
+  readonly schemaErrors: readonly SqliteDebugForeignKeySchemaError[]
   readonly tableCount: number
   readonly constrainedTableCount: number
   readonly healthy: boolean

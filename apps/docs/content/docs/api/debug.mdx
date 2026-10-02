@@ -30,7 +30,7 @@ const debug = createSqliteDebugController({
 
 - 浏览：`listTables()`、`describeTable()`、`getTableCapabilities()`、`listIndexes()`、`readTable()`。
 
-`readTable()` 的总行数按当前数据库 revision 和筛选条件短暂缓存，连续翻页不会重复扫描同一组筛选结果；任意业务或调试写入、快照替换和重置都会使缓存失效。若传入的 `offset` 已超过最后一页，返回结果会将其夹到最后一个有效页；空表返回 `offset: 0`。返回的 `limit` 是应用 `maxRows` 约束后的实际页大小，调用方应使用它计算下一页的偏移量。为让大表的 offset 翻页保持稳定，未指定 `orderBy` 时按可用 `rowid` 或完整主键排序，显式排序会追加尚未出现的定位列作为升序 tie-breaker；视图和没有可靠定位符的对象保持 SQLite 自然顺序。
+`readTable()` 的总行数按当前数据库 revision 和筛选条件短暂缓存，连续翻页不会重复扫描同一组筛选结果；任意业务或调试写入、快照替换和重置都会使缓存失效。若传入的 `offset` 已超过最后一页，返回结果会将其夹到最后一个有效页；空表返回 `offset: 0`。返回的 `limit` 是应用 `maxRows` 约束后的实际页大小，调用方应使用它计算下一页的偏移量。为让大表的 offset 翻页保持稳定，未指定 `orderBy` 时按可用 `rowid` 或完整主键排序，显式排序会追加尚未出现的定位列作为升序 tie-breaker；视图和没有可靠定位符的对象保持 SQLite 自然顺序。稳定表还会返回 `hasMore` 与绑定完整排序的 `nextCursor`；将它传入下一次 `readTable({ cursor })` 可使用 keyset 翻页，避免深页通过 offset 扫描前置行，筛选、排序或写入变化后应丢弃旧游标。
 - 数据与结构：`insertRow()`、`updateRow()`、`deleteRows()`、`createTable()`、`renameTable()`、`dropTable()`、`truncateTable()`、列管理和索引管理。
 - 导入导出：`exportDatabase()`、`importDatabase()`、`exportTable()`、`previewTableImport()`、`importTable()`。
 - 诊断：`query()`、`analyzeQuery()`、`execute()`、`getMigrationStatus()`、`getMigrationDiagnostics()`、`getForeignKeyDiagnostics()`、`getUndoState()`、`undoLastDestructiveChange()`、`resetDatabase()` 和 `close()`。
@@ -45,6 +45,6 @@ SQLite 导出会先 `flush()`，返回原始快照、SHA-256、迁移版本和�
 
 `analyzeQuery(sql, parameters)` 只接受 `SELECT`，使用同一组绑定参数调用 `EXPLAIN QUERY PLAN`，返回节点层级、索引名称、耗时和诊断计数。它不会执行原查询；`full-table-scan`、`temporary-b-tree` 和 `automatic-index` 会作为警告返回。每个临时 B-tree 节点还会标明用途（`order-by`、`group-by`、`distinct` 或 `other`），便于判断是排序、分组还是去重触发了额外工作。
 
-`getMigrationDiagnostics()` 在传入控制器的 `migrations` 定义和数据库中的迁移历史之间做只读比对，返回已应用、待执行、未知版本、名称冲突、最新版本和健康状态；不会创建迁移表，也不会执行迁移回调。`getForeignKeyDiagnostics()` 读取 `PRAGMA foreign_keys`、每张表的 `foreign_key_list` 和全库 `foreign_key_check`，返回约束、违规行及“外键关闭/存在违规”警告，不修改数据库。
+`getMigrationDiagnostics()` 在传入控制器的 `migrations` 定义和数据库中的迁移历史之间做只读比对，返回已应用、待执行、未知版本、名称冲突、最新版本和健康状态；不会创建迁移表，也不会执行迁移回调。`getForeignKeyDiagnostics()` 读取 `PRAGMA foreign_keys`、每张表的 `foreign_key_list` 和全库 `foreign_key_check`，返回约束、违规行及“外键关闭/存在违规”警告；当 SQLite 报告父键缺失或唯一性不满足等 schema mismatch 时，会按表返回 `schemaErrors` 和 `foreign-key-schema` 警告，不会让整次诊断失败，也不修改数据库。
 
 调试面板应由编译期开关控制。生产构建不应注册调试路由、SQL 写入口或导入接口。

@@ -122,7 +122,7 @@ describe('sqlite debug controller', () => {
       enabled: false,
       tableCount: 2,
       constrainedTableCount: 1,
-      constraints: [expect.objectContaining({ table: 'children', referencedTable: 'parents', from: 'parent_id', to: 'id' })],
+      constraints: expect.arrayContaining([expect.objectContaining({ table: 'children', referencedTable: 'parents', from: 'parent_id', to: 'id' })]),
       violations: [expect.objectContaining({ table: 'children', parent: 'parents' })],
       warnings: ['foreign-keys-disabled', 'foreign-key-violations'],
       healthy: false,
@@ -133,6 +133,25 @@ describe('sqlite debug controller', () => {
     await controller.execute('INSERT INTO parents VALUES (?)', [99], { allowWrite: true })
     await controller.execute('INSERT INTO children VALUES (?, ?)', [1, 99], { allowWrite: true })
     await expect(controller.getForeignKeyDiagnostics()).resolves.toMatchObject({ enabled: true, violations: [], warnings: [], healthy: true })
+  })
+
+  it('reports foreign-key schema mismatches per table instead of failing the whole diagnostic', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: harness.openDatabase, storage: harness.storage, enabled: true })
+    await controller.execute('CREATE TABLE parents (name TEXT)', undefined, { allowWrite: true })
+    await controller.execute('CREATE TABLE children (parent_id INTEGER REFERENCES parents(id))', undefined, { allowWrite: true })
+    await controller.execute('INSERT INTO children VALUES (?)', [1], { allowWrite: true })
+    await controller.execute('CREATE TABLE valid_parents (id INTEGER PRIMARY KEY)', undefined, { allowWrite: true })
+    await controller.execute('CREATE TABLE valid_children (parent_id INTEGER REFERENCES valid_parents(id))', undefined, { allowWrite: true })
+    await controller.execute('INSERT INTO valid_children VALUES (?)', [2], { allowWrite: true })
+
+    await expect(controller.getForeignKeyDiagnostics()).resolves.toMatchObject({
+      constraints: expect.arrayContaining([expect.objectContaining({ table: 'children', referencedTable: 'parents', from: 'parent_id', to: 'id' })]),
+      violations: [expect.objectContaining({ table: 'valid_children', parent: 'valid_parents' })],
+      schemaErrors: [{ table: 'children', message: expect.stringContaining('foreign key mismatch') }],
+      warnings: ['foreign-keys-disabled', 'foreign-key-violations', 'foreign-key-schema'],
+      healthy: false,
+    })
   })
 
   it('enforces read and write SQL contracts and result limits', async () => {
