@@ -43,6 +43,10 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
     handler: (nextRuntimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => {
       // Keep session ids in sync so requests cannot target a stale runtime.
       runtimes = nextRuntimes
+      // A runtime may connect after the panel's initial list-runtimes call.
+      // Refresh the lease set as well; otherwise disposing that panel would
+      // not release a newly discovered runtime.
+      void scoped.call('list-runtimes', ownerId).catch(() => undefined)
       for (const listener of runtimeListeners) {
         listener(nextRuntimes)
       }

@@ -98,6 +98,8 @@ describe('SQLite DevTools runtime broker', () => {
 
     expect(broker.listRuntimes('panel-a')).toHaveLength(1)
     expect(broker.listRuntimes('panel-b')).toHaveLength(1)
+    await expect(broker.releaseSession({ runtimeId: 'runtime-leases', sessionId, ownerId: 'unknown-panel' })).resolves.toMatchObject({ ok: true })
+    expect(frames.some(frame => frame.type === 'release')).toBe(false)
     await expect(broker.releaseSession({ runtimeId: 'runtime-leases', sessionId, ownerId: 'panel-a' })).resolves.toMatchObject({ ok: true })
     expect(frames.some(frame => frame.type === 'release')).toBe(false)
 
