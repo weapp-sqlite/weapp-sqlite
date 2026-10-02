@@ -199,6 +199,26 @@ describe('debug row identity and atomic writes', () => {
       await controller.close()
     }
   })
+
+  it('rejects undo after an external write changes the snapshot at the same debug revision', async () => {
+    const { controller, database } = createHarness()
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)', undefined, { allowWrite: true })
+      await controller.insertRow('notes', { id: 1, body: 'before' }, { allowWrite: true })
+      const page = await controller.readTable('notes')
+      await controller.updateRow('notes', page.rowLocators[0]!, { body: 'debug-write' }, { allowWrite: true })
+      expect(controller.getUndoState()).toMatchObject({ available: true })
+
+      await database().exec('UPDATE notes SET body = ? WHERE id = ?', ['external-write', 1])
+
+      await expect(controller.undoLastDestructiveChange()).rejects.toMatchObject({ code: 'SQLITE_DEBUG_UNDO_STALE' })
+      expect((await controller.readTable('notes')).rows).toEqual([{ id: 1, body: 'external-write' }])
+      expect(controller.getUndoState()).toEqual({ available: false })
+    }
+    finally {
+      await controller.close()
+    }
+  })
 })
 
 describe('debug core helper integration', () => {

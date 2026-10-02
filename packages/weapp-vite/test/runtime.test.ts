@@ -112,6 +112,17 @@ describe('unified SQLite runtime', () => {
     await expect(database.query('SELECT 1')).rejects.toThrow()
   })
 
+  it('keeps another debug session usable when one panel disconnects', async () => {
+    const { adapter } = createAdapter()
+    const first = createDebugController('panel-shared', adapter)
+    const second = createDebugController('panel-shared', adapter)
+    await first.execute('CREATE TABLE notes (body TEXT)', undefined, { allowWrite: true })
+    await first.close()
+
+    await expect(second.query('SELECT name FROM sqlite_schema')).resolves.toMatchObject({ rows: [{ name: 'notes' }] })
+    await second.close()
+  })
+
   it('serializes a transaction and a debug operation without deadlock', async () => {
     const { adapter } = createAdapter()
     const database = await openSqliteWithAdapter({ name: 'interleave', adapter }, adapter)

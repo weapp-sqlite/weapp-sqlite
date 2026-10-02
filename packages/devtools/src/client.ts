@@ -3,9 +3,11 @@ import type { SqliteDevtoolsInvocation, SqliteDevtoolsRuntimeDescriptor } from '
 import { authenticateWithUrlOtp, getDevframeRpcClient } from 'devframe/client'
 import { decodeSqliteDevtoolsValue, encodeSqliteDevtoolsValue, SQLITE_DEVTOOLS_SCOPE, SqliteDevtoolsError } from './protocol'
 
+type SqliteDevtoolsRequestMethod = Exclude<keyof SqliteDebugController, 'close'>
+
 export interface SqliteDevtoolsClient {
   listRuntimes: () => Promise<readonly SqliteDevtoolsRuntimeDescriptor[]>
-  request: <K extends keyof SqliteDebugController>(runtimeId: string, databaseName: string, method: K, args: Parameters<SqliteDebugController[K]>) => Promise<Awaited<ReturnType<SqliteDebugController[K]>>>
+  request: <K extends SqliteDevtoolsRequestMethod>(runtimeId: string, databaseName: string, method: K, args: Parameters<SqliteDebugController[K]>) => Promise<Awaited<ReturnType<SqliteDebugController[K]>>>
   subscribe: (listener: (runtimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => void) => () => void
   subscribeStatus: (listener: (status: 'connecting' | 'connected' | 'disconnected') => void) => () => void
   dispose: () => void

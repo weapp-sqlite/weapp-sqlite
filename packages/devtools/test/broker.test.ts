@@ -31,6 +31,11 @@ describe('SQLite DevTools runtime broker', () => {
     await new Promise<void>(resolve => setTimeout(resolve, 10))
     expect(frames[0]?.type).toBe('ready')
     const sessionId = frames[0].sessionId as string
+    await expect(broker.invoke({ runtimeId: 'runtime-1', sessionId, databaseName: 'main', method: 'close', args: encodeSqliteDevtoolsValue([]) })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'SQLITE_DEVTOOLS_INVALID_REQUEST' },
+    })
+    expect(socket.readyState).toBe(WebSocket.OPEN)
     const invoke = broker.invoke({ runtimeId: 'runtime-1', sessionId, databaseName: 'main', method: 'query', args: encodeSqliteDevtoolsValue(['select 1']) })
     await new Promise<void>(resolve => setTimeout(resolve, 10))
     const request = frames.find(frame => frame.type === 'request')

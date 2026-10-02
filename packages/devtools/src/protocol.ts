@@ -94,8 +94,13 @@ export function isSqliteDevtoolsWriteMethod(value: SqliteDevtoolsMethod) {
 
 export function serializeDevtoolsError(error: unknown): SqliteDevtoolsErrorData {
   if (error instanceof Error) {
-    const code = 'code' in error && typeof error.code === 'string' ? error.code : 'SQLITE_DEVTOOLS_RUNTIME_ERROR'
-    return { code, message: error.message.slice(0, 4096) }
+    const candidate = 'code' in error && typeof error.code === 'string' ? error.code : ''
+    // Runtime errors cross a JSON protocol boundary. Keep arbitrary thrown
+    // values from producing an invalid response (which would otherwise make
+    // the broker tear down the whole runtime session).
+    const code = isIdentifier(candidate) ? candidate : 'SQLITE_DEVTOOLS_RUNTIME_ERROR'
+    const message = typeof error.message === 'string' ? error.message : String(error.message ?? '')
+    return { code, message: message.slice(0, 4096) }
   }
   return { code: 'SQLITE_DEVTOOLS_RUNTIME_ERROR', message: 'SQLite runtime operation failed.' }
 }

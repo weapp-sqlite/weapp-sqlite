@@ -24,6 +24,25 @@ function socketHarness() {
 }
 
 describe('runtime transport', () => {
+  it('closes a socket when the adapter reports an immediate failure', () => {
+    const close = vi.fn()
+    const connection = connectSqliteDevtoolsRuntime({
+      endpoint: 'ws://127.0.0.1:1234/runtime',
+      token: 'secret',
+      runtime: { id: 'web-immediate-error', label: 'Web', platform: 'web' },
+      listDatabases: () => ['main'],
+      getController: () => ({}) as SqliteDebugController,
+      reconnectDelayMs: 60_000,
+      createSocket: (_url, handlers) => {
+        handlers.error()
+        return { send: vi.fn(), close }
+      },
+    })
+
+    expect(close).toHaveBeenCalledTimes(1)
+    connection.close()
+  })
+
   it('registers and serves a controller without opening a Node database', async () => {
     const harness = socketHarness()
     const query = vi.fn(async () => ({ columns: ['n'], rows: [{ n: 1n }] }))

@@ -85,8 +85,15 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
     })
     socket.on('message', (bytes, binary) => {
       try {
-        if (binary || (!peer && bytes.toString().length > 32768)) { throw new Error('Invalid frame') }
-        const message: unknown = JSON.parse(bytes.toString())
+        // ws.RawData also permits fragmented Buffer[] frames. Normalize the
+        // payload once so size checks and JSON decoding use the same bytes.
+        const frame = Array.isArray(bytes)
+          ? Buffer.concat(bytes)
+          : bytes instanceof ArrayBuffer
+            ? Buffer.from(bytes)
+            : bytes
+        if (binary || (!peer && frame.byteLength > 32768)) { throw new Error('Invalid frame') }
+        const message: unknown = JSON.parse(frame.toString())
         if (!isRecord(message)) { throw new Error('Invalid frame') }
         if (!peer) {
           if (message.type !== 'hello' || message.protocol !== SQLITE_DEVTOOLS_PROTOCOL || typeof message.token !== 'string'
@@ -152,7 +159,7 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
     async invoke(input: unknown): Promise<SqliteDevtoolsResult> {
       try {
         if (!isRecord(input) || !isIdentifier(input.runtimeId) || !isIdentifier(input.sessionId)
-          || !isIdentifier(input.databaseName) || !isSqliteDevtoolsMethod(input.method)) {
+          || !isIdentifier(input.databaseName) || !isSqliteDevtoolsMethod(input.method) || input.method === 'close') {
           throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_INVALID_REQUEST', 'Unknown SQLite runtime, database, or method.')
         }
         const args = decodeSqliteDevtoolsValue(input.args)

@@ -32,6 +32,18 @@ export interface SqliteDevtoolsRuntimeConnection {
   close: () => void
 }
 
+function utf8ByteLength(value: string) {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).byteLength
+  }
+  let bytes = 0
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0
+    bytes += codePoint <= 0x7F ? 1 : codePoint <= 0x7FF ? 2 : codePoint <= 0xFFFF ? 3 : 4
+  }
+  return bytes
+}
+
 /** 只登记和转发当前运行时的数据库，断线后不重放任何数据库操作。 */
 export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRuntimeOptions): SqliteDevtoolsRuntimeConnection {
   if (!/^ws:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(options.endpoint)
@@ -58,7 +70,7 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
 
   function send(payload: unknown) {
     const text = JSON.stringify(payload)
-    if (text.length > SQLITE_DEVTOOLS_MAX_MESSAGE_BYTES) {
+    if (utf8ByteLength(text) > SQLITE_DEVTOOLS_MAX_MESSAGE_BYTES) {
       throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_PAYLOAD_LIMIT', 'SQLite DevTools message exceeds the size limit.')
     }
     socket?.send(text)
@@ -84,7 +96,7 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
   async function receive(text: string, current: number) {
     if (disposed || current !== generation) { return }
     try {
-      if (text.length > SQLITE_DEVTOOLS_MAX_MESSAGE_BYTES) { throw new Error('Oversized message') }
+      if (utf8ByteLength(text) > SQLITE_DEVTOOLS_MAX_MESSAGE_BYTES) { throw new Error('Oversized message') }
       const message: unknown = JSON.parse(text)
       if (!isRecord(message)) { throw new Error('Invalid message') }
       if (message.type === 'ready' && isIdentifier(message.sessionId) && typeof message.allowWrite === 'boolean') {
@@ -136,7 +148,7 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
     const current = ++generation
     requestIds = new Set()
     try {
-      socket = options.createSocket(options.endpoint, {
+      const created = options.createSocket(options.endpoint, {
         open() {
           queueMicrotask(() => {
             if (disposed || current !== generation) { return }
@@ -151,6 +163,16 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
         close: () => disconnect(current),
         error: () => disconnect(current),
       })
+      // A host adapter may report an immediate connection failure while
+      // createSocket is still evaluating. In that case disconnect() has
+      // already advanced the generation; do not retain the stale socket or
+      // let a later reconnect race with it.
+      if (disposed || current !== generation) {
+        try { created.close() }
+        catch { /* The adapter may have already closed the socket. */ }
+        return
+      }
+      socket = created
     }
     catch { disconnect(current) }
   }
