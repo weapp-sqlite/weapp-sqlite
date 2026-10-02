@@ -97,7 +97,9 @@ WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 pnpm acceptance:debug:devtools
 ```
 
 设置 `WEAPP_VITE_E2E_WS_ENDPOINT` 只改变测试连接入口；未设置时仍走 `Launcher.launch()` 的默认 CLI 启动流程。正式验收优先复用 10989，避免重复启动 IDE。若 `doctor` 能读取 CLI、登录和 HTTP 服务端口，但 automator 仍提示连接失败，应先确认该端口对应目标项目和当前 CLI 路径，再通过官方 CLI 重新启用自动化；不要通过关闭或重启 IDE 来碰运气。
-6. 准备真机报告并执行 `pnpm acceptance:mobile:prepare`，完成 iOS/Android 手工步骤后再运行 `pnpm acceptance:verify`。
+6. 使用同一个官方 CLI 路径准备真机报告：
+   `WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH=/Applications/wechatwebdevtools.app/Contents/MacOS/cli pnpm acceptance:mobile:prepare`，
+   完成 iOS/Android 手工步骤后再运行 `pnpm acceptance:verify`。
 
 ## 真机验收
 
