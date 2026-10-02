@@ -49,9 +49,10 @@ export WEAPP_VITE_DISABLE_IDE_OPEN_RECOVERY=1
 pnpm acceptance:devtools:doctor
 ```
 
-`WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH` 要同时传给 doctor、启动和验收命令，避免命令读取旧的
-`~/.weapp-ide-cli/config.json` 路径而拉起另一份 DevTools。验收脚本不得改写全局 CLI 配置、
-删除用户目录、清理登录缓存或切换 profile；发现 CLI 路径失效时应停止并修正环境。
+`WEAPP_VITE_E2E_DEVTOOLS_CLI_PATH` 会由 E2E Launcher 和 doctor 前置检查使用。doctor 会先确认
+它与 `~/.weapp-ide-cli/config.json` 中的路径一致，再执行项目检查，避免命令读取旧路径而拉起
+另一份 DevTools。验收脚本不得改写全局 CLI 配置、删除用户目录、清理登录缓存或切换 profile；
+发现 CLI 路径失效或配置不一致时应停止并修正环境。
 
 启动已登录的目标项目后，只创建一个 automator 会话并固定使用 10989 端口。后续 suite 通过
 同一个 WebSocket 复用会话：
@@ -74,6 +75,10 @@ pnpm acceptance:debug:devtools
 `miniProgram.close()`、`weapp close`、`weapp quit`、`closeIde` 或按进程名终止 DevTools，
 这些操作会关闭项目或 IDE，可能触发重新登录。登录失效应报告为环境阻塞，等待用户在同一
 DevTools 窗口完成登录后再重试。
+
+`disconnect()` 可能让当前 automator 服务释放 10989 端口，但不会关闭 IDE 或登录态。开始下一套
+suite 前先检查该端口；如果端口已释放，重新执行上面的官方 `weapp auto` 命令即可，禁止使用
+`weapp close`、`weapp quit` 或重启 IDE 来恢复自动化。
 
 ## 新手执行顺序
 
