@@ -1,5 +1,9 @@
 import path from 'node:path'
+import process from 'node:process'
 import { defineConfig, devices } from '@playwright/test'
+
+const port = Number(process.env['ACCEPTANCE_WEB_PORT'] ?? 4173)
+const baseURL = `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: './web',
@@ -9,13 +13,13 @@ export default defineConfig({
   timeout: 90_000,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL,
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm exec tsx scripts/serve-acceptance-web.ts',
+    command: `ACCEPTANCE_WEB_PORT=${port} pnpm exec tsx scripts/serve-acceptance-web.ts`,
     cwd: path.resolve(import.meta.dirname, '..'),
-    url: 'http://127.0.0.1:4173',
+    url: baseURL,
     reuseExistingServer: false,
     timeout: 30_000,
   },
