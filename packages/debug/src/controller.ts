@@ -615,7 +615,7 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
   let currentScope: SqliteDebugSessionScope | undefined
   let closed = false
   let lastRevision = 0
-  let undo: { readonly bytes?: Uint8Array, readonly operation: string, readonly createdAt: string, readonly revision: number } | undefined
+  let undo: { readonly bytes?: Uint8Array, readonly fingerprint: string, readonly operation: string, readonly createdAt: string, readonly revision: number } | undefined
   // Counting a filtered table is often much more expensive than reading one
   // page. Keep counts for the current database revision so page navigation
   // does not repeat the same full scan. The session revision changes for every
@@ -717,6 +717,7 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     }
     return {
       ...(bytes === undefined ? {} : { bytes: Uint8Array.from(bytes) }),
+      fingerprint: bytes === undefined ? 'missing' : await sha256(bytes),
       operation,
       createdAt: new Date().toISOString(),
     }
@@ -725,7 +726,12 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
   async function writeOperation<T>(operation: string, callback: (current: SqliteDebugSessionScope['database']) => Promise<T>) {
     const previous = await createUndoSnapshot(operation)
     const result = await callback(await database())
-    undo = { ...previous, revision: scope().revision }
+    const persisted = await scope().loadSnapshot()
+    undo = {
+      ...previous,
+      fingerprint: persisted === undefined ? 'missing' : await sha256(persisted),
+      revision: scope().revision,
+    }
     return result
   }
 
@@ -1196,8 +1202,12 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       }
       const previous = await createUndoSnapshot('Import SQLite database')
       const replacement = await replaceSnapshot(bytes, 'SQLITE_DEBUG_IMPORT_FAILED')
-      undo = { ...previous, revision: scope().revision }
       const persisted = await scope().loadSnapshot()
+      undo = {
+        ...previous,
+        fingerprint: persisted === undefined ? 'missing' : await sha256(persisted),
+        revision: scope().revision,
+      }
       return metadata(persisted ?? bytes, replacement)
     },
     async exportTable(tableName, exportOptions) {
@@ -1302,7 +1312,9 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       if (!undo) {
         throw new SqliteDebugError('SQLITE_DEBUG_UNDO_UNAVAILABLE', 'No debug write is available to undo in this session.')
       }
-      if (undo.revision !== scope().revision) {
+      const currentSnapshot = await scope().loadSnapshot()
+      const currentFingerprint = currentSnapshot === undefined ? 'missing' : await sha256(currentSnapshot)
+      if (undo.revision !== scope().revision || undo.fingerprint !== currentFingerprint) {
         undo = undefined
         throw new SqliteDebugError('SQLITE_DEBUG_UNDO_STALE', 'The database changed after this debug operation. Its snapshot can no longer be restored safely.')
       }

@@ -423,6 +423,18 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     process.once('exit', cleanup)
   }
 
+  async function cleanupDebugPage() {
+    if (!debugPage) {
+      return
+    }
+    const markerPath = path.join(debugPage.directory, '.weapp-sqlite-generated')
+    const marker = await readFile(markerPath, 'utf8').catch(() => undefined)
+    if (marker === GENERATED_PAGE_MARKER) {
+      await rm(debugPage.directory, { recursive: true, force: true })
+    }
+    debugPage = undefined
+  }
+
   return {
     name: 'weapp-sqlite',
     enforce: 'post',
@@ -579,22 +591,20 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     async closeBundle() {
       if (!watchBuild) {
         await devtoolsHost.close()
+        await cleanupDebugPage()
       }
-      if (debugPage) {
-        const markerPath = path.join(debugPage.directory, '.weapp-sqlite-generated')
-        const marker = await readFile(markerPath, 'utf8').catch(() => undefined)
-        if (marker === GENERATED_PAGE_MARKER) {
-          await rm(debugPage.directory, { recursive: true, force: true })
-        }
-        debugPage = undefined
-      }
-      if (wasmSubpackage && cleanupWasmOnExit && !cleanupWasmTimer) {
+      // Rollup calls closeBundle after every rebuild in watch mode. Keep the
+      // generated route and loader alive until the watcher actually exits;
+      // removing them here makes the next rebuild lose the debug page.
+      if (!watchBuild && wasmSubpackage && cleanupWasmOnExit && !cleanupWasmTimer) {
         cleanupWasmTimer = setTimeout(cleanupWasmOnExit, 30_000)
         cleanupWasmTimer.unref?.()
       }
     },
     async closeWatcher() {
       await devtoolsHost.close()
+      await cleanupDebugPage()
+      cleanupWasmOnExit?.()
     },
   }
 }

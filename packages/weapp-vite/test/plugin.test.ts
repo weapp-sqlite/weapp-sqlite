@@ -158,6 +158,28 @@ describe('weappSqlite plugin', () => {
     await expect(readFile(path.join(root, 'src/__debug/index/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('keeps generated debug routes across watch rebuilds and cleans them when the watcher exits', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-plugin-watch-'))
+    temporaryDirectories.push(root)
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src/sqlite-debug.config.ts'), 'export default {}')
+    const plugin = weappSqlite({ debug: { enabled: true, page: { route: '__debug/index/index', configFile: './src/sqlite-debug.config.ts' } } })
+    await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
+    await hook(plugin, 'configResolved').call({}, {
+      root,
+      build: { watch: {} },
+      weappVite: { name: 'weapp-vite', runtime: 'miniprogram', platform: 'weapp' },
+      plugins: [],
+    } as never)
+
+    const generatedPage = path.join(root, 'src/__debug/index/index.ts')
+    await hook(plugin, 'closeBundle').call({})
+    await expect(readFile(generatedPage, 'utf8')).resolves.toContain('createSqliteDebugWorkspacePage')
+
+    await hook(plugin, 'closeWatcher').call({})
+    await expect(readFile(generatedPage, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('invalidates the compiler app manifest after registering the generated route', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-plugin-manifest-'))
     temporaryDirectories.push(root)

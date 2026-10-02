@@ -144,6 +144,23 @@ describe('unified SQLite runtime', () => {
     await database.close()
   })
 
+  it('rejects an undo when the persisted snapshot changes outside the runtime registry', async () => {
+    const { adapter, files } = createAdapter()
+    const database = await openSqliteWithAdapter({ name: 'fingerprint-undo', adapter }, adapter)
+    const controller = createDebugController('fingerprint-undo', adapter)
+    await database.exec('CREATE TABLE notes (body TEXT)')
+    await database.exec('INSERT INTO notes VALUES (?)', ['before'])
+    await controller.truncateTable('notes', { allowWrite: true, confirmTable: 'notes' })
+
+    const persisted = files.get('fingerprint-undo')
+    expect(persisted).toBeDefined()
+    files.set('fingerprint-undo', Uint8Array.from(persisted!, byte => byte ^ 0xFF))
+
+    await expect(controller.undoLastDestructiveChange()).rejects.toMatchObject({ code: 'SQLITE_DEBUG_UNDO_STALE' })
+    await controller.close()
+    await database.close()
+  })
+
   it('runs migrations and reports the lite engine', async () => {
     const liteInitializer: SqlJsInitializer = options => initSqlJsLite({
       ...options,
