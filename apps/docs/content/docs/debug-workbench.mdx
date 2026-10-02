@@ -66,7 +66,7 @@ export default defineAppJson({
 
 设置 `debug.devtools: true` 后，`weapp-vite` 开发服务会启动一个独立的 `@weapp-sqlite/devtools` 宿主，并在日志中输出带一次性认证码的面板 URL。面板先选择运行实例，再选择数据库；配置中的数据库列表会和 runtime 已打开的数据库合并。面板操作始终通过应用持有的真实连接执行。
 
-Web runtime 使用 loopback WebSocket，微信开发工具使用 `wx.connectSocket`。runtime token 只用于当前开发会话，面板认证由 Devframe 宿主持有。断线时待处理请求会失败，写操作不会自动重放；watch 重建复用已有端口和连接，开发服务退出时释放服务与调试会话。生产构建关闭 `debug` 后不会包含通信桥、token 或面板资源。
+Web runtime 使用 loopback WebSocket，微信开发工具使用 `wx.connectSocket`。runtime token 只用于当前开发会话，面板认证由 Devframe 宿主持有。断线时待处理请求会失败，写操作不会自动重放；多个面板各自持有调试租约，关闭一个面板不会释放其他面板仍在使用的调试会话。watch 重建复用已有端口和连接，开发服务退出时释放服务与调试会话。生产构建关闭 `debug` 后不会包含通信桥、token 或面板资源。
 
 已有 Vite DevTools 宿主也可以直接挂载 `createSqliteDevtoolsDevframe()` 返回的 definition；需要独立生命周期时使用 `startSqliteDevtoolsServer()`，并在 watcher 退出时调用返回对象的 `close()`。
 
