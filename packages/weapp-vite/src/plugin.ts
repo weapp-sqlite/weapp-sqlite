@@ -377,6 +377,120 @@ async function validateExistingWasmSubpackage(config: ResolvedConfig, root: stri
   }
 }
 
+interface BundleChunkLike {
+  readonly type: 'chunk'
+  fileName: string
+  code: string
+  imports?: string[]
+  dynamicImports?: string[]
+}
+
+function packageRootOf(fileName: string, roots: readonly string[]) {
+  return [...roots]
+    .sort((left, right) => right.length - left.length)
+    .find(root => fileName === root || fileName.startsWith(`${root}/`)) ?? ''
+}
+
+function relativeChunkImport(fromFileName: string, toFileName: string) {
+  const relative = path.posix.relative(path.posix.dirname(fromFileName), toFileName)
+  return relative.startsWith('.') ? relative : `./${relative}`
+}
+
+function replaceChunkImport(code: string, sourceFileName: string, targetFileName: string, oldFileName: string, newFileName: string) {
+  const oldImport = relativeChunkImport(sourceFileName, oldFileName)
+  const newImport = relativeChunkImport(targetFileName, newFileName)
+  return code
+    .replaceAll(`"${oldImport}"`, `"${newImport}"`)
+    .replaceAll(`'${oldImport}'`, `'${newImport}'`)
+    .replaceAll(`\`${oldImport}\``, `\`${newImport}\``)
+}
+
+function localizeCrossSubpackageImports(
+  pluginContext: { emitFile: (asset: { type: 'asset', fileName: string, source: string }) => void },
+  bundle: Record<string, unknown>,
+  roots: readonly string[],
+) {
+  if (roots.length === 0) {
+    return
+  }
+  const chunks = new Map<string, BundleChunkLike>()
+  for (const [key, value] of Object.entries(bundle)) {
+    if (value && typeof value === 'object' && (value as { type?: unknown }).type === 'chunk') {
+      const chunk = value as BundleChunkLike
+      chunks.set(chunk.fileName || key, chunk)
+    }
+  }
+  const localized = new Map<string, string>()
+  const emitted = new Set<string>()
+
+  const cloneForRoot = (sourceFileName: string, targetRoot: string): string => {
+    const key = `${targetRoot}\0${sourceFileName}`
+    const existing = localized.get(key)
+    if (existing) {
+      return existing
+    }
+    const source = chunks.get(sourceFileName)
+    if (!source) {
+      return sourceFileName
+    }
+    const baseName = sourceFileName.replaceAll('/', '.')
+    let targetFileName = targetRoot ? `${targetRoot}/weapp-shared/${baseName}` : `weapp-shared/${baseName}`
+    let suffix = 1
+    while (chunks.has(targetFileName) || emitted.has(targetFileName)) {
+      targetFileName = targetRoot
+        ? `${targetRoot}/weapp-shared/${baseName.replace(/\.js$/, `.${suffix++}.js`)}`
+        : `weapp-shared/${baseName.replace(/\.js$/, `.${suffix++}.js`)}`
+    }
+    localized.set(key, targetFileName)
+
+    let code = source.code
+    const imports = [...source.imports ?? []]
+    const dynamicImports = [...source.dynamicImports ?? []]
+    const rewriteImports = (values: string[]) => values.map((importedFileName) => {
+      if (path.posix.basename(importedFileName) === 'rolldown-runtime.js') {
+        const localizedRuntime = targetRoot ? `${targetRoot}/rolldown-runtime.js` : 'rolldown-runtime.js'
+        code = replaceChunkImport(code, sourceFileName, targetFileName, importedFileName, localizedRuntime)
+        return localizedRuntime
+      }
+      const importedRoot = packageRootOf(importedFileName, roots)
+      let localizedFileName = importedFileName
+      if (importedRoot && importedRoot !== targetRoot) {
+        localizedFileName = cloneForRoot(importedFileName, targetRoot)
+      }
+      code = replaceChunkImport(code, sourceFileName, targetFileName, importedFileName, localizedFileName)
+      return localizedFileName
+    })
+    rewriteImports(imports)
+    rewriteImports(dynamicImports)
+    if (!emitted.has(targetFileName)) {
+      emitted.add(targetFileName)
+      pluginContext.emitFile({ type: 'asset', fileName: targetFileName, source: code })
+    }
+    // The emitted asset is intentionally not inserted into the input bundle.
+    // Callers only need the localized target name to rewrite their import list.
+    return targetFileName
+  }
+
+  const rewriteImporter = (chunk: BundleChunkLike) => {
+    const importerRoot = packageRootOf(chunk.fileName, roots)
+    const rewrite = (values: string[]) => values.map((importedFileName) => {
+      const importedRoot = packageRootOf(importedFileName, roots)
+      if (!importedRoot || importedRoot === importerRoot) {
+        return importedFileName
+      }
+      const localizedFileName = cloneForRoot(importedFileName, importerRoot)
+      chunk.code = replaceChunkImport(chunk.code, chunk.fileName, chunk.fileName, importedFileName, localizedFileName)
+      return localizedFileName
+    })
+    chunk.imports = rewrite(chunk.imports ?? [])
+    chunk.dynamicImports = rewrite(chunk.dynamicImports ?? [])
+  }
+
+  for (const chunk of chunks.values()) {
+    rewriteImporter(chunk)
+  }
+}
+
 export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
   const debug = normalizeDebugOptions(options)
   const wasm = normalizeWasmOptions(options)
@@ -439,7 +553,14 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
     name: 'weapp-sqlite',
     enforce: 'post',
     async config(userConfig) {
-      const config = userConfig as typeof userConfig & { root?: string, weapp?: { srcRoot?: string, autoRoutes?: unknown, subPackages?: Record<string, unknown> } }
+      const config = userConfig as typeof userConfig & {
+        root?: string
+        weapp?: {
+          srcRoot?: string
+          autoRoutes?: unknown
+          subPackages?: Record<string, unknown>
+        }
+      }
       projectRoot = path.resolve(config.root ?? process.cwd())
       sourceRoot = config.weapp?.srcRoot ?? 'src'
       const weapp = config.weapp ??= {}
@@ -560,14 +681,15 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       })
     },
     generateBundle(_outputOptions, bundle) {
-      if (!wasmSubpackage) {
-        return
-      }
-      for (const output of Object.values(bundle)) {
-        if (output.type === 'chunk') {
-          output.code = rewriteWasmSubpackageLoader(output.code, output.fileName, wasmSubpackage)
+      if (wasmSubpackage) {
+        for (const output of Object.values(bundle)) {
+          if (output.type === 'chunk') {
+            output.code = rewriteWasmSubpackageLoader(output.code, output.fileName, wasmSubpackage)
+          }
         }
       }
+      const roots = [...new Set([debugPage?.root, wasmSubpackage?.root].filter((root): root is string => root !== undefined))]
+      localizeCrossSubpackageImports(this, bundle as unknown as Record<string, unknown>, roots)
     },
     configureServer(server: ViteDevServer) {
       server.httpServer?.once('close', () => {

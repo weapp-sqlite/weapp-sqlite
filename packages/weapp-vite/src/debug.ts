@@ -1,11 +1,12 @@
 import type { SqliteDebugController, SqliteDebugTableFormat } from '@weapp-sqlite/debug'
 import type { SqliteDebugRuntimeControllerOptions, SqliteDebugWorkspaceOptions, SqliteRuntimeInfo } from './types'
 import { createSqliteDebugController as createController } from '@weapp-sqlite/debug'
+import { createSqliteDebugSessionWithAdapter } from './debug-session'
 import { defaultSqliteRuntimeAdapter } from './default-adapter'
 import { SqliteRuntimeError } from './errors'
-import { createSqliteDebugSessionWithAdapter, getSqliteRuntimeDatabaseOptions } from './open'
+import { getSqliteRuntimeDatabaseOptions } from './runtime-registry'
 
-export { listSqliteRuntimeDatabases } from './open'
+export { listSqliteRuntimeDatabases } from './runtime-registry'
 
 export type { SqliteDebugRuntimeControllerOptions, SqliteDebugWorkspaceOptions } from './types'
 

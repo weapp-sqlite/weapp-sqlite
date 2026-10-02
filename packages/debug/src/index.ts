@@ -1,5 +1,6 @@
 export { createSqliteDebugController } from './controller'
 export { serializeSqliteDebugError, SqliteDebugError } from './errors'
+export type { SqliteDebugErrorCode } from './errors'
 export type { SqliteDebugSession, SqliteDebugSessionScope } from './session'
 export type {
   SqliteDebugColumn,

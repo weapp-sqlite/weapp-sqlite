@@ -38,8 +38,18 @@ export class SqliteDebugError extends Error {
   }
 }
 
+function isStructuredSqliteDebugError(error: unknown): error is { readonly code: SqliteDebugErrorCode, readonly message: string } {
+  if (error instanceof SqliteDebugError || !error || typeof error !== 'object') {
+    return error instanceof SqliteDebugError
+  }
+  const value = error as { readonly code?: unknown, readonly message?: unknown }
+  return typeof value.code === 'string'
+    && value.code.startsWith('SQLITE_DEBUG_')
+    && typeof value.message === 'string'
+}
+
 export function serializeSqliteDebugError(error: unknown) {
-  if (error instanceof SqliteDebugError) {
+  if (isStructuredSqliteDebugError(error)) {
     return { code: error.code, message: error.message }
   }
   if (error instanceof Error) {

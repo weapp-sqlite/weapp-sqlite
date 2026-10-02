@@ -46,6 +46,15 @@ Headless 只用于逻辑预检，不计入任何平台支持证据。截图用�
 3. `pnpm acceptance:web` 和 `pnpm acceptance:debug:web`，先在浏览器验证业务和工作台。
 4. 运行 `pnpm acceptance:devtools:doctor`，确认微信 DevTools 已登录且项目配置正确。
 5. 执行 `pnpm acceptance:devtools` 和 `pnpm acceptance:debug:devtools`。
+
+如果 DevTools 已经由 `wv ide auto --project ./dist/weapp --port 10989` 打开，可以复用当前 automator 会话，避免测试再次启动 IDE：
+
+```bash
+WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 pnpm acceptance:devtools
+WEAPP_VITE_E2E_WS_ENDPOINT=ws://127.0.0.1:10989 pnpm acceptance:debug:devtools
+```
+
+设置 `WEAPP_VITE_E2E_WS_ENDPOINT` 只改变测试连接入口；未设置时仍走 `Launcher.launch()` 的默认 CLI 启动流程。若 `doctor` 能读取 CLI、登录和 HTTP 服务端口，但 automator 仍提示连接失败，应先确认该端口对应目标项目，再通过 `wv ide auto` 重新启用自动化。
 6. 准备真机报告并执行 `pnpm acceptance:mobile:prepare`，完成 iOS/Android 手工步骤后再运行 `pnpm acceptance:verify`。
 
 ## 真机验收

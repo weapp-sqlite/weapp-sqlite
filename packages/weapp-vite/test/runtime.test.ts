@@ -1,15 +1,16 @@
 import type { SqliteConnection, SqliteMigration } from '@weapp-sqlite/core'
 import type { SqlJsInitializer } from '@weapp-sqlite/wasm'
 import type { SqliteRuntimeAdapter } from '@/types'
-import { createSqliteDebugController } from '@weapp-sqlite/debug'
+import { createSqliteDebugController, SqliteDebugError } from '@weapp-sqlite/debug'
 import initSqlJs from '@weapp-sqlite/sqljs/full'
 import initSqlJsLite from '@weapp-sqlite/sqljs/lite'
 import { resolveSqliteWasmAsset } from '@weapp-sqlite/sqljs/node'
 import { createSqliteWasmRuntimeAdapter } from '@/adapter'
 import { createMiniProgramSqliteRuntimeAdapterWithInitializer } from '@/advanced'
 import { createSqliteDebugController as createRuntimeDebugController } from '@/debug'
+import { createSqliteDebugSessionWithAdapter } from '@/debug-session'
 import { SqliteRuntimeError } from '@/errors'
-import { clearSqliteRuntimeRegistryForTests, createSqliteDebugSessionWithAdapter, openSqliteWithAdapter, removeSqliteWithAdapter } from '@/open'
+import { clearSqliteRuntimeRegistryForTests, openSqliteWithAdapter, removeSqliteWithAdapter } from '@/open'
 
 vi.mock('virtual:weapp-sqlite-runtime', () => ({
   default: {
@@ -204,6 +205,14 @@ describe('unified SQLite runtime', () => {
 
     await expect(second.query('SELECT name FROM sqlite_schema')).resolves.toMatchObject({ rows: [{ name: 'notes' }] })
     await second.close()
+  })
+
+  it('preserves the public debug error type for closed runtime sessions', async () => {
+    const { adapter } = createAdapter()
+    const session = createSqliteDebugSessionWithAdapter({ name: 'closed-session', adapter }, adapter)
+    await session.close()
+
+    await expect(session.runExclusive(async () => undefined)).rejects.toBeInstanceOf(SqliteDebugError)
   })
 
   it('serializes a transaction and a debug operation without deadlock', async () => {

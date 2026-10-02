@@ -172,6 +172,46 @@ describe('weappSqlite plugin', () => {
     await expect(readFile(path.join(root, 'src/__debug/index/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('localizes shared debug chunks before they can be imported by the main package', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-plugin-shared-'))
+    temporaryDirectories.push(root)
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src/sqlite-debug.config.ts'), 'export default {}')
+    const plugin = weappSqlite({ debug: { enabled: true, page: { route: '__debug/index/index', configFile: './src/sqlite-debug.config.ts' } } })
+    await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
+    const emitted: Array<{ type: 'asset', fileName: string, source: string }> = []
+    const bundle = {
+      'common.js': {
+        type: 'chunk' as const,
+        fileName: 'common.js',
+        code: 'const shared = require("./__debug/common.js")',
+        imports: ['__debug/common.js'],
+        dynamicImports: [],
+      },
+      '__debug/common.js': {
+        type: 'chunk' as const,
+        fileName: '__debug/common.js',
+        code: 'const runtime = require("./rolldown-runtime.js")',
+        imports: ['__debug/rolldown-runtime.js'],
+        dynamicImports: [],
+      },
+      '__debug/rolldown-runtime.js': {
+        type: 'chunk' as const,
+        fileName: '__debug/rolldown-runtime.js',
+        code: 'module.exports = {}',
+        imports: [],
+        dynamicImports: [],
+      },
+    }
+    await hook(plugin, 'generateBundle').call({ emitFile: (asset: { type: 'asset', fileName: string, source: string }) => emitted.push(asset) }, {}, bundle)
+    expect(bundle['common.js'].code).toContain('./weapp-shared/__debug.common.js')
+    expect(emitted).toEqual([{
+      type: 'asset',
+      fileName: 'weapp-shared/__debug.common.js',
+      source: 'const runtime = require("../rolldown-runtime.js")',
+    }])
+  })
+
   it('keeps generated debug routes across watch rebuilds and cleans them when the watcher exits', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-plugin-watch-'))
     temporaryDirectories.push(root)

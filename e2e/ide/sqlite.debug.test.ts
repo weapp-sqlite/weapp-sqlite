@@ -23,6 +23,7 @@ interface PageAcceptance {
 }
 
 const launcher = new Launcher()
+const wsEndpoint = process.env['WEAPP_VITE_E2E_WS_ENDPOINT']?.trim()
 const runtimeLogs: string[] = []
 const runtimeFailures: string[] = []
 let miniProgram: MiniProgram
@@ -86,13 +87,15 @@ function callWorkspace(page: Page, method: string, ...args: unknown[]) {
 }
 
 beforeAll(async () => {
-  miniProgram = await launcher.launch({
-    platform: 'wechat',
-    projectPath: path.join(demoRoot, 'dist/weapp'),
-    runtimeProvider: 'devtools',
-    trustProject: true,
-    timeout: 120_000,
-  }) as MiniProgram
+  miniProgram = wsEndpoint
+    ? await launcher.connect({ platform: 'wechat', wsEndpoint, timeout: 120_000 }) as MiniProgram
+    : await launcher.launch({
+      platform: 'wechat',
+      projectPath: path.join(demoRoot, 'dist/weapp'),
+      runtimeProvider: 'devtools',
+      trustProject: true,
+      timeout: 120_000,
+    }) as MiniProgram
   if (typeof miniProgram.waitForAppReady === 'function') {
     await miniProgram.waitForAppReady(60_000)
   }
