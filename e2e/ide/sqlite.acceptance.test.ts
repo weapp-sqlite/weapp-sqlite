@@ -107,6 +107,13 @@ afterAll(async () => {
   // MiniProgram.close() sends Tool.close and can close the user's IDE.
   if (typeof miniProgram?.disconnect === 'function') {
     miniProgram.disconnect()
+    return
+  }
+  if (runtimeProvider === 'headless') {
+    const close = (miniProgram as unknown as { readonly close?: () => Promise<void> }).close
+    if (typeof close === 'function') {
+      await close.call(miniProgram)
+    }
   }
 })
 
