@@ -6,7 +6,7 @@ import type { PanelContext } from './context'
 import { connectDevtoolsClient } from '../src/client'
 import { createTable } from './actions'
 import { button, element, empty, select } from './dom'
-import { parseParameters, planNodes, WorkspaceState } from './state'
+import { parseParameters, planNodes, runtimeSessionChanged, WorkspaceState } from './state'
 import { dataView, diagnosticsView, fileMenu, historyView, schemaView, sqlView } from './views'
 import './styles.css'
 
@@ -207,11 +207,18 @@ async function connect() {
       status = next === 'connected' || next === 'connecting' ? next : 'disconnected'; if (status === 'disconnected') { state.invalidate() } render()
     })
     client.subscribe((next) => {
+      const sessionChanged = runtimeSessionChanged(runtimes, next)
       runtimes = next
+      if (sessionChanged) {
+        state.invalidate()
+      }
       const selected = runtimes.find(runtime => runtime.id === state.runtimeId)
       if (!selected || !selected.databases.includes(state.databaseName)) {
         state.select(selected?.id ?? runtimes[0]?.id ?? '', selected?.databases[0] ?? runtimes[0]?.databases[0] ?? '')
         if (state.runtimeId) { void refresh() }
+      }
+      else if (sessionChanged) {
+        void refresh()
       }
       render()
     })

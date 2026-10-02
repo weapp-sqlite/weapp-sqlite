@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { parseEditable, parseParameters, planNodes, WorkspaceState } from './state'
+import { parseEditable, parseParameters, planNodes, runtimeSessionChanged, WorkspaceState } from './state'
 
 describe('devtools panel state', () => {
+  it('detects a new session when a runtime keeps its id after reconnecting', () => {
+    const previous = [{ id: 'runtime-a', label: 'Web', platform: 'web', databases: ['one'], sessionId: 'session-1', connectedAt: 'now', readOnly: false }]
+    const sameSession = [{ ...previous[0]!, sessionId: 'session-1' }]
+    const reconnected = [{ ...previous[0]!, sessionId: 'session-2' }]
+
+    expect(runtimeSessionChanged(previous, sameSession)).toBe(false)
+    expect(runtimeSessionChanged(previous, reconnected)).toBe(true)
+    expect(runtimeSessionChanged(previous, [])).toBe(false)
+  })
+
   it('isolates database state and rejects stale requests', () => {
     const state = new WorkspaceState()
     state.select('runtime-a', 'one')

@@ -11,6 +11,7 @@ import type {
   SqliteDebugTableCapabilities,
   SqliteDebugUndoState,
 } from '@weapp-sqlite/debug'
+import type { SqliteDevtoolsRuntimeDescriptor } from '../src/protocol'
 
 export interface SqlHistoryEntry {
   readonly id: number
@@ -64,6 +65,22 @@ export interface RequestTicket {
   readonly lane: string
   readonly sequence: number
   readonly key: string
+}
+
+/**
+ * A runtime id is stable across reconnects, while its session id is not.
+ * Pending panel requests must be invalidated when the session is replaced so
+ * a delayed response from the old connection cannot update the new workspace.
+ */
+export function runtimeSessionChanged(
+  previous: readonly SqliteDevtoolsRuntimeDescriptor[],
+  next: readonly SqliteDevtoolsRuntimeDescriptor[],
+) {
+  const nextById = new Map(next.map(runtime => [runtime.id, runtime.sessionId]))
+  return previous.some((runtime) => {
+    const sessionId = nextById.get(runtime.id)
+    return sessionId !== undefined && sessionId !== runtime.sessionId
+  })
 }
 
 export class WorkspaceState {
