@@ -33,6 +33,7 @@ describe('runtime transport', () => {
       listDatabases: () => ['main'],
       getController: () => ({}) as SqliteDebugController,
       reconnectDelayMs: 60_000,
+      onDisconnect: () => { throw new Error('release failed') },
       createSocket: (_url, handlers) => {
         handlers.error()
         return { send: vi.fn(), close }
@@ -75,5 +76,30 @@ describe('runtime transport', () => {
     harness.receive({ type: 'ready', sessionId: 's', allowWrite: true })
     harness.close()
     expect(controller.query).not.toHaveBeenCalled()
+  })
+
+  it('drops a request when its database disappears during controller lookup', async () => {
+    const harness = socketHarness()
+    const controller = { query: vi.fn(async () => ({ columns: [], rows: [] })) } as unknown as SqliteDebugController
+    let names = ['main']
+    let resolveController: ((value: SqliteDebugController) => void) | undefined
+    const connection = connectSqliteDevtoolsRuntime({
+      endpoint: 'ws://127.0.0.1:1234/runtime',
+      token: 'secret',
+      runtime: { id: 'web-database-removed', label: 'Web', platform: 'web' },
+      listDatabases: () => names,
+      getController: () => new Promise<SqliteDebugController>((resolve) => { resolveController = resolve }),
+      createSocket: harness.factory,
+    })
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    harness.receive({ type: 'ready', sessionId: 's', allowWrite: true })
+    harness.receive({ type: 'request', sessionId: 's', requestId: 'r1', databaseName: 'main', method: 'query', args: { type: 'array', value: ['select'] } })
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    names = []
+    resolveController!(controller)
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    expect(controller.query).not.toHaveBeenCalled()
+    expect((harness.sent.at(-1) as any).result).toMatchObject({ ok: false, error: { code: 'SQLITE_DEVTOOLS_DATABASE_CLOSED' } })
+    connection.close()
   })
 })

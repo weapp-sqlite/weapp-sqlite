@@ -58,6 +58,20 @@ describe('weappSqlite plugin', () => {
     expect(source).not.toContain('createWebSqliteDebugFileAdapter')
   })
 
+  it('emits a no-op DevTools bridge when debug is disabled for production', async () => {
+    const plugin = weappSqlite({ debug: { enabled: false, devtools: true } })
+    await hook(plugin, 'configResolved').call({}, {
+      command: 'build',
+      mode: 'production',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-devtools')
+    const source = String(await hook(plugin, 'load').call({}, resolved))
+    expect(source).toBe('export function connectSqliteDevtools() {}')
+    expect(source).not.toContain('runtimeToken')
+    expect(source).not.toContain('initializeSqliteDevtools')
+  })
+
   it('keeps the Web debug file adapter opt-in', async () => {
     const plugin = weappSqlite({ debug: true })
     hook(plugin, 'configResolved').call({}, {

@@ -86,7 +86,8 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
     socket = undefined
     try { previous?.close() }
     catch { /* 宿主可能已关闭连接。 */ }
-    options.onDisconnect?.()
+    try { options.onDisconnect?.() }
+    catch { /* 释放调试资源的回调不能阻断重连状态机。 */ }
     if (!disposed && !reconnectTimer) {
       const delay = Math.min(5000, (options.reconnectDelayMs ?? 500) * 2 ** Math.min(reconnectAttempt++, 4))
       reconnectTimer = setTimeout(() => { reconnectTimer = undefined; connect() }, delay)
@@ -131,6 +132,12 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
         const controller = await options.getController(message.databaseName)
         // 在异步获取控制器后再次核对代际，旧会话不能开始新的 SQL 操作。
         if (disposed || current !== generation || requestedSession !== sessionId) { return }
+        // Controller lookup may span a database replacement/removal. Re-read
+        // the registry before invoking it so a request cannot run against a
+        // controller that is no longer advertised by this runtime.
+        if (!databases().includes(message.databaseName)) {
+          throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_DATABASE_CLOSED', 'The selected SQLite database is no longer registered.')
+        }
         const handler = controller[message.method] as (...args: unknown[]) => unknown
         const value = await handler.apply(controller, args)
         result = { ok: true, value: encodeSqliteDevtoolsValue(value) }
