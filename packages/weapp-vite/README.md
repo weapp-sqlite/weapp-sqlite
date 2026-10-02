@@ -59,6 +59,8 @@ weappSqlite({
 })
 ```
 
+独立 Devframe 面板自动发现的数据库会沿用该运行实例 `openSqlite()` 已注册的迁移定义。即使数据库没有显式写入工作台的 `databases` 配置，迁移诊断仍会比较真实连接中的历史与应用实际使用的版本；外键诊断同样读取该连接的约束和 `foreign_key_check` 结果。
+
 Web、微信、支付宝、抖音、百度、京东和小红书使用相同业务 API，但仍分别执行单目标构建。插件只发射当前目标所需的 WASM，并在构建期注入对应 runtime。宿主能力不足时返回结构化 `SQLITE_RUNTIME_UNSUPPORTED`，不会回退到内存数据库。
 
 兼容的 full adapter 从 `@weapp-sqlite/weapp-vite/adapter` 导入；需要注入引擎初始化器时使用 `@weapp-sqlite/weapp-vite/advanced`。调试控制器从 `@weapp-sqlite/weapp-vite/debug` 导入。平台正式支持结论仍以对应官方 DevTools、iOS 和 Android 宿主验收为准，`unsupported` 不会静默回退到内存数据库。

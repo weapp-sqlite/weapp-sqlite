@@ -7,8 +7,22 @@ import initSqlJsLite from '@weapp-sqlite/sqljs/lite'
 import { resolveSqliteWasmAsset } from '@weapp-sqlite/sqljs/node'
 import { createSqliteWasmRuntimeAdapter } from '@/adapter'
 import { createMiniProgramSqliteRuntimeAdapterWithInitializer } from '@/advanced'
+import { createSqliteDebugController as createRuntimeDebugController } from '@/debug'
 import { SqliteRuntimeError } from '@/errors'
 import { clearSqliteRuntimeRegistryForTests, createSqliteDebugSessionWithAdapter, openSqliteWithAdapter, removeSqliteWithAdapter } from '@/open'
+
+vi.mock('virtual:weapp-sqlite-runtime', () => ({
+  default: {
+    target: 'web',
+    kind: 'test-virtual',
+    probe: async () => ({ target: 'web', supported: true }),
+    open: async () => { throw new Error('virtual adapter is not used in this test') },
+    loadSnapshot: async () => undefined,
+    saveSnapshot: async () => undefined,
+    remove: async () => undefined,
+    getRuntimeInfo: async () => ({ target: 'web', engine: 'test-virtual' }),
+  },
+}))
 
 const fullInitializer: SqlJsInitializer = options => initSqlJs({
   ...options,
@@ -91,6 +105,37 @@ describe('unified SQLite runtime', () => {
     const reopened = await openSqliteWithAdapter({ name: 'app.sqlite', migrations }, adapter)
     await expect(reopened.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'persisted' }] })
     await reopened.close()
+  })
+
+  it('reuses active migrations for an auto-discovered debug database', async () => {
+    const { adapter } = createAdapter()
+    const diagnosticMigrations: readonly SqliteMigration[] = [{
+      version: 1,
+      name: 'create_parents',
+      up: async transaction => transaction.exec('CREATE TABLE parents (id INTEGER PRIMARY KEY)').then(() => undefined),
+    }, {
+      version: 2,
+      name: 'create_children',
+      up: async transaction => transaction.exec('CREATE TABLE children (parent_id INTEGER REFERENCES parents(id))').then(() => undefined),
+    }]
+    const database = await openSqliteWithAdapter({ name: 'auto-diagnostics.sqlite', migrations: diagnosticMigrations }, adapter)
+    const controller = createRuntimeDebugController({ databaseName: 'auto-diagnostics.sqlite', enabled: true })
+
+    await expect(controller.getMigrationDiagnostics()).resolves.toMatchObject({
+      expected: [{ version: 1, name: 'create_parents' }, { version: 2, name: 'create_children' }],
+      applied: [expect.objectContaining({ version: 1, name: 'create_parents' }), expect.objectContaining({ version: 2, name: 'create_children' })],
+      pending: [],
+      warnings: [],
+      healthy: true,
+    })
+    await expect(controller.getForeignKeyDiagnostics()).resolves.toMatchObject({
+      tableCount: 2,
+      constrainedTableCount: 1,
+      constraints: [expect.objectContaining({ table: 'children', referencedTable: 'parents' })],
+    })
+
+    await controller.close()
+    await database.close()
   })
 
   it('keeps application handles usable when debug sessions close or recover a snapshot', async () => {
