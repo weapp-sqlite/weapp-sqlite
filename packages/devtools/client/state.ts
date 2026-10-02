@@ -53,6 +53,11 @@ export interface DatabaseState {
   notice: string
 }
 
+/** Capture the SQL editor input before an asynchronous request can mutate it. */
+export function snapshotSqlInput(state: Pick<DatabaseState, 'sql' | 'parameters'>) {
+  return { sql: state.sql.trim(), parameters: state.parameters }
+}
+
 export interface PlanNode {
   readonly id: number
   readonly parent: number
