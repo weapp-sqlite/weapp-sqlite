@@ -30,6 +30,7 @@ export interface CreateSqliteDevtoolsDevframeOptions extends SqliteDevtoolsBroke
 export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevframeOptions = {}) {
   const broker = createSqliteDevtoolsBroker(options)
   let unsubscribe: (() => void) | undefined
+  let disposing: Promise<void> | undefined
   const definition = defineDevframe({
     id: SQLITE_DEVTOOLS_SCOPE,
     name: 'SQLite',
@@ -54,7 +55,13 @@ export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevfra
   return {
     definition,
     broker,
-    async dispose() { unsubscribe?.(); unsubscribe = undefined; await broker.close() },
+    dispose() {
+      return disposing ??= (async () => {
+        unsubscribe?.()
+        unsubscribe = undefined
+        await broker.close()
+      })()
+    },
   }
 }
 
@@ -66,6 +73,7 @@ export interface SqliteDevtoolsPlugin {
   readonly name: string
   readonly apply: 'serve'
   readonly configureServer: (server: { readonly httpServer?: unknown }) => void
+  readonly closeServer: () => Promise<void>
   readonly closeBundle: () => Promise<void>
 }
 
@@ -80,6 +88,7 @@ export function createSqliteDevtoolsPlugin(controller: SqliteDevtoolsDevframe): 
       const httpServer = server.httpServer as { once: (event: string, listener: () => void) => void }
       httpServer.once('close', () => { void controller.dispose() })
     },
+    async closeServer() { await controller.dispose() },
     async closeBundle() { await controller.dispose() },
   }
 }
