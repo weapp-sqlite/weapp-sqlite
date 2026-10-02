@@ -43,7 +43,7 @@ const debug = createSqliteDebugController({
 
 SQLite 导出会先 `flush()`，返回原始快照、SHA-256、迁移版本和运行时元数据。CSV 遵循 RFC 4180、UTF-8 BOM，并区分 NULL 与空字符串；JSON 使用版本化带类型值保留 INTEGER、REAL、TEXT、BLOB 和 NULL。CSV/JSON 导入先预览和映射，`create`、`append`、`replace` 都在事务内执行，失败不保留部分数据。
 
-`analyzeQuery(sql, parameters)` 只接受 `SELECT`，使用同一组绑定参数调用 `EXPLAIN QUERY PLAN`，返回节点层级、索引名称、耗时和诊断计数。它不会执行原查询；`full-table-scan`、`temporary-b-tree` 和 `automatic-index` 会作为警告返回。
+`analyzeQuery(sql, parameters)` 只接受 `SELECT`，使用同一组绑定参数调用 `EXPLAIN QUERY PLAN`，返回节点层级、索引名称、耗时和诊断计数。它不会执行原查询；`full-table-scan`、`temporary-b-tree` 和 `automatic-index` 会作为警告返回。每个临时 B-tree 节点还会标明用途（`order-by`、`group-by`、`distinct` 或 `other`），便于判断是排序、分组还是去重触发了额外工作。
 
 `getMigrationDiagnostics()` 在传入控制器的 `migrations` 定义和数据库中的迁移历史之间做只读比对，返回已应用、待执行、未知版本、名称冲突、最新版本和健康状态；不会创建迁移表，也不会执行迁移回调。`getForeignKeyDiagnostics()` 读取 `PRAGMA foreign_keys`、每张表的 `foreign_key_list` 和全库 `foreign_key_check`，返回约束、违规行及“外键关闭/存在违规”警告，不修改数据库。
 

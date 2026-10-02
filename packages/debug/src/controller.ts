@@ -18,6 +18,7 @@ import type {
   SqliteDebugPage,
   SqliteDebugQueryAnalysis,
   SqliteDebugQueryPlanNode,
+  SqliteDebugQueryPlanTemporaryBTreeOperation,
   SqliteDebugQueryResult,
   SqliteDebugRowLocator,
   SqliteDebugSnapshot,
@@ -239,6 +240,15 @@ function planNode(row: Record<string, unknown>, fallbackId: number): SqliteDebug
   const notUsed = planNumber(row['notused'] ?? row['notUsed'], 0)
   const detail = planText(row['detail'])
   const temporary = /\buse\s+temp(?:orary)?\s+b-tree\b/i.test(detail)
+  const temporaryBTreeOperation: SqliteDebugQueryPlanTemporaryBTreeOperation | undefined = temporary
+    ? /\bfor\s+(?:right\s+part\s+of\s+)?order\s+by\b/i.test(detail)
+      ? 'order-by'
+      : /\bfor\s+group\s+by\b/i.test(detail)
+        ? 'group-by'
+        : /\bfor\s+distinct\b/i.test(detail)
+          ? 'distinct'
+          : 'other'
+    : undefined
   const search = /^\s*search\b/i.test(detail)
   const scan = /^\s*scan\b/i.test(detail)
   const kind: SqliteDebugQueryPlanNode['kind'] = temporary ? 'temporary-b-tree' : search ? 'search' : scan ? 'scan' : 'other'
@@ -253,6 +263,7 @@ function planNode(row: Record<string, unknown>, fallbackId: number): SqliteDebug
     detail,
     depth: 0,
     kind,
+    ...(temporaryBTreeOperation ? { temporaryBTreeOperation } : {}),
     ...(table ? { table } : {}),
     ...(index ? { index } : {}),
   }
@@ -288,6 +299,7 @@ function analyzePlan(rows: readonly Record<string, unknown>[]) {
   const indexes = [...new Set(nodes.flatMap(node => node.index ? [node.index] : []))]
   const fullTableScans = nodes.filter(node => node.kind === 'scan' && node.table && !node.index && !/\bscan\s+constant\s+row\b/i.test(node.detail)).length
   const temporaryBtrees = nodes.filter(node => node.kind === 'temporary-b-tree').length
+  const temporaryBTreeOperations = nodes.flatMap(node => node.temporaryBTreeOperation ? [node.temporaryBTreeOperation] : [])
   // SQLite 3.38+ may include the `COVERING` qualifier between `AUTOMATIC`
   // and `INDEX` (for example, `USING AUTOMATIC COVERING INDEX (x=?)`).
   // Keep this check independent from the optional index name parser: automatic
@@ -304,6 +316,7 @@ function analyzePlan(rows: readonly Record<string, unknown>[]) {
     diagnostics: {
       fullTableScans,
       temporaryBtrees,
+      temporaryBTreeOperations,
       automaticIndexes,
       indexes,
       warnings,

@@ -129,11 +129,16 @@ export interface SqliteDebugQueryPlanNode {
   /** Tree depth derived from the parent links. */
   readonly depth: number
   readonly kind: 'scan' | 'search' | 'temporary-b-tree' | 'other'
+  /** The operation that caused a temporary B-tree, when this is one. */
+  readonly temporaryBTreeOperation?: SqliteDebugQueryPlanTemporaryBTreeOperation
   readonly table?: string
   readonly index?: string
 }
 
 export type SqliteDebugQueryPlanWarning = 'full-table-scan' | 'temporary-b-tree' | 'automatic-index'
+
+/** The planner operation that required a temporary B-tree. */
+export type SqliteDebugQueryPlanTemporaryBTreeOperation = 'order-by' | 'group-by' | 'distinct' | 'other'
 
 /** Signals that can make a query slower as its input grows. */
 export interface SqliteDebugQueryDiagnostics {
@@ -141,6 +146,8 @@ export interface SqliteDebugQueryDiagnostics {
   readonly fullTableScans: number
   /** Number of `USE TEMP B-TREE` nodes. */
   readonly temporaryBtrees: number
+  /** Operations represented by temporary B-tree nodes, in plan order. */
+  readonly temporaryBTreeOperations: readonly SqliteDebugQueryPlanTemporaryBTreeOperation[]
   /** Number of automatic indexes selected by SQLite. */
   readonly automaticIndexes: number
   /** Names of indexes mentioned by the plan, in first-seen order. */

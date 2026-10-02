@@ -63,7 +63,34 @@ describe('query performance diagnostics', () => {
       const analysis = await controller.analyzeQuery('SELECT id FROM notes ORDER BY body')
       expect(analysis.diagnostics.temporaryBTree).toBe(true)
       expect(analysis.diagnostics.warnings).toContain('temporary-b-tree')
+      expect(analysis.diagnostics.temporaryBTreeOperations).toEqual(['order-by'])
+      expect(analysis.nodes.find(node => node.kind === 'temporary-b-tree')?.temporaryBTreeOperation).toBe('order-by')
       await expect(controller.query('SELECT count(*) AS total FROM notes')).resolves.toMatchObject({ rows: [{ total: 2 }] })
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('identifies whether temporary B-trees serve grouping or distinctness', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({
+      databaseName: 'performance-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      enabled: true,
+    })
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (body) VALUES (?), (?), (?)', ['one', 'one', 'two'], { allowWrite: true })
+
+      const grouped = await controller.analyzeQuery('SELECT body, count(*) FROM notes GROUP BY body')
+      expect(grouped.diagnostics.temporaryBTreeOperations).toContain('group-by')
+      expect(grouped.nodes.some(node => node.temporaryBTreeOperation === 'group-by')).toBe(true)
+
+      const distinct = await controller.analyzeQuery('SELECT DISTINCT body FROM notes')
+      expect(distinct.diagnostics.temporaryBTreeOperations).toContain('distinct')
+      expect(distinct.nodes.some(node => node.temporaryBTreeOperation === 'distinct')).toBe(true)
     }
     finally {
       await controller.close()

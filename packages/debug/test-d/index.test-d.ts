@@ -10,6 +10,7 @@ import type {
   SqliteDebugMigrationStatus,
   SqliteDebugPage,
   SqliteDebugQueryAnalysis,
+  SqliteDebugQueryPlanTemporaryBTreeOperation,
   SqliteDebugQueryResult,
   SqliteDebugSession,
   SqliteDebugSessionScope,
@@ -61,6 +62,8 @@ expectType<SqliteDebugUndoState>(controller.getUndoState())
 expectType<Promise<void>>(controller.undoLastDestructiveChange())
 expectType<Promise<SqliteDebugQueryResult>>(controller.query('SELECT * FROM notes WHERE id = ?', [1]))
 expectType<Promise<SqliteDebugQueryAnalysis>>(controller.analyzeQuery('SELECT * FROM notes WHERE id = ?', [1]))
+declare const analysis: SqliteDebugQueryAnalysis
+expectType<readonly SqliteDebugQueryPlanTemporaryBTreeOperation[]>(analysis.diagnostics.temporaryBTreeOperations)
 expectType<Promise<SqliteDebugExecutionResult>>(controller.execute('DELETE FROM notes WHERE id = ?', [1], { allowWrite: true }))
 expectType<Promise<SqliteDebugMigrationStatus>>(controller.getMigrationStatus())
 expectType<Promise<SqliteDebugMigrationDiagnostics>>(controller.getMigrationDiagnostics())

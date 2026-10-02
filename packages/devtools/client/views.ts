@@ -152,9 +152,17 @@ export function sqlView(context: PanelContext) {
     const diagnostics = element('div', 'diagnostics-panel')
     diagnostics.append(element('h3', 'section-title', '查询性能诊断'))
     const summary = state.analysis.diagnostics
-    diagnostics.append(element('p', 'section-note', `全表扫描 ${summary.fullTableScans} 次 · 临时 B-tree ${summary.temporaryBtrees} 次 · 自动索引 ${summary.automaticIndexes} 次`))
+    const temporaryBTreeOperations = summary.temporaryBTreeOperations ?? []
+    const operationLabels = new Map([
+      ['order-by', '排序'],
+      ['group-by', '分组'],
+      ['distinct', '去重'],
+      ['other', '其他'],
+    ])
+    const temporaryBTreeDetail = [...new Set(temporaryBTreeOperations.map(operation => operationLabels.get(operation) ?? operation))].join('、')
+    diagnostics.append(element('p', 'section-note', `全表扫描 ${summary.fullTableScans} 次 · 临时 B-tree ${summary.temporaryBtrees} 次${temporaryBTreeDetail ? `（${temporaryBTreeDetail}）` : ''} · 自动索引 ${summary.automaticIndexes} 次`))
     if (summary.warnings.length) {
-      diagnostics.append(element('div', 'diagnostic-warnings', summary.warnings.map(warning => warning === 'full-table-scan' ? '存在全表扫描' : warning === 'temporary-b-tree' ? '使用临时 B-tree' : '使用自动索引').join(' · ')))
+      diagnostics.append(element('div', 'diagnostic-warnings', summary.warnings.map(warning => warning === 'full-table-scan' ? '存在全表扫描' : warning === 'temporary-b-tree' ? `使用临时 B-tree${temporaryBTreeDetail ? `（${temporaryBTreeDetail}）` : ''}` : '使用自动索引').join(' · ')))
     }
     else {
       diagnostics.append(element('p', 'section-note', summary.indexes.length ? `使用索引：${summary.indexes.join(', ')}` : '未发现计划警告。'))

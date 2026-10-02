@@ -38,6 +38,6 @@ console.log(`Open SQLite Workbench: ${server.url}`)
 await server.close()
 ```
 
-面板先选择运行实例，再选择数据库。查询、编辑、执行计划、查询性能诊断、迁移/外键诊断、历史、结构操作和导入导出都通过当前运行时的真实连接完成；性能诊断只运行绑定参数的 `EXPLAIN QUERY PLAN`，不会执行原 SQL；断线中的写操作不会自动重放。`connectDevtoolsClient()` 适合已有 Devframe 宿主嵌入自定义面板。
+面板先选择运行实例，再选择数据库。查询、编辑、执行计划、查询性能诊断、迁移/外键诊断、历史、结构操作和导入导出都通过当前运行时的真实连接完成；性能诊断只运行绑定参数的 `EXPLAIN QUERY PLAN`，不会执行原 SQL，并会标出临时 B-tree 用于排序、分组或去重；断线中的写操作不会自动重放。`connectDevtoolsClient()` 适合已有 Devframe 宿主嵌入自定义面板。
 
 详细接入方式见 [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench) 和 [weapp-vite API](https://sqlite.weapp.dev/docs/api/weapp-vite)。

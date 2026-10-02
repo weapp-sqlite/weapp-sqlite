@@ -22,7 +22,7 @@ const controller = createSqliteDebugController({
 
 控制器只有在 `enabled: true` 时才执行操作。查询 SQL 默认只允许 `SELECT`、`WITH ... SELECT`、`EXPLAIN` 和安全 `PRAGMA`；包含数据修改语句的 CTE 仍按写操作拒绝。写入、结构修改和导入必须显式传入 `allowWrite: true`，破坏性操作还需要完整表名确认和可用快照。
 
-`analyzeQuery()` 使用绑定参数生成 `EXPLAIN QUERY PLAN`，只返回计划和扫描/索引诊断，不执行原 SQL。详见 [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench) 和 [Debug API](https://sqlite.weapp.dev/docs/api/debug)。
+`analyzeQuery()` 使用绑定参数生成 `EXPLAIN QUERY PLAN`，只返回计划和扫描/索引诊断，不执行原 SQL；临时 B-tree 会标明用于排序、分组或去重。详见 [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench) 和 [Debug API](https://sqlite.weapp.dev/docs/api/debug)。
 
 `getMigrationDiagnostics()` 对比配置中的 `migrations` 与历史表，报告待执行、未知版本和名称冲突；`getForeignKeyDiagnostics()` 读取外键约束、`PRAGMA foreign_keys` 和 `PRAGMA foreign_key_check`，报告约束违规。两项能力均为只读。
 

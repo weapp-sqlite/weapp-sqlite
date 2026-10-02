@@ -29,6 +29,7 @@ export type {
   SqliteDebugPage,
   SqliteDebugQueryAnalysis,
   SqliteDebugQueryPlanNode,
+  SqliteDebugQueryPlanTemporaryBTreeOperation,
   SqliteDebugQueryPlanWarning,
   SqliteDebugQueryResult,
   SqliteDebugReadOptions,
