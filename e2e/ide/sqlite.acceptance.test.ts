@@ -105,7 +105,9 @@ afterAll(async () => {
   // This test may attach to the user's existing DevTools session through
   // WEAPP_VITE_E2E_WS_ENDPOINT. Disconnect the automator transport only;
   // MiniProgram.close() sends Tool.close and can close the user's IDE.
-  miniProgram?.disconnect()
+  if (typeof miniProgram?.disconnect === 'function') {
+    miniProgram.disconnect()
+  }
 })
 
 it('runs provider-compatible SQLite acceptance', async () => {
