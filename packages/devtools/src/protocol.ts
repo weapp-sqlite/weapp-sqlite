@@ -88,6 +88,8 @@ export interface SqliteDevtoolsInvocation {
 export interface SqliteDevtoolsReleaseSession {
   readonly runtimeId: string
   readonly sessionId: string
+  /** Stable id for one Devframe panel connection. */
+  readonly ownerId?: string
 }
 
 export function isSqliteDevtoolsMethod(value: unknown): value is SqliteDevtoolsMethod {

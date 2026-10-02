@@ -68,7 +68,7 @@ describe('Devframe client authentication', () => {
     expect(second).toBe(first)
     await first
 
-    expect(harness.scoped.call).toHaveBeenCalledWith('release-session', { runtimeId: 'web-1', sessionId: 'session-1' })
+    expect(harness.scoped.call).toHaveBeenCalledWith('release-session', expect.objectContaining({ runtimeId: 'web-1', sessionId: 'session-1', ownerId: expect.any(String) }))
     expect(harness.scoped.unregister).toHaveBeenCalledOnce()
     expect(harness.rpc.close).toHaveBeenCalledOnce()
   })

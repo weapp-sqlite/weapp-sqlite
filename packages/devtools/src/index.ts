@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
 import type { SqliteDevtoolsBrokerOptions } from './broker'
-import type { SqliteDevtoolsInvocation, SqliteDevtoolsResult, SqliteDevtoolsRuntimeDescriptor } from './protocol'
+import type { SqliteDevtoolsInvocation, SqliteDevtoolsReleaseSession, SqliteDevtoolsResult, SqliteDevtoolsRuntimeDescriptor } from './protocol'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -15,9 +15,9 @@ import { SQLITE_DEVTOOLS_SCOPE } from './protocol'
 
 declare module 'devframe' {
   interface DevframeRpcServerFunctions {
-    'weapp-sqlite:list-runtimes': () => SqliteDevtoolsRuntimeDescriptor[]
+    'weapp-sqlite:list-runtimes': (ownerId?: string) => SqliteDevtoolsRuntimeDescriptor[]
     'weapp-sqlite:invoke': (input: SqliteDevtoolsInvocation) => Promise<SqliteDevtoolsResult>
-    'weapp-sqlite:release-session': (input: { runtimeId: string, sessionId: string }) => Promise<SqliteDevtoolsResult>
+    'weapp-sqlite:release-session': (input: SqliteDevtoolsReleaseSession) => Promise<SqliteDevtoolsResult>
   }
   interface DevframeRpcClientFunctions {
     'weapp-sqlite:state-updated': (runtimes: SqliteDevtoolsRuntimeDescriptor[]) => void

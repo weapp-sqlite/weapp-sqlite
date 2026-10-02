@@ -5,6 +5,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
 import {
   decodeSqliteDevtoolsValue,
+  encodeSqliteDevtoolsValue,
   isIdentifier,
   isRecord,
   isSqliteDevtoolsMethod,
@@ -46,10 +47,18 @@ function validOrigin(origin: string | undefined) {
   catch { return false }
 }
 
+function validOwnerId(value: unknown): value is string {
+  return value === undefined || isIdentifier(value)
+}
+
 /** broker 只路由到拥有数据库的 runtime，不会在 Node 端打开数据库副本。 */
 export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions = {}) {
   const token = randomBytes(32).toString('hex')
   const peers = new Map<string, Peer>()
+  // Each Devframe panel owns an independent lease. The runtime only receives
+  // a release after the last panel for that runtime lets go, so closing one
+  // panel cannot invalidate another panel's debug controllers.
+  const owners = new Map<string, Set<string>>()
   const sockets = new Set<WebSocket>()
   const listeners = new Set<() => void>()
   const server = new WebSocketServer({ noServer: true, maxPayload: SQLITE_DEVTOOLS_MAX_MESSAGE_BYTES, perMessageDeflate: false })
@@ -68,6 +77,7 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
     peer.pending.clear()
     if (peers.get(peer.descriptor.id) === peer) {
       peers.delete(peer.descriptor.id)
+      owners.delete(peer.descriptor.id)
       changed()
     }
   }
@@ -152,7 +162,17 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
   return {
     token,
     path: RUNTIME_PATH,
-    listRuntimes(): SqliteDevtoolsRuntimeDescriptor[] {
+    listRuntimes(ownerId?: string): SqliteDevtoolsRuntimeDescriptor[] {
+      if (!validOwnerId(ownerId)) {
+        throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_INVALID_REQUEST', 'Invalid SQLite DevTools panel owner.')
+      }
+      if (ownerId) {
+        for (const runtime of peers.values()) {
+          const runtimeOwners = owners.get(runtime.descriptor.id) ?? new Set<string>()
+          runtimeOwners.add(ownerId)
+          owners.set(runtime.descriptor.id, runtimeOwners)
+        }
+      }
       return [...peers.values()].map(peer => ({ ...peer.descriptor, databases: [...peer.descriptor.databases] }))
     },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
@@ -195,8 +215,23 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
     },
     async releaseSession(input: unknown): Promise<SqliteDevtoolsResult> {
       try {
-        if (!isRecord(input) || !isIdentifier(input.runtimeId) || !isIdentifier(input.sessionId)) {
+        if (!isRecord(input) || !isIdentifier(input.runtimeId) || !isIdentifier(input.sessionId) || !validOwnerId(input.ownerId)) {
           throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_INVALID_REQUEST', 'Unknown SQLite runtime session.')
+        }
+        const ownerId = input.ownerId
+        if (ownerId) {
+          const runtimeOwners = owners.get(input.runtimeId)
+          // A panel can dispose more than once or after the runtime list has
+          // already changed. Unknown owner ids are idempotent no-ops; they
+          // must never bypass the lease guard and release another panel.
+          if (!runtimeOwners?.has(ownerId)) {
+            return { ok: true, value: encodeSqliteDevtoolsValue(undefined) }
+          }
+          runtimeOwners.delete(ownerId)
+          if (runtimeOwners.size > 0) {
+            return { ok: true, value: encodeSqliteDevtoolsValue(undefined) }
+          }
+          owners.delete(input.runtimeId)
         }
         const peer = peers.get(input.runtimeId)
         if (!peer || peer.descriptor.sessionId !== input.sessionId || peer.socket.readyState !== WebSocket.OPEN) {

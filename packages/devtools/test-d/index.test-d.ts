@@ -36,6 +36,7 @@ expectAssignable<SqliteDevtoolsMethod>('getForeignKeyDiagnostics')
 declare const releaseSession: SqliteDevtoolsReleaseSession
 expectType<string>(releaseSession.runtimeId)
 expectType<string>(releaseSession.sessionId)
+expectType<string | undefined>(releaseSession.ownerId)
 
 declare const runtimeOptions: ConnectSqliteDevtoolsRuntimeOptions
 expectType<SqliteDevtoolsRuntimeConnection>(connectSqliteDevtoolsRuntime(runtimeOptions))

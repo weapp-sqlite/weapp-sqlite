@@ -81,6 +81,33 @@ describe('SQLite DevTools runtime broker', () => {
     socket.close()
   })
 
+  it('releases a runtime only after the last panel lease closes', async () => {
+    const broker = createSqliteDevtoolsBroker({ allowWrite: false })
+    closeBroker = broker.close
+    server = createServer()
+    broker.attach(server)
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', () => resolve()))
+    const address = server.address() as import('node:net').AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}${broker.path}`)
+    const frames: any[] = []
+    socket.on('message', frame => frames.push(JSON.parse(frame.toString())))
+    await new Promise<void>(resolve => socket.once('open', () => resolve()))
+    socket.send(JSON.stringify({ protocol: 1, type: 'hello', token: broker.token, runtime: { id: 'runtime-leases', label: 'Web', platform: 'web' }, databases: ['main'] }))
+    const ready = await waitForFrame(socket, frames, frame => frame.type === 'ready')
+    const sessionId = ready.sessionId as string
+
+    expect(broker.listRuntimes('panel-a')).toHaveLength(1)
+    expect(broker.listRuntimes('panel-b')).toHaveLength(1)
+    await expect(broker.releaseSession({ runtimeId: 'runtime-leases', sessionId, ownerId: 'panel-a' })).resolves.toMatchObject({ ok: true })
+    expect(frames.some(frame => frame.type === 'release')).toBe(false)
+
+    const release = broker.releaseSession({ runtimeId: 'runtime-leases', sessionId, ownerId: 'panel-b' })
+    const releaseRequest = await waitForFrame(socket, frames, frame => frame.type === 'release')
+    socket.send(JSON.stringify({ type: 'release-result', sessionId, requestId: releaseRequest.requestId, result: { ok: true, value: encodeSqliteDevtoolsValue(undefined) } }))
+    await expect(release).resolves.toMatchObject({ ok: true })
+    socket.close()
+  })
+
   it('exposes query analysis as a read-only protocol method', () => {
     expect(isSqliteDevtoolsMethod('analyzeQuery')).toBe(true)
     expect(isSqliteDevtoolsMethod('getMigrationDiagnostics')).toBe(true)

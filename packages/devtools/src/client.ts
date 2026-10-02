@@ -29,6 +29,7 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
   const statusListeners = new Set<(status: 'connecting' | 'connected' | 'disconnected') => void>()
   let runtimes: readonly SqliteDevtoolsRuntimeDescriptor[] = []
   let disposing: Promise<void> | undefined
+  const ownerId = `panel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
   const status = () => {
     const next = rpc.status === 'connected' ? 'connected' : rpc.status === 'connecting' ? 'connecting' : 'disconnected'
     for (const listener of statusListeners) {
@@ -52,7 +53,7 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
   status()
   return {
     async listRuntimes() {
-      runtimes = await scoped.call('list-runtimes') as readonly SqliteDevtoolsRuntimeDescriptor[]
+      runtimes = await scoped.call('list-runtimes', ownerId) as readonly SqliteDevtoolsRuntimeDescriptor[]
       return runtimes
     },
     request: (async (runtimeId, databaseName, method, args) => {
@@ -83,6 +84,7 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
         await Promise.allSettled(runtimes.map(runtime => Promise.resolve().then(() => scoped.call('release-session', {
           runtimeId: runtime.id,
           sessionId: runtime.sessionId,
+          ownerId,
         }))))
         scoped.unregister?.()
         rpc.close?.()
