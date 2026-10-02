@@ -50,6 +50,7 @@ for (const platform of platforms) {
     'weapp-sqlite-demo-weapp-vite',
     'exec',
     'wv',
+    'ide',
     'preview',
     '--project',
     path.join(demoRoot, `dist/${platform}`),
