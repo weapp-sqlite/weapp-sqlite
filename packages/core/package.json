@@ -53,7 +53,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json",
-    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+    "tsd": "pnpm build && tsd --typings dist/index.d.mts --files test-d/**/*.test-d.ts"
   },
   "publishConfig": {
     "access": "public",

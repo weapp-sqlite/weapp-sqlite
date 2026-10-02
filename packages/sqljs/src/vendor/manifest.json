@@ -1,5 +1,5 @@
 {
-  "engine": "sql.js-wasm-lite",
+  "engine": "sql.js-wasm",
   "sqlJs": {
     "version": "1.14.2",
     "source": "https://github.com/sql-js/sql.js/tree/v1.14.2",
@@ -33,12 +33,84 @@
   },
   "artifacts": {
     "sql-wasm-lite.js": {
-      "bytes": 46185,
-      "sha256": "e4b559edb81f724f3b614a8b22a4afa39c885ae591e2ac4caa05be6dcf76fbbc"
+      "bytes": 46915,
+      "sha256": "adbda97ca7e03edf6bdf33c8ca3694bc67da5803aaea1458f759d8b543ea6c96"
     },
     "sql-wasm-lite.wasm": {
-      "bytes": 546045,
-      "sha256": "49bf72f854d365b2d3d1a0f1d251c4996705bfe0926abfa3605d6eb5cac5ec5b"
+      "bytes": 546993,
+      "sha256": "bd1e11a26f9e89f15b389d5f346329b78f6565256964468c6475c2607aea1558"
+    },
+    "sql-wasm.js": {
+      "bytes": 47265,
+      "sha256": "80019b7435e900c6cbb1c250682f51f29c889dfcb0a15f39040095c8ce693307"
+    },
+    "sql-wasm.wasm": {
+      "bytes": 659329,
+      "sha256": "57988c1aee5e6193f07789492e1967f52ebaa4b8e4d8e77e81cf2894ae42362f"
+    },
+    "sql-wasm-browser.js": {
+      "bytes": 45859,
+      "sha256": "bbf60e2c67ccf6ae1d09c6073934a3b62a6dc036b63c5defebf22fa209bdc7de"
+    },
+    "sql-wasm-browser.wasm": {
+      "bytes": 659329,
+      "sha256": "57988c1aee5e6193f07789492e1967f52ebaa4b8e4d8e77e81cf2894ae42362f"
+    },
+    "package.json": {
+      "bytes": 25,
+      "sha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a"
+    }
+  },
+  "capabilities": [
+    "exportSnapshot",
+    "execWithMetadata"
+  ],
+  "variants": {
+    "full": {
+      "included": [
+        "fts3",
+        "normalize",
+        "extension-functions"
+      ]
+    },
+    "lite": {
+      "included": [
+        "tables",
+        "indexes",
+        "transactions",
+        "triggers",
+        "cte",
+        "json1",
+        "alter-table",
+        "parameters",
+        "blob",
+        "import-export"
+      ],
+      "excluded": [
+        "fts3",
+        "normalize",
+        "extension-functions"
+      ]
+    }
+  },
+  "licenses": {
+    "LICENSE.sql.js": {
+      "bytes": 2199,
+      "sha256": "60a3f6e4d7b29b4321359e683b36cf198d24f58e24582070f56e6fa89d5ee2be"
+    },
+    "LICENSE.sqlite.md": {
+      "bytes": 159,
+      "sha256": "b8325ebddd14ecb6886050451754543a382efd41bd4adb86ddad389c939b32c1"
+    }
+  },
+  "patches": {
+    "sqljs-reliability.patch": {
+      "bytes": 4824,
+      "sha256": "e9772269d3590b4bf7e43784bf312f143cff013c61fba151fb04bf9455c2bfae"
+    },
+    "sqljs-lite.patch": {
+      "bytes": 4409,
+      "sha256": "ff01ef73b176f021dddda1c71b0c64cae7726156783d02186fc5783c923d741e"
     }
   }
 }

@@ -2,6 +2,8 @@ import type { Plugin } from 'weapp-vite'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { runInNewContext } from 'node:vm'
+import { ModuleKind, ScriptTarget, transpileModule } from 'typescript'
 import { weappSqlite } from '@/plugin'
 
 function hook<T extends keyof Plugin>(plugin: Plugin, name: T) {
@@ -36,6 +38,7 @@ describe('weappSqlite plugin', () => {
     expect(source).toContain('platform: "alipay"')
     expect(source).toContain('typeof my')
     expect(source).not.toContain('WXWebAssembly')
+    expect(source).not.toContain('createMiniProgramSqliteDebugFileAdapter')
 
     const emitFile = vi.fn()
     await hook(plugin, 'buildStart').call({ emitFile })
@@ -52,6 +55,31 @@ describe('weappSqlite plugin', () => {
     const source = String(await hook(plugin, 'load').call({}, resolved))
     expect(source).toContain('createWebSqliteRuntimeAdapter')
     expect(source).toContain('sql-wasm-browser.wasm')
+    expect(source).not.toContain('createWebSqliteDebugFileAdapter')
+  })
+
+  it('emits a no-op DevTools bridge when debug is disabled for production', async () => {
+    const plugin = weappSqlite({ debug: { enabled: false, devtools: true } })
+    await hook(plugin, 'configResolved').call({}, {
+      command: 'build',
+      mode: 'production',
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-devtools')
+    const source = String(await hook(plugin, 'load').call({}, resolved))
+    expect(source).toBe('export function connectSqliteDevtools() {}')
+    expect(source).not.toContain('runtimeToken')
+    expect(source).not.toContain('initializeSqliteDevtools')
+  })
+
+  it('keeps the Web debug file adapter opt-in', async () => {
+    const plugin = weappSqlite({ debug: true })
+    hook(plugin, 'configResolved').call({}, {
+      weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
+    } as never)
+    const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-runtime')
+    const source = String(await hook(plugin, 'load').call({}, resolved))
+    expect(source).toContain('createWebSqliteDebugFileAdapter')
   })
 
   it('does not emit WASM from Web serve mode', async () => {
@@ -144,6 +172,28 @@ describe('weappSqlite plugin', () => {
     await expect(readFile(path.join(root, 'src/__debug/index/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('keeps generated debug routes across watch rebuilds and cleans them when the watcher exits', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-plugin-watch-'))
+    temporaryDirectories.push(root)
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src/sqlite-debug.config.ts'), 'export default {}')
+    const plugin = weappSqlite({ debug: { enabled: true, page: { route: '__debug/index/index', configFile: './src/sqlite-debug.config.ts' } } })
+    await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
+    await hook(plugin, 'configResolved').call({}, {
+      root,
+      build: { watch: {} },
+      weappVite: { name: 'weapp-vite', runtime: 'miniprogram', platform: 'weapp' },
+      plugins: [],
+    } as never)
+
+    const generatedPage = path.join(root, 'src/__debug/index/index.ts')
+    await hook(plugin, 'closeBundle').call({})
+    await expect(readFile(generatedPage, 'utf8')).resolves.toContain('createSqliteDebugWorkspacePage')
+
+    await hook(plugin, 'closeWatcher').call({})
+    await expect(readFile(generatedPage, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('invalidates the compiler app manifest after registering the generated route', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-plugin-manifest-'))
     temporaryDirectories.push(root)
@@ -218,7 +268,7 @@ describe('weappSqlite plugin', () => {
 
     const loader = await readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')
     expect(loader).toContain('require.async("../__weapp_sqlite__/runtime.ts")')
-    expect(loader).toContain('initializerPromise ??=')
+    expect(loader).toContain('initializerPromise = attempt')
     await expect(readFile(path.join(root, 'src/__weapp_sqlite__/runtime.ts'), 'utf8')).resolves.toContain('@weapp-sqlite/sqljs/lite')
     expect(markRoutesDirty).toHaveBeenCalledOnce()
 
@@ -236,6 +286,33 @@ describe('weappSqlite plugin', () => {
     vi.advanceTimersByTime(30_000)
     await expect(readFile(path.join(root, 'src/__weapp_sqlite__/runtime.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it.each(['reject', 'throw'] as const)('retries a generated subpackage loader after a transient %s', async (failureMode) => {
+    const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-retry-loader-'))
+    temporaryDirectories.push(root)
+    const plugin = weappSqlite({ wasm: { weappPackage: { mode: 'generated-subpackage' } } })
+    await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
+    const source = await readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')
+    const initializer = vi.fn()
+    const failure = new Error('subpackage download failed')
+    const requireAsync = vi.fn().mockImplementationOnce(() => {
+      if (failureMode === 'throw') {
+        throw failure
+      }
+      return Promise.reject(failure)
+    }).mockResolvedValue({ default: initializer })
+    const exports: { loadSqliteInitializer?: () => Promise<unknown> } = {}
+    const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 } }).outputText
+    runInNewContext(javascript, { exports, require: { async: requireAsync } })
+    const load = exports.loadSqliteInitializer!
+    const first = load()
+    expect(load()).toBe(first)
+    await expect(first).rejects.toBe(failure)
+    expect(requireAsync).toHaveBeenCalledOnce()
+    await expect(load()).resolves.toBe(initializer)
+    await expect(load()).resolves.toBe(initializer)
+    expect(requireAsync).toHaveBeenCalledTimes(2)
   })
 
   it('rejects generated SQLite WASM subpackages missing from the resolved app manifest', async () => {

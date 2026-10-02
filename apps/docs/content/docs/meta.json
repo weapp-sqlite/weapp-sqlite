@@ -1,4 +1,4 @@
 {
   "title": "指南",
-  "pages": ["tutorial", "getting-started", "concepts", "--构建与运行--", "multi-platform", "miniprogram-sqlite-options", "--开发工具--", "debug-workbench", "deployment", "--设计与验收--", "architecture", "acceptance", "--API 参考--", "api"]
+  "pages": ["tutorial", "getting-started", "concepts", "upgrading", "--构建与运行--", "multi-platform", "miniprogram-sqlite-options", "--开发工具--", "debug-workbench", "deployment", "--设计与验收--", "architecture", "acceptance", "--API 参考--", "api"]
 }

@@ -6,9 +6,14 @@
       "@weapp-sqlite/core": ["../core/src/index.ts"],
       "@weapp-sqlite/debug": ["../debug/src/index.ts"],
       "@weapp-sqlite/miniprogram": ["../miniprogram/src/index.ts"],
+      "@weapp-sqlite/miniprogram/runtime": ["../miniprogram/src/runtime.ts"],
       "@weapp-sqlite/wasm": ["../wasm/src/index.ts"],
-      "@weapp-sqlite/web": ["../web/src/index.ts"]
-    }
+      "@weapp-sqlite/web": ["../web/src/index.ts"],
+      "@weapp-sqlite/web/runtime": ["../web/src/runtime.ts"],
+      "@weapp-sqlite/devtools": ["../devtools/src/index.ts"],
+      "@weapp-sqlite/devtools/*": ["../devtools/src/*.ts"]
+    },
+    "noPropertyAccessFromIndexSignature": false
   },
   "include": ["src", "test"]
 }

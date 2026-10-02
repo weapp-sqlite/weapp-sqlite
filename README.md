@@ -69,12 +69,27 @@ await database.close()
 
 建议先掌握四个动作：定义迁移、`openSqlite()`、使用绑定参数读写、`flush()`/`close()`。完整解释见[核心概念](https://sqlite.weapp.dev/docs/concepts)。
 
+runtime 还提供事务化批量执行和只读迁移诊断：
+
+```ts
+import { execMany, getMigrationStatus } from '@weapp-sqlite/weapp-vite/runtime'
+
+await execMany(database, 'INSERT INTO notes (body) VALUES (?)', [['第一条'], ['第二条']])
+const status = await getMigrationStatus(database, migrations)
+console.log(status.pending, status.conflicts)
+```
+
+事务中任一操作失败都会整体回滚；提交成功但保存失败会抛出 `SqlitePersistenceError`，官方 adapter 会保留待保存状态，此时应重试 `flush()`，不要重复业务写入。自定义 WASM 引擎需要无副作用的 `exportSnapshot()`，自定义连接还需要保留失败后的待保存状态，详见[升级指南](https://sqlite.weapp.dev/docs/upgrading)。
+
 开发数据工作台通过 `WEAPP_SQLITE_DEBUG=1` 编译开关启用，支持筛选、排序、分页、行 CRUD、表/列/索引管理、受控 SQL、单步撤销，以及 SQLite/CSV/JSON 导入导出。默认生产构建不生成工作台路由，也不打包写 SQL、codec 或宿主文件 API。详细操作见[调试工作台](https://sqlite.weapp.dev/docs/debug-workbench)。
+
+需要独立 Devframe 面板时安装 `@weapp-sqlite/devtools`，并设置 `debug.devtools: true`。开发服务会输出带一次性认证 URL 的面板地址，面板先选运行实例再选数据库；Web 使用 loopback WebSocket，微信开发工具使用 `wx.connectSocket`，请求由应用真实连接执行。每库保留最近 50 条 SQL 历史和参数化 `EXPLAIN QUERY PLAN` 结果，watch 重建复用服务，退出时释放端口和调试会话。
 
 ```ts
 weappSqlite({
   debug: {
     enabled: process.env.WEAPP_SQLITE_DEBUG === '1',
+    devtools: process.env.WEAPP_SQLITE_DEVTOOLS === '1',
     page: {
       route: '__weapp_sqlite_debug/index/index',
       configFile: './src/sqlite-debug.config.ts',
@@ -89,8 +104,11 @@ import { defineSqliteDebugWorkspace } from '@weapp-sqlite/weapp-vite/debug'
 import { migrations } from './sqlite'
 
 export default defineSqliteDebugWorkspace({
-  databaseName: 'app.sqlite',
-  migrations,
+  databases: [
+    { databaseName: 'app.sqlite', migrations },
+    { databaseName: 'analytics.sqlite', migrations: analyticsMigrations },
+  ],
+  defaultDatabase: 'app.sqlite',
 })
 ```
 

@@ -15,7 +15,7 @@ import type {
 } from '@weapp-sqlite/debug'
 import type { SqliteDebugWorkspaceOptions } from './types'
 import { serializeSqliteDebugError } from '@weapp-sqlite/debug'
-import { createSqliteDebugWorkspace } from './debug'
+import { createSqliteDebugWorkspace, normalizeSqliteDebugWorkspaceOptions } from './debug'
 
 interface WorkspaceEvent {
   readonly currentTarget?: { readonly dataset?: Readonly<Record<string, string | number>> }
@@ -224,13 +224,37 @@ function eventValue(event: WorkspaceEvent) {
 }
 
 export function createSqliteDebugWorkspacePage(options: SqliteDebugWorkspaceOptions) {
+  const databases = normalizeSqliteDebugWorkspaceOptions(options)
+  const initialDatabase = ('defaultDatabase' in options ? databases.find(item => item.databaseName === options.defaultDatabase) : undefined) ?? databases[0]!
+  let disposed = false
+  let lifecycle = 0
+  let tableRequest = 0
+  let workspaceRequest = 0
   let workspacePromise: ReturnType<typeof createSqliteDebugWorkspace> | undefined
-  const workspace = () => workspacePromise ??= createSqliteDebugWorkspace(options)
+  const workspace = () => {
+    if (!workspacePromise) {
+      const pending = createSqliteDebugWorkspace(options)
+      workspacePromise = pending
+      void pending.catch(() => {
+        if (workspacePromise === pending) {
+          workspacePromise = undefined
+        }
+      })
+    }
+    return workspacePromise
+  }
   const controller = async (): Promise<SqliteDebugController> => (await workspace()).controller
 
   async function record(this: WorkspacePageContext, action: string, callback: () => Promise<unknown>) {
+    if (disposed) {
+      return
+    }
+    const generation = lifecycle
     try {
       const result = await callback()
+      if (disposed || generation !== lifecycle) {
+        return result
+      }
       this.setData({
         error: null,
         result: result === undefined ? `${action} completed.` : JSON.stringify(result, (_key, value) => typeof value === 'bigint' ? value.toString() : value, 2),
@@ -240,28 +264,37 @@ export function createSqliteDebugWorkspacePage(options: SqliteDebugWorkspaceOpti
     }
     catch (error) {
       const serialized = serializeSqliteDebugError(error)
-      this.setData({ error: serialized, activities: [activity(action, 'error', `${serialized.code}: ${serialized.message}`), ...this.data.activities].slice(0, 30) })
+      if (!disposed && generation === lifecycle) {
+        this.setData({ error: serialized, activities: [activity(action, 'error', `${serialized.code}: ${serialized.message}`), ...this.data.activities].slice(0, 30) })
+      }
       throw error
     }
   }
 
   async function refreshTable(this: WorkspacePageContext, offset = 0) {
-    if (!this.data.selectedTable) {
+    const request = ++tableRequest
+    const generation = lifecycle
+    const selectedTable = this.data.selectedTable
+    if (!selectedTable || disposed) {
       return
+    }
+    const readOptions = {
+      limit: 50,
+      offset,
+      filters: this.data.filters,
+      ...(this.data.search ? { search: this.data.search } : {}),
+      ...(this.data.orderColumn ? { orderBy: [{ column: this.data.orderColumn, direction: this.data.orderDirection }] } : {}),
     }
     const current = await controller()
     const [columns, capabilities, indexes, page] = await Promise.all([
-      current.describeTable(this.data.selectedTable),
-      current.getTableCapabilities(this.data.selectedTable),
-      current.listIndexes(this.data.selectedTable),
-      current.readTable(this.data.selectedTable, {
-        limit: 50,
-        offset,
-        filters: this.data.filters,
-        ...(this.data.search ? { search: this.data.search } : {}),
-        ...(this.data.orderColumn ? { orderBy: [{ column: this.data.orderColumn, direction: this.data.orderDirection }] } : {}),
-      }),
+      current.describeTable(selectedTable),
+      current.getTableCapabilities(selectedTable),
+      current.listIndexes(selectedTable),
+      current.readTable(selectedTable, readOptions),
     ])
+    if (disposed || generation !== lifecycle || request !== tableRequest || selectedTable !== this.data.selectedTable) {
+      return
+    }
     const selected = new Set(this.data.selectedRows)
     this.setData({
       columns,
@@ -281,12 +314,17 @@ export function createSqliteDebugWorkspacePage(options: SqliteDebugWorkspaceOpti
   }
 
   async function refreshAll(this: WorkspacePageContext) {
+    const request = ++workspaceRequest
+    const generation = lifecycle
     const active = await workspace()
     const tables = await active.controller.listTables()
+    if (disposed || generation !== lifecycle || request !== workspaceRequest) {
+      return
+    }
     const selectedTable = tables.some(table => table.name === this.data.selectedTable) ? this.data.selectedTable : tables[0]?.name ?? ''
     this.setData({
       phase: 'ready',
-      databaseName: options.databaseName,
+      databaseName: initialDatabase.databaseName,
       runtimeLabel: `${active.runtime.target} · ${active.runtime.system ?? active.runtime.platform ?? active.runtime['userAgent'] ?? active.runtime.engine}`,
       tables,
       selectedTable,
@@ -301,7 +339,7 @@ export function createSqliteDebugWorkspacePage(options: SqliteDebugWorkspaceOpti
 
   const initialData: WorkspaceData = {
     phase: 'loading',
-    databaseName: options.databaseName,
+    databaseName: initialDatabase.databaseName,
     runtimeLabel: '',
     tables: [],
     selectedTable: '',
@@ -347,19 +385,27 @@ export function createSqliteDebugWorkspacePage(options: SqliteDebugWorkspaceOpti
   return {
     data: initialData,
     async onLoad(this: WorkspacePageContext) {
+      disposed = false
+      const generation = ++lifecycle
       try {
         await refreshAll.call(this)
       }
       catch (error) {
         const serialized = serializeSqliteDebugError(error)
-        this.setData({ phase: serialized.code.includes('UNSUPPORTED') ? 'unsupported' : 'failed', error: serialized })
+        if (!disposed && generation === lifecycle) {
+          this.setData({ phase: serialized.code.includes('UNSUPPORTED') ? 'unsupported' : 'failed', error: serialized })
+        }
       }
     },
     async onUnload() {
-      if (workspacePromise) {
-        await (await workspacePromise).controller.close()
-      }
+      disposed = true
+      lifecycle += 1
+      tableRequest += 1
+      workspaceRequest += 1
+      const pending = workspacePromise
       workspacePromise = undefined
+      const active = await pending?.catch(() => undefined)
+      await active?.controller.close()
     },
     async refreshWorkspace(this: WorkspacePageContext) {
       await record.call(this, '刷新', () => refreshAll.call(this))
@@ -584,7 +630,7 @@ export function createSqliteDebugWorkspacePage(options: SqliteDebugWorkspaceOpti
     async exportArtifactForAutomation(this: WorkspacePageContext, format: 'sqlite' | SqliteDebugTableFormat = 'sqlite') {
       if (format === 'sqlite') {
         const snapshot = await (await controller()).exportDatabase()
-        return { fileName: `${options.databaseName}.sqlite`, bytes: bytesToBase64(snapshot.bytes), metadata: snapshot.metadata }
+        return { fileName: `${initialDatabase.databaseName}.sqlite`, bytes: bytesToBase64(snapshot.bytes), metadata: snapshot.metadata }
       }
       const artifact = await (await controller()).exportTable(this.data.selectedTable, { format })
       return { ...artifact, bytes: bytesToBase64(artifact.bytes) }

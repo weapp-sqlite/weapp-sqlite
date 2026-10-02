@@ -48,3 +48,26 @@ export interface SqliteMigration {
   readonly name: string
   readonly up: (transaction: SqliteTransaction) => Promise<void>
 }
+
+export interface SqliteMigrationInfo {
+  readonly version: number
+  readonly name: string
+}
+
+export interface SqliteAppliedMigration extends SqliteMigrationInfo {
+  readonly appliedAt: string
+}
+
+export interface SqliteMigrationConflict {
+  readonly version: number
+  readonly appliedName: string
+  readonly expectedName: string
+}
+
+export interface SqliteMigrationStatus {
+  readonly tablePresent: boolean
+  readonly applied: readonly SqliteAppliedMigration[]
+  readonly pending: readonly SqliteMigrationInfo[]
+  readonly unknown: readonly SqliteAppliedMigration[]
+  readonly conflicts: readonly SqliteMigrationConflict[]
+}

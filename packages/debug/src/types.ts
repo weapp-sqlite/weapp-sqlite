@@ -1,5 +1,6 @@
-import type { SqliteDatabase, SqliteParameters, SqliteQueryResult, SqliteScalar } from '@weapp-sqlite/core'
+import type { SqliteDatabase, SqliteMigration, SqliteParameters, SqliteQueryResult, SqliteScalar } from '@weapp-sqlite/core'
 import type { SqliteWasmStorage } from '@weapp-sqlite/wasm'
+import type { SqliteDebugSession } from './session'
 
 export interface SqliteDebugStorage extends SqliteWasmStorage {
   remove: (name: string) => Promise<void>
@@ -23,14 +24,19 @@ export interface SqliteDebugRuntimeInfo {
   readonly [key: string]: unknown
 }
 
-export interface SqliteDebugControllerOptions {
+interface SqliteDebugControllerBaseOptions {
   readonly databaseName: string
-  readonly openDatabase: () => Promise<SqliteDatabase>
-  readonly storage: SqliteDebugStorage
   readonly enabled?: boolean
   readonly limits?: SqliteDebugLimits
   readonly runtime?: SqliteDebugRuntimeInfo
+  /** Expected application migrations used by the migration diagnostics panel. */
+  readonly migrations?: readonly SqliteMigration[]
 }
+
+export type SqliteDebugControllerOptions = SqliteDebugControllerBaseOptions & (
+  | { readonly openDatabase: () => Promise<SqliteDatabase>, readonly storage: SqliteDebugStorage, readonly session?: never }
+  | { readonly session: SqliteDebugSession, readonly openDatabase?: never, readonly storage?: never }
+)
 
 export interface SqliteDebugTable {
   readonly name: string
@@ -110,6 +116,49 @@ export interface SqliteDebugQueryResult extends SqliteQueryResult {
   readonly elapsedMs: number
 }
 
+/** A single row returned by SQLite's `EXPLAIN QUERY PLAN` virtual table. */
+export interface SqliteDebugQueryPlanNode {
+  /** SQLite's stable identifier for this node in the current plan. */
+  readonly id: number
+  /** The parent node identifier, or -1 for the root node. */
+  readonly parent: number
+  /** SQLite's currently reserved detail column. */
+  readonly notUsed: number
+  /** Human-readable detail emitted by SQLite (for example `SEARCH users USING INDEX ...`). */
+  readonly detail: string
+  /** Tree depth derived from the parent links. */
+  readonly depth: number
+  readonly kind: 'scan' | 'search' | 'temporary-b-tree' | 'other'
+  readonly table?: string
+  readonly index?: string
+}
+
+export type SqliteDebugQueryPlanWarning = 'full-table-scan' | 'temporary-b-tree' | 'automatic-index'
+
+/** Signals that can make a query slower as its input grows. */
+export interface SqliteDebugQueryDiagnostics {
+  /** Number of SCAN nodes that do not use an index. */
+  readonly fullTableScans: number
+  /** Number of `USE TEMP B-TREE` nodes. */
+  readonly temporaryBtrees: number
+  /** Number of automatic indexes selected by SQLite. */
+  readonly automaticIndexes: number
+  /** Names of indexes mentioned by the plan, in first-seen order. */
+  readonly indexes: readonly string[]
+  readonly warnings: readonly SqliteDebugQueryPlanWarning[]
+  /** Convenience flags for clients that only need to render a warning state. */
+  readonly fullTableScan: boolean
+  readonly temporaryBTree: boolean
+}
+
+/** A read-only query analysis; the SQL itself is never executed. */
+export interface SqliteDebugQueryAnalysis {
+  readonly sql: string
+  readonly nodes: readonly SqliteDebugQueryPlanNode[]
+  readonly diagnostics: SqliteDebugQueryDiagnostics
+  readonly elapsedMs: number
+}
+
 export interface SqliteDebugExecutionResult {
   readonly changes: number
   readonly lastInsertRowid?: number | bigint
@@ -142,6 +191,63 @@ export interface SqliteDebugMigration {
 export interface SqliteDebugMigrationStatus {
   readonly tablePresent: boolean
   readonly versions: readonly SqliteDebugMigration[]
+}
+
+export type SqliteDebugMigrationDiagnosticWarning = 'history-missing' | 'pending-migrations' | 'unknown-migrations' | 'migration-conflicts'
+
+/** Read-only migration health information for the active runtime database. */
+export interface SqliteDebugMigrationDiagnostics {
+  readonly tablePresent: boolean
+  readonly applied: readonly SqliteDebugMigration[]
+  readonly expected: readonly SqliteDebugMigrationInfo[]
+  readonly pending: readonly SqliteDebugMigrationInfo[]
+  readonly unknown: readonly SqliteDebugMigration[]
+  readonly conflicts: readonly {
+    readonly version: number
+    readonly appliedName: string
+    readonly expectedName: string
+  }[]
+  readonly latestAppliedVersion?: number
+  readonly latestExpectedVersion?: number
+  readonly healthy: boolean
+  readonly warnings: readonly SqliteDebugMigrationDiagnosticWarning[]
+}
+
+export interface SqliteDebugMigrationInfo {
+  readonly version: number
+  readonly name: string
+}
+
+export interface SqliteDebugForeignKeyConstraint {
+  readonly table: string
+  readonly id: number
+  readonly sequence: number
+  readonly referencedTable: string
+  readonly from: string | null
+  readonly to: string | null
+  readonly onUpdate: string
+  readonly onDelete: string
+  readonly match: string
+}
+
+export interface SqliteDebugForeignKeyViolation {
+  readonly table: string
+  readonly rowid: number | bigint | string | null
+  readonly parent: string
+  readonly foreignKeyId: number
+}
+
+export type SqliteDebugForeignKeyDiagnosticWarning = 'foreign-keys-disabled' | 'foreign-key-violations'
+
+/** Read-only foreign-key pragma and integrity-check information. */
+export interface SqliteDebugForeignKeyDiagnostics {
+  readonly enabled: boolean
+  readonly constraints: readonly SqliteDebugForeignKeyConstraint[]
+  readonly violations: readonly SqliteDebugForeignKeyViolation[]
+  readonly tableCount: number
+  readonly constrainedTableCount: number
+  readonly healthy: boolean
+  readonly warnings: readonly SqliteDebugForeignKeyDiagnosticWarning[]
 }
 
 export interface SqliteDebugSnapshotMetadata {
@@ -223,6 +329,7 @@ export interface SqliteDebugController {
   listIndexes: (tableName: string) => Promise<readonly SqliteDebugIndex[]>
   readTable: (tableName: string, options?: SqliteDebugReadOptions) => Promise<SqliteDebugPage>
   query: (sql: string, parameters?: SqliteParameters) => Promise<SqliteDebugQueryResult>
+  analyzeQuery: (sql: string, parameters?: SqliteParameters) => Promise<SqliteDebugQueryAnalysis>
   execute: (sql: string, parameters?: SqliteParameters, options?: { readonly allowWrite?: boolean }) => Promise<SqliteDebugExecutionResult>
   insertRow: (tableName: string, values: Readonly<Record<string, SqliteScalar>>, options: SqliteDebugWriteOptions) => Promise<SqliteDebugExecutionResult>
   updateRow: (tableName: string, locator: SqliteDebugRowLocator, values: Readonly<Record<string, SqliteScalar>>, options: SqliteDebugWriteOptions) => Promise<SqliteDebugExecutionResult>
@@ -237,6 +344,8 @@ export interface SqliteDebugController {
   createIndex: (tableName: string, indexName: string, columns: readonly SqliteDebugIndexColumn[], options: SqliteDebugWriteOptions & { readonly unique?: boolean }) => Promise<void>
   dropIndex: (tableName: string, indexName: string, options: SqliteDebugDestructiveOptions) => Promise<void>
   getMigrationStatus: () => Promise<SqliteDebugMigrationStatus>
+  getMigrationDiagnostics: () => Promise<SqliteDebugMigrationDiagnostics>
+  getForeignKeyDiagnostics: () => Promise<SqliteDebugForeignKeyDiagnostics>
   exportDatabase: () => Promise<SqliteDebugSnapshot>
   importDatabase: (bytes: Uint8Array | ArrayBuffer, options: { readonly replace: true }) => Promise<SqliteDebugSnapshotMetadata>
   exportTable: (tableName: string, options: { readonly format: SqliteDebugTableFormat }) => Promise<SqliteDebugTableArtifact>

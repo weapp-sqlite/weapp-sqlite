@@ -1,8 +1,8 @@
 import type { SqliteDatabase, SqliteMigration } from '@weapp-sqlite/core'
 import type { SqliteWasmDriverOptions, SqliteWasmStorage, SqlJsInitializer } from '@weapp-sqlite/wasm'
-import { migrate } from '@weapp-sqlite/core'
+import { execMany, getMigrationStatus, migrate } from '@weapp-sqlite/core'
+import initSqlJs from '@weapp-sqlite/sqljs/full'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
-import initSqlJs from 'sql.js'
 
 export interface StringStorageAdapter {
   load: (name: string) => Promise<string | undefined>
@@ -50,6 +50,7 @@ const ACCEPTANCE_DATABASE_NAME = 'weapp-sqlite-acceptance'
 const COMMITTED_BODY = 'parameter-bound value with \'quotes\''
 const ROLLED_BACK_BODY = 'this row must be rolled back'
 const SEED_BODY = 'SQLite works across frameworks'
+const BATCH_BODIES = ['first batch note', 'second batch note'] as const
 
 export const sqliteAcceptanceMigrations: readonly SqliteMigration[] = [
   {
@@ -170,10 +171,17 @@ export async function runSqliteAcceptance(options: SqliteAcceptanceOptions): Pro
   let migrationVersions: readonly number[] = []
   let rows: readonly { id: number, body: string }[] = []
   let rollbackObserved = false
+  let batchChanges = 0
+  let migrationStatusValid = false
   let closed = false
 
   try {
     migrationVersions = await migrate(database, sqliteAcceptanceMigrations)
+    const status = await getMigrationStatus(database, sqliteAcceptanceMigrations)
+    migrationStatusValid = status.tablePresent && status.applied.length === 2
+      && status.pending.length === 0 && status.unknown.length === 0 && status.conflicts.length === 0
+    const batch = await execMany(database, 'INSERT INTO notes (body) VALUES (?)', BATCH_BODIES.map(body => [body]))
+    batchChanges = batch.reduce((sum, result) => sum + result.changes, 0)
     await database.transaction(async (transaction) => {
       await transaction.exec('INSERT INTO notes (body) VALUES (?)', [COMMITTED_BODY])
     })
@@ -199,6 +207,8 @@ export async function runSqliteAcceptance(options: SqliteAcceptanceOptions): Pro
   const bodies = rows.map(row => row.body)
   const checks = [
     check('migration', migrationVersions.join(',') === '1,2', `applied=[${migrationVersions.join(',')}]`),
+    check('migration-diagnostics', migrationStatusValid, 'migration history matches the supplied definitions'),
+    check('batch-insert', batchChanges === 2 && BATCH_BODIES.every(body => bodies.includes(body)), 'both parameter-bound batch rows must exist'),
     check('parameter-binding', bodies.includes(COMMITTED_BODY), `value=${COMMITTED_BODY}`),
     check('transaction-commit', bodies.filter(body => body === COMMITTED_BODY).length === 1, 'committed row count must be 1'),
     check('transaction-rollback', rollbackObserved && !bodies.includes(ROLLED_BACK_BODY), 'rolled-back row must be absent'),
@@ -226,6 +236,7 @@ export async function verifySqliteAcceptance(options: SqliteAcceptanceOptions): 
   const checks = [
     check('migration-idempotent', migrationVersions.join(',') === '1,2', `registered=[${migrationVersions.join(',')}] without rerunning migration bodies`),
     check('seed-persisted', bodies.includes(SEED_BODY), 'seed row must persist'),
+    check('batch-persisted', BATCH_BODIES.every(body => bodies.filter(value => value === body).length === 1), 'both batch rows must persist exactly once'),
     check('commit-persisted', bodies.filter(body => body === COMMITTED_BODY).length === 1, 'committed row must persist exactly once'),
     check('rollback-persisted', !bodies.includes(ROLLED_BACK_BODY), 'rolled-back row must remain absent'),
     check('database-close', closed, 'database closed after persistence verification'),

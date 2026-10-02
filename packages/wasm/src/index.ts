@@ -4,6 +4,7 @@ export type {
   SqliteWasmParameters,
   SqliteWasmStorage,
   SqlJsDatabase,
+  SqlJsExecutionResult,
   SqlJsInitializer,
   SqlJsModule,
   SqlJsParameters,

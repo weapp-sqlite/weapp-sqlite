@@ -3,6 +3,7 @@
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"],
+      "@weapp-sqlite/sqljs/full": ["../sqljs/src/full.ts"],
       "@weapp-sqlite/wasm": ["../wasm/src/index.ts"],
       "@weapp-sqlite/core": ["../core/src/index.ts"]
     }

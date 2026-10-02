@@ -1,6 +1,9 @@
 import type { OpenSqliteOptions, RemoveSqliteOptions, SqliteRuntimeAdapter, SqliteRuntimeInfo, SqliteRuntimeTarget } from './types'
+import { connectSqliteDevtools } from 'virtual:weapp-sqlite-devtools'
 import { defaultSqliteRuntimeAdapter } from './default-adapter'
 import { openSqliteWithAdapter, removeSqliteWithAdapter } from './open'
+
+connectSqliteDevtools()
 
 export { SqliteRuntimeError } from './errors'
 export type { SqliteRuntimeErrorCode } from './errors'
@@ -12,13 +15,18 @@ export type {
   SqliteRuntimeInfo,
   SqliteRuntimeTarget,
 } from './types'
+export { execMany, getMigrationStatus, SqlitePersistenceError } from '@weapp-sqlite/core'
+export type { SqliteAppliedMigration, SqliteMigrationConflict, SqliteMigrationInfo, SqliteMigrationStatus } from '@weapp-sqlite/core'
 
-export function openSqlite(options: OpenSqliteOptions) {
-  return openSqliteWithAdapter(options, defaultSqliteRuntimeAdapter)
+export async function openSqlite(options: OpenSqliteOptions) {
+  const database = await openSqliteWithAdapter(options, defaultSqliteRuntimeAdapter)
+  connectSqliteDevtools()
+  return database
 }
 
-export function removeSqlite(options: RemoveSqliteOptions) {
-  return removeSqliteWithAdapter(options, defaultSqliteRuntimeAdapter)
+export async function removeSqlite(options: RemoveSqliteOptions) {
+  await removeSqliteWithAdapter(options, defaultSqliteRuntimeAdapter)
+  connectSqliteDevtools()
 }
 
 export function getSqliteTarget(): SqliteRuntimeTarget {

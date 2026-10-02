@@ -1,0 +1,75 @@
+---
+title: 写入安全升级指南
+description: 自定义 WASM 引擎、事务错误处理和迁移诊断的升级步骤
+---
+
+本轮升级修复了快照导出重建连接、返回行的写入未保存，以及提交后保存失败被误报为回滚错误的问题。同时新增批量执行与只读迁移诊断。现有 SQLite 数据文件保持兼容，无需转换文件格式。
+
+## 统一集成入口
+
+使用构建插件的应用应一起升级 `@weapp-sqlite/weapp-vite` 或 `weapp-sqlite` 及其工作区依赖，并重新构建各目标，避免混用旧 WASM 文件和新 JavaScript 初始化器。full、Web full、lite 都包含新的快照与语句元数据接口。
+
+```ts
+import { execMany, getMigrationStatus, openSqlite } from 'weapp-sqlite/runtime'
+
+const database = await openSqlite({ name: 'app.sqlite', migrations })
+await execMany(database, 'INSERT INTO notes (body) VALUES (?)', [['第一条'], ['第二条']])
+const status = await getMigrationStatus(database, migrations)
+console.log(status.pending, status.conflicts)
+```
+
+## 自定义 WASM 初始化器
+
+原版 `sql.js` 的 `export()` 会关闭并重建连接，丢失临时表和连接级设置。新的 `SqlJsDatabase` 要求 `exportSnapshot(): Uint8Array`，它必须在保持连接状态的前提下返回主数据库的独立快照。
+
+通常可以直接替换初始化器，并同步替换 WASM 资源：
+
+```ts
+import initializer from '@weapp-sqlite/sqljs/full'
+import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
+
+const database = await openSqliteWasmDatabase(initializer, 'app.sqlite', {
+  storage,
+  locateFile: () => bundledWasmPath,
+})
+```
+
+自定义引擎若缺少 `exportSnapshot()`，打开时会明确报错。不要用 `exportSnapshot: () => database.export()` 绕过检查。可选的 `execWithMetadata()` 用于提供原生语句只读信息；缺少时 adapter 会保守地保存，内置引擎的普通 SELECT 则不会触发保存。
+
+## 事务失败与持久化恢复
+
+事务内部的操作现在串行执行，任意操作失败都会导致整笔事务回滚。即使业务回调捕获了 SQL 错误，也不能继续提交该事务。需要从某个错误中恢复时，应结束本次事务后，在数据库状态正常的前提下开启新的事务。
+
+回调结束后事务句柄立即失效。此前已经调用的操作会先排空，迟到的调用会拒绝；业务代码仍应始终 `await` 每项操作。活动事务期间调用数据库的 `transaction()` 会被拒绝，回调内部应使用提供的事务句柄。
+
+事务提交成功、快照保存失败时，错误为 `SqlitePersistenceError`。官方 adapter 会保留待保存状态，自定义连接也必须遵守这一约定。数据已经在当前连接中提交，不能通过重放业务事务来重试：
+
+```ts
+import { SqlitePersistenceError } from 'weapp-sqlite/runtime'
+
+try {
+  await database.transaction(async transaction => {
+    await transaction.exec('INSERT INTO notes (body) VALUES (?)', ['只写入一次'])
+  })
+}
+catch (error) {
+  if (!(error instanceof SqlitePersistenceError)) {
+    throw error
+  }
+  // committed === true；cause 是原始存储错误。
+  // 修复空间不足或临时存储故障后，仅重新保存当前状态。
+  await database.flush()
+}
+```
+
+如果 ROLLBACK 本身失败，错误会同时保留事务错误和回滚错误，连接停止接受读写与 flush。此时关闭并重新打开数据库；关闭不会保存未知事务状态。
+
+## 整数与迁移定义
+
+WASM adapter 不再静默转换超出 JavaScript 安全整数范围的 bigint 参数，而是抛出 `RangeError`。这不改变 core 的宿主无关标量协议，也不意味着 number 或读取结果具备任意 int64 精度。
+
+同版本的迁移名称应保持稳定。`getMigrationStatus()` 可在执行前查看 `conflicts`；`migrate()` 会在运行新迁移前拒绝名称冲突。`unknown` 只是未包含在当前定义中的历史记录，不会自动阻止迁移。不要通过修改历史表掩盖冲突，应核对并恢复正确的迁移定义。
+
+## 调试工作台
+
+可空主键不再被直接当作唯一行定位符。工作台会选择可靠主键或可访问的隐藏 rowid，无法安全定位时将表标记为只读。单行更新及其影响行数校验在同一事务内执行，冲突不会留下部分更新；已有公开定位符格式不变。

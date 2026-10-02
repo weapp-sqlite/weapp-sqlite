@@ -44,7 +44,7 @@ describe('sqlite core', () => {
     ])
 
     expect(fake.calls).toEqual(['INSERT INTO items VALUES (?)', 'QUERY'])
-    expect(fake.flushCount).toBe(1)
+    expect(fake.flushCount).toBe(2)
   })
 
   it('commits successful transactions and rolls back failures', async () => {

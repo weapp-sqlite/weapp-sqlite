@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@weapp-sqlite/core": ["../core/src/index.ts"],
+      "@weapp-sqlite/debug": ["../debug/src/index.ts"]
+    },
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": ["src", "test", "client"]
+}

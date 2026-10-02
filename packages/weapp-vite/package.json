@@ -52,6 +52,11 @@
       "types": "./dist/workspace.d.mts",
       "import": "./dist/workspace.mjs",
       "require": "./dist/workspace.cjs"
+    },
+    "./devtools-runtime": {
+      "types": "./dist/devtools-runtime.d.mts",
+      "import": "./dist/devtools-runtime.mjs",
+      "require": "./dist/devtools-runtime.cjs"
     }
   },
   "main": "./dist/plugin.cjs",
@@ -72,10 +77,16 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json",
-    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+    "tsd": "pnpm build && tsd --typings dist/plugin.d.mts --files test-d/**/*.test-d.ts"
   },
   "peerDependencies": {
+    "@weapp-sqlite/devtools": ">=0.1.0",
     "weapp-vite": ">=6.22.0"
+  },
+  "peerDependenciesMeta": {
+    "@weapp-sqlite/devtools": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@weapp-sqlite/core": "workspace:*",
@@ -87,7 +98,8 @@
   },
   "devDependencies": {
     "@types/sql.js": "^1.4.11",
-    "weapp-vite": "^7.1.2"
+    "@weapp-sqlite/devtools": "workspace:*",
+    "weapp-vite": "^7.4.0"
   },
   "publishConfig": {
     "access": "public",

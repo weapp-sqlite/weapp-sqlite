@@ -11,3 +11,13 @@ export class SqliteTransactionError extends Error {
     this.name = 'SqliteTransactionError'
   }
 }
+
+/** The transaction committed in memory, but its snapshot was not saved. */
+export class SqlitePersistenceError extends Error {
+  readonly committed = true
+
+  constructor(options: ErrorOptions) {
+    super('SQLite transaction committed, but persistence failed. Retry flush() without repeating the transaction.', options)
+    this.name = 'SqlitePersistenceError'
+  }
+}

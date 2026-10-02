@@ -25,11 +25,19 @@
   "exports": {
     ".": {
       "types": "./dist/full.d.mts",
+      "browser": {
+        "import": "./dist/full-browser.mjs",
+        "require": "./dist/full-browser.cjs"
+      },
       "import": "./dist/full.mjs",
       "require": "./dist/full.cjs"
     },
     "./full": {
       "types": "./dist/full.d.mts",
+      "browser": {
+        "import": "./dist/full-browser.mjs",
+        "require": "./dist/full-browser.cjs"
+      },
       "import": "./dist/full.mjs",
       "require": "./dist/full.cjs"
     },
@@ -64,14 +72,15 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json",
-    "tsd": "pnpm build && tsd --files test-d/**/*.test-d.ts"
+    "tsd": "pnpm build && tsd --typings dist/full.d.mts --files test-d/**/*.test-d.ts",
+    "verify:engines": "node ./scripts/verify-lite.mjs",
+    "rebuild:engines": "bash ./scripts/rebuild-engines.sh"
   },
   "dependencies": {
-    "@weapp-sqlite/wasm": "workspace:*",
-    "sql.js": "1.14.2"
+    "@weapp-sqlite/wasm": "workspace:*"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11"
+    "@weapp-sqlite/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public",

@@ -17,7 +17,9 @@
     "build:web": "tsx scripts/build-platform.ts web",
     "test": "vitest run test/index.test.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "postinstall": "wv prepare"
+    "postinstall": "wv prepare",
+    "dev:debug": "cross-env WEAPP_SQLITE_DEBUG=1 WEAPP_SQLITE_DEVTOOLS=1 wv dev -p weapp",
+    "dev:debug:web": "cross-env WEAPP_SQLITE_DEBUG=1 WEAPP_SQLITE_DEVTOOLS=1 wv dev -p web"
   },
   "dependencies": {
     "@weapp-sqlite/debug": "workspace:*",
@@ -26,6 +28,7 @@
     "lit": "^3.3.3"
   },
   "devDependencies": {
-    "weapp-vite": "^7.1.2"
+    "@weapp-sqlite/devtools": "workspace:*",
+    "weapp-vite": "^7.4.0"
   }
 }

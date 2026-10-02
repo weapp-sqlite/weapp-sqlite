@@ -38,7 +38,13 @@ function initialAcceptance(): AcceptancePageData['acceptance'] {
 
 function serializeError(error: unknown) {
   if (error instanceof SqliteRuntimeError && error.code === 'SQLITE_RUNTIME_UNSUPPORTED') {
-    return { phase: 'unsupported' as const, error: { code: error.code, message: error.message } }
+    return {
+      phase: 'unsupported' as const,
+      // Preserve the host capability code in acceptance reports so a
+      // headless host can distinguish a missing USER_DATA_PATH from a
+      // generic runtime failure.
+      error: { code: error.hostCode ?? error.code, message: error.message },
+    }
   }
   const message = error instanceof Error
     ? error.message

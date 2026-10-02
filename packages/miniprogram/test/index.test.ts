@@ -1,8 +1,8 @@
 import type { SqlJsDatabase } from '@weapp-sqlite/wasm'
 import type { MiniProgramHostAdapter, MiniProgramSqliteOptions, MiniProgramWebAssemblyRuntime } from '@/index'
 import { readFile } from 'node:fs/promises'
+import { initSqlJsFull } from '@weapp-sqlite/sqljs/full'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
-import initSqlJs from 'sql.js'
 import {
   createMiniProgramSqliteDebugFileAdapter,
   createMiniProgramSqliteWasmStorage,
@@ -61,6 +61,16 @@ function createRuntime(options: { readonly directoryExists?: boolean } = {}) {
       },
       unlink: ({ filePath, success, fail }: { filePath: string, success: () => void, fail: (error: { errMsg: string }) => void }) => {
         files.delete(filePath) ? success() : fail({ errMsg: 'no such file' })
+      },
+      rename: ({ oldPath, newPath, success, fail }: { oldPath: string, newPath: string, success: () => void, fail: (error: { errMsg: string }) => void }) => {
+        const data = files.get(oldPath)
+        if (!data || files.has(newPath)) {
+          fail({ errMsg: !data ? 'no such file' : 'file already exists' })
+          return
+        }
+        files.set(newPath, data)
+        files.delete(oldPath)
+        success()
       },
     }),
   }
@@ -303,7 +313,7 @@ describe('mini-program storage', () => {
   it('runs sql.js through a package-path WebAssembly runtime and persists transactions', async () => {
     vi.stubGlobal('WebAssembly', undefined)
     const { runtime } = createRuntime()
-    const wasmBinary = await readFile(new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url))
+    const wasmBinary = await readFile(new URL('../../sqljs/src/vendor/sql-wasm.wasm', import.meta.url))
     const webAssembly = createWebAssemblyRuntime(async (_path, imports) => {
       const result = await nativeWebAssembly.instantiate(wasmBinary, imports as WebAssembly.Imports)
       return result.instance as unknown as { exports: Readonly<Record<string, unknown>> }
@@ -313,7 +323,7 @@ describe('mini-program storage', () => {
       runtime,
       packageBinaryPath: '/assets/sql-wasm.wasm',
       webAssembly,
-      initializer: initSqlJs,
+      initializer: initSqlJsFull,
     })
     let databaseFile: Uint8Array | undefined
     const storage = {

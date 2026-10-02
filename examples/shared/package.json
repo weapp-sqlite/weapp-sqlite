@@ -17,10 +17,7 @@
   },
   "dependencies": {
     "@weapp-sqlite/core": "workspace:*",
-    "@weapp-sqlite/wasm": "workspace:*",
-    "sql.js": "^1.14.2"
-  },
-  "devDependencies": {
-    "@types/sql.js": "^1.4.11"
+    "@weapp-sqlite/sqljs": "workspace:*",
+    "@weapp-sqlite/wasm": "workspace:*"
   }
 }

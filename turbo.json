@@ -10,7 +10,9 @@
         "lib/**",
         "package.json",
         "tsconfig*.json",
-        "*.config.{js,ts,mjs,mts}"
+        "*.config.{js,ts,mjs,mts}",
+        "client/**",
+        "scripts/**"
       ],
       "outputs": [
         "dist/**",
@@ -46,7 +48,8 @@
         "test/**",
         "package.json",
         "vitest.config.{js,ts}",
-        "tsconfig*.json"
+        "tsconfig*.json",
+        "client/**"
       ],
       "outputs": [
         "coverage/**"
@@ -61,7 +64,8 @@
         "lib/**",
         "test/**",
         "package.json",
-        "tsconfig*.json"
+        "tsconfig*.json",
+        "client/**"
       ],
       "outputs": []
     },

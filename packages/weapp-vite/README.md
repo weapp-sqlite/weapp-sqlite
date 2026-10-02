@@ -40,6 +40,10 @@ const database = await openSqlite({
 
 插件按当前单目标构建注入 runtime，并只发射所需 WASM。业务代码不需要引用 `wx`、`my`、`WXWebAssembly` 或资源路径。
 
+同名、相同 adapter 与 migrations 的并发 `openSqlite()` 共享连接和初始化过程；连接已打开时传入不同配置会抛出 `SQLITE_OPEN_OPTIONS_CONFLICT`。同名的打开、关闭、删除按调用顺序执行：调用 `database.close()` 后立即打开会等待关闭并创建新连接，`removeSqlite()` 会先关闭现有连接，再删除快照，后续打开等待删除完成。不同数据库名称可并行操作。
+
+关闭失败时保留原连接，可再次调用 `close()` 或 `removeSqlite()`；删除失败不会阻塞后续操作。初始化器和微信分包加载失败后，下次打开会重新尝试加载，成功结果继续共享。迁移失败时会清理尚未发布的连接；如果清理也失败，抛出的 `AggregateError` 以原迁移错误作为 `cause`，并在 `errors` 中依次保留迁移、清理错误。
+
 开发期工作台：
 
 ```bash

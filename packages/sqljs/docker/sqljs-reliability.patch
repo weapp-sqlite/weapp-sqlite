@@ -1,0 +1,123 @@
+--- a/src/api.js
++++ b/src/api.js
+@@ -1,6 +1,7 @@
+ /* global
+     FS
+     HEAP8
++    HEAPU8
+     Module
+     _malloc
+     _free
+@@ -80,6 +81,13 @@
+         ["number", "string", "number", "number", "number"]
+     );
+     var sqlite3_changes = cwrap("sqlite3_changes", "number", ["number"]);
++    var sqlite3_stmt_readonly = cwrap(
++        "sqlite3_stmt_readonly", "number", ["number"]
++    );
++    var sqlite3_serialize = cwrap(
++        "sqlite3_serialize", "number", ["number", "string", "number", "number"]
++    );
++    var sqlite3_free = cwrap("sqlite3_free", null, ["number"]);
+     var sqlite3_prepare_v2 = cwrap(
+         "sqlite3_prepare_v2",
+         "number",
+@@ -943,6 +951,14 @@
+     * @return {Array<Database.QueryExecResult>} The results of each statement
+     */
+     Database.prototype.exec = function exec(sql, params, config) {
++        return this.execWithMetadata(sql, params, config)["results"];
++    };
++
++    /** Executes SQL and reports whether every statement was read-only.
++     * Metadata is collected as statements execute, so later statements may
++     * reference schema created by earlier statements in the same SQL string.
++     */
++    Database.prototype.execWithMetadata = function execWithMetadata(sql, params, config) {
+         if (!this.db) {
+             throw "Database closed";
+         }
+@@ -955,6 +971,7 @@
+             currentSqlPtr = originalSqlPtr;
+             var pzTail = stackAlloc(4);
+             var results = [];
++            var readOnly = true;
+             while (getValue(currentSqlPtr, "i8") !== NULL) {
+                 setValue(apiTemp, 0, "i32");
+                 setValue(pzTail, 0, "i32");
+@@ -970,6 +987,7 @@
+                 currentSqlPtr = getValue(pzTail, "i32");
+                 // Empty statement
+                 if (pStmt !== NULL) {
++                    if (!sqlite3_stmt_readonly(pStmt)) readOnly = false;
+                     var curresult = null;
+                     stmt = new Statement(pStmt, this);
+                     if (params != null) {
+@@ -988,7 +1006,7 @@
+                     stmt.free();
+                 }
+             }
+-            return results;
++            return { "results": results, "readOnly": readOnly };
+         } catch (errCaught) {
+             if (stmt) stmt.free();
+             throw errCaught;
+@@ -1102,6 +1120,33 @@
+         this.db = getValue(apiTemp, "i32");
+         registerExtensionFunctions(this.db);
+         return binaryDb;
++    };
++
++    /** Copies the main database without closing the live connection.
++     * Unlike export(), this preserves connection settings, temporary tables,
++     * prepared statements, SQL functions and update hooks.
++     * @return {Uint8Array} An independent copy of the SQLite database file
++     */
++    Database.prototype.exportSnapshot = function exportSnapshot() {
++        if (!this.db) throw new Error("Database closed");
++        var stack = stackSave();
++        var pointer = 0;
++        try {
++            var sizePointer = stackAlloc(8);
++            setValue(sizePointer, 0, "i32");
++            setValue(sizePointer + 4, 0, "i32");
++            pointer = sqlite3_serialize(this.db, "main", sizePointer, 0) >>> 0;
++            var size = getValue(sizePointer, "i32") >>> 0;
++            var high = getValue(sizePointer + 4, "i32") >>> 0;
++            if (!pointer || high !== 0 || size > HEAPU8.length
++                || pointer > HEAPU8.length - size) {
++                throw new Error("Unable to serialize SQLite database.");
++            }
++            return HEAPU8.slice(pointer, pointer + size);
++        } finally {
++            if (pointer) sqlite3_free(pointer);
++            stackRestore(stack);
++        }
+     };
+
+     /** Close the database, and all associated prepared statements.
+@@ -1559,11 +1604,13 @@
+
+     Database.prototype["run"] = Database.prototype.run;
+     Database.prototype["exec"] = Database.prototype.exec;
++    Database.prototype["execWithMetadata"] = Database.prototype.execWithMetadata;
+     Database.prototype["each"] = Database.prototype.each;
+     Database.prototype["prepare"] = Database.prototype.prepare;
+     Database.prototype["iterateStatements"]
+         = Database.prototype.iterateStatements;
+     Database.prototype["export"] = Database.prototype.export;
++    Database.prototype["exportSnapshot"] = Database.prototype.exportSnapshot;
+     Database.prototype["close"] = Database.prototype.close;
+     Database.prototype["handleError"] = Database.prototype.handleError;
+     Database.prototype["getRowsModified"] = Database.prototype.getRowsModified;
+--- a/src/exported_functions.json
++++ b/src/exported_functions.json
+@@ -6,6 +6,8 @@
+ "_sqlite3_free",
+ "_sqlite3_errmsg",
+ "_sqlite3_changes",
++"_sqlite3_stmt_readonly",
++"_sqlite3_serialize",
+ "_sqlite3_prepare_v2",
+ "_sqlite3_sql",
+ "_sqlite3_normalized_sql",

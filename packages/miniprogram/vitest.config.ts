@@ -6,6 +6,7 @@ export default defineProject(await defineVitestProjectConfig({
   options: {
     alias: [
       { find: '@', replacement: path.resolve(import.meta.dirname, './src') },
+      { find: '@weapp-sqlite/sqljs/full', replacement: path.resolve(import.meta.dirname, '../sqljs/src/full.ts') },
       { find: '@weapp-sqlite/wasm', replacement: path.resolve(import.meta.dirname, '../wasm/src/index.ts') },
       { find: '@weapp-sqlite/core', replacement: path.resolve(import.meta.dirname, '../core/src/index.ts') },
     ],

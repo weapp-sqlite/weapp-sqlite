@@ -1,6 +1,9 @@
-import { fileURLToPath } from 'node:url'
+import type { SqliteMigration } from '@weapp-sqlite/core'
+import { migrate } from '@weapp-sqlite/core'
+import initSqlJs from '@weapp-sqlite/sqljs/full'
+import { resolveSqliteWasmAsset } from '@weapp-sqlite/sqljs/node'
 import { openSqliteWasmDatabase } from '@weapp-sqlite/wasm'
-import initSqlJs from 'sql.js'
+import { vi } from 'vitest'
 import { createSqliteDebugController, SqliteDebugError } from '@/index'
 
 function createHarness() {
@@ -15,7 +18,7 @@ function createHarness() {
     'debug-test',
     {
       storage,
-      locateFile: file => fileURLToPath(new URL(`../../wasm/node_modules/sql.js/dist/${file}`, import.meta.url)),
+      locateFile: () => resolveSqliteWasmAsset('full', 'miniprogram'),
     },
   )
   return { files, storage, openDatabase }
@@ -34,6 +37,14 @@ describe('sqlite debug controller', () => {
     await controller.execute('INSERT INTO "notes" ("body") VALUES (?)', ['one'], { allowWrite: true })
     await controller.execute('INSERT INTO "notes" ("body") VALUES (?)', ['two'], { allowWrite: true })
 
+    const analysis = await controller.analyzeQuery('SELECT * FROM "notes" WHERE "body" = ?', ['one'])
+    expect(analysis.sql).toBe('SELECT * FROM "notes" WHERE "body" = ?')
+    expect(analysis.nodes.length).toBeGreaterThan(0)
+    expect(analysis.elapsedMs).toBeGreaterThanOrEqual(0)
+    expect(analysis.diagnostics.fullTableScans).toBeGreaterThanOrEqual(0)
+    expect(analysis.diagnostics.warnings).toEqual(expect.any(Array))
+    await expect(controller.analyzeQuery('DELETE FROM "notes"')).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
+
     await expect(controller.listTables()).resolves.toEqual([{ name: 'notes', type: 'table', sql: expect.stringContaining('CREATE TABLE') }])
     await expect(controller.describeTable('notes')).resolves.toEqual([
       { name: 'id', type: 'INTEGER', notNull: false, primaryKey: true, defaultValue: null },
@@ -43,7 +54,85 @@ describe('sqlite debug controller', () => {
       total: 2,
       rows: [{ id: 2, body: 'two' }],
     })
+    await expect(controller.readTable('notes', { limit: 1, offset: 99 })).resolves.toMatchObject({
+      total: 2,
+      offset: 1,
+      rows: [{ id: 2, body: 'two' }],
+    })
     await expect(controller.describeTable('notes" OR 1=1 --')).resolves.toEqual([])
+  })
+
+  it('reports migration health against configured definitions without applying them', async () => {
+    const harness = createHarness()
+    const migrations: readonly SqliteMigration[] = [{
+      version: 1,
+      name: 'create_notes',
+      up: async transaction => transaction.exec('CREATE TABLE notes (body TEXT)').then(() => undefined),
+    }, {
+      version: 2,
+      name: 'add_created_at',
+      up: async transaction => transaction.exec('ALTER TABLE notes ADD COLUMN created_at TEXT').then(() => undefined),
+    }]
+    const controller = createSqliteDebugController({
+      databaseName: 'debug-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      migrations,
+      enabled: true,
+    })
+
+    await expect(controller.getMigrationDiagnostics()).resolves.toMatchObject({
+      tablePresent: false,
+      expected: [{ version: 1, name: 'create_notes' }, { version: 2, name: 'add_created_at' }],
+      pending: [{ version: 1, name: 'create_notes' }, { version: 2, name: 'add_created_at' }],
+      warnings: ['history-missing', 'pending-migrations'],
+      healthy: false,
+    })
+    await controller.close()
+    const database = await harness.openDatabase()
+    await migrate(database, migrations)
+    await database.close()
+    const appliedController = createSqliteDebugController({
+      databaseName: 'debug-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      migrations,
+      enabled: true,
+    })
+    await expect(appliedController.getMigrationDiagnostics()).resolves.toMatchObject({
+      tablePresent: true,
+      applied: [expect.objectContaining({ version: 1, name: 'create_notes' }), expect.objectContaining({ version: 2, name: 'add_created_at' })],
+      pending: [],
+      warnings: [],
+      healthy: true,
+      latestAppliedVersion: 2,
+      latestExpectedVersion: 2,
+    })
+    await appliedController.close()
+  })
+
+  it('reports foreign-key constraints, enforcement and violations without writes', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: harness.openDatabase, storage: harness.storage, enabled: true })
+    await controller.execute('CREATE TABLE parents (id INTEGER PRIMARY KEY)', undefined, { allowWrite: true })
+    await controller.execute('CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id))', undefined, { allowWrite: true })
+    await controller.execute('INSERT INTO children VALUES (?, ?)', [1, 99], { allowWrite: true })
+
+    await expect(controller.getForeignKeyDiagnostics()).resolves.toMatchObject({
+      enabled: false,
+      tableCount: 2,
+      constrainedTableCount: 1,
+      constraints: [expect.objectContaining({ table: 'children', referencedTable: 'parents', from: 'parent_id', to: 'id' })],
+      violations: [expect.objectContaining({ table: 'children', parent: 'parents' })],
+      warnings: ['foreign-keys-disabled', 'foreign-key-violations'],
+      healthy: false,
+    })
+
+    await controller.execute('PRAGMA foreign_keys = ON', undefined, { allowWrite: true })
+    await controller.execute('DELETE FROM children', undefined, { allowWrite: true })
+    await controller.execute('INSERT INTO parents VALUES (?)', [99], { allowWrite: true })
+    await controller.execute('INSERT INTO children VALUES (?, ?)', [1, 99], { allowWrite: true })
+    await expect(controller.getForeignKeyDiagnostics()).resolves.toMatchObject({ enabled: true, violations: [], warnings: [], healthy: true })
   })
 
   it('enforces read and write SQL contracts and result limits', async () => {
@@ -51,6 +140,7 @@ describe('sqlite debug controller', () => {
     const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: harness.openDatabase, storage: harness.storage, enabled: true, limits: { maxRows: 1 } })
     await expect(controller.query('DELETE FROM notes')).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
     await expect(controller.query('PRAGMA journal_mode')).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
+    await expect(controller.query('PRAGMA foreign_keys')).resolves.toMatchObject({ rows: [{ foreign_keys: expect.anything() }] })
     await expect(controller.query('PRAGMA table_info("notes")')).resolves.toMatchObject({ rows: [] })
     await expect(controller.query('SELECT \';\' AS value; -- trailing comment')).resolves.toMatchObject({ rows: [{ value: ';' }] })
     await expect(controller.execute('CREATE TABLE notes (id INTEGER)', undefined)).rejects.toMatchObject({ code: 'SQLITE_DEBUG_WRITE_CONFIRMATION_REQUIRED' })
@@ -60,7 +150,28 @@ describe('sqlite debug controller', () => {
     await controller.execute('CREATE TABLE notes (id INTEGER)', undefined, { allowWrite: true })
     await controller.execute('INSERT INTO notes VALUES (1)', undefined, { allowWrite: true })
     await controller.execute('INSERT INTO notes VALUES (2)', undefined, { allowWrite: true })
+    await expect(controller.readTable('notes', { limit: 50 })).resolves.toMatchObject({ limit: 1, total: 2, rows: [{ id: 1 }] })
     await expect(controller.query('SELECT * FROM notes')).rejects.toMatchObject({ code: 'SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED' })
+  })
+
+  it('reuses filtered totals across pages and invalidates them after a write', async () => {
+    const harness = createHarness()
+    const database = await harness.openDatabase()
+    const querySpy = vi.spyOn(database, 'query')
+    const controller = createSqliteDebugController({ databaseName: 'debug-test', openDatabase: async () => database, storage: harness.storage, enabled: true })
+    await controller.createTable('notes', [{ name: 'id', type: 'INTEGER', primaryKey: true }, { name: 'body', type: 'TEXT' }], { allowWrite: true })
+    await controller.insertRow('notes', { body: 'one' }, { allowWrite: true })
+    await controller.insertRow('notes', { body: 'two' }, { allowWrite: true })
+    querySpy.mockClear()
+
+    await controller.readTable('notes', { limit: 1, offset: 0, filters: [{ column: 'body', operator: 'contains', value: 'o' }] })
+    await controller.readTable('notes', { limit: 1, offset: 1, filters: [{ column: 'body', operator: 'contains', value: 'o' }] })
+    const countQueries = () => querySpy.mock.calls.filter(([sql]) => /^SELECT count\(\*\) AS total FROM/.test(sql)).length
+    expect(countQueries()).toBe(1)
+
+    await controller.insertRow('notes', { body: 'four' }, { allowWrite: true })
+    await controller.readTable('notes', { limit: 1, offset: 1, filters: [{ column: 'body', operator: 'contains', value: 'o' }] })
+    expect(countQueries()).toBe(2)
   })
 
   it('flushes and exports metadata, then imports a replacement snapshot', async () => {
