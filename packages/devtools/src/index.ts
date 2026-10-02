@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
 import type { SqliteDevtoolsBrokerOptions } from './broker'
-import type { SqliteDevtoolsInvocation, SqliteDevtoolsResult, SqliteDevtoolsRuntimeDescriptor } from './protocol'
+import type { SqliteDevtoolsInvocation, SqliteDevtoolsReleaseSession, SqliteDevtoolsResult, SqliteDevtoolsRuntimeDescriptor } from './protocol'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -15,8 +15,9 @@ import { SQLITE_DEVTOOLS_SCOPE } from './protocol'
 
 declare module 'devframe' {
   interface DevframeRpcServerFunctions {
-    'weapp-sqlite:list-runtimes': () => SqliteDevtoolsRuntimeDescriptor[]
+    'weapp-sqlite:list-runtimes': (ownerId?: string) => SqliteDevtoolsRuntimeDescriptor[]
     'weapp-sqlite:invoke': (input: SqliteDevtoolsInvocation) => Promise<SqliteDevtoolsResult>
+    'weapp-sqlite:release-session': (input: SqliteDevtoolsReleaseSession) => Promise<SqliteDevtoolsResult>
   }
   interface DevframeRpcClientFunctions {
     'weapp-sqlite:state-updated': (runtimes: SqliteDevtoolsRuntimeDescriptor[]) => void
@@ -30,6 +31,7 @@ export interface CreateSqliteDevtoolsDevframeOptions extends SqliteDevtoolsBroke
 export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevframeOptions = {}) {
   const broker = createSqliteDevtoolsBroker(options)
   let unsubscribe: (() => void) | undefined
+  let disposing: Promise<void> | undefined
   const definition = defineDevframe({
     id: SQLITE_DEVTOOLS_SCOPE,
     name: 'SQLite',
@@ -45,6 +47,7 @@ export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevfra
       const scope = ctx.scope(SQLITE_DEVTOOLS_SCOPE)
       scope.rpc.register(defineRpcFunction({ name: 'list-runtimes', type: 'query', jsonSerializable: true, handler: broker.listRuntimes }))
       scope.rpc.register(defineRpcFunction({ name: 'invoke', type: 'action', jsonSerializable: true, handler: broker.invoke }))
+      scope.rpc.register(defineRpcFunction({ name: 'release-session', type: 'action', jsonSerializable: true, handler: broker.releaseSession }))
       unsubscribe?.()
       unsubscribe = broker.subscribe(() => {
         void scope.rpc.broadcast({ method: 'state-updated', args: [broker.listRuntimes()], event: true }).catch(() => {})
@@ -54,7 +57,13 @@ export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevfra
   return {
     definition,
     broker,
-    async dispose() { unsubscribe?.(); unsubscribe = undefined; await broker.close() },
+    dispose() {
+      return disposing ??= (async () => {
+        unsubscribe?.()
+        unsubscribe = undefined
+        await broker.close()
+      })()
+    },
   }
 }
 
@@ -66,6 +75,7 @@ export interface SqliteDevtoolsPlugin {
   readonly name: string
   readonly apply: 'serve'
   readonly configureServer: (server: { readonly httpServer?: unknown }) => void
+  readonly closeServer: () => Promise<void>
   readonly closeBundle: () => Promise<void>
 }
 
@@ -80,6 +90,7 @@ export function createSqliteDevtoolsPlugin(controller: SqliteDevtoolsDevframe): 
       const httpServer = server.httpServer as { once: (event: string, listener: () => void) => void }
       httpServer.once('close', () => { void controller.dispose() })
     },
+    async closeServer() { await controller.dispose() },
     async closeBundle() { await controller.dispose() },
   }
 }
@@ -144,4 +155,4 @@ export async function startSqliteDevtoolsServer(options: StartSqliteDevtoolsServ
 
 export type { SqliteDevtoolsClient } from './client'
 export { connectDevtoolsClient } from './client'
-export type { SqliteDevtoolsInvocation, SqliteDevtoolsMethod, SqliteDevtoolsRuntimeDescriptor } from './protocol'
+export type { SqliteDevtoolsInvocation, SqliteDevtoolsMethod, SqliteDevtoolsReleaseSession, SqliteDevtoolsRuntimeDescriptor } from './protocol'

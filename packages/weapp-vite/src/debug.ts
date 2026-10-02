@@ -1,11 +1,12 @@
 import type { SqliteDebugController, SqliteDebugTableFormat } from '@weapp-sqlite/debug'
 import type { SqliteDebugRuntimeControllerOptions, SqliteDebugWorkspaceOptions, SqliteRuntimeInfo } from './types'
 import { createSqliteDebugController as createController } from '@weapp-sqlite/debug'
+import { createSqliteDebugSessionWithAdapter } from './debug-session'
 import { defaultSqliteRuntimeAdapter } from './default-adapter'
 import { SqliteRuntimeError } from './errors'
-import { createSqliteDebugSessionWithAdapter, getSqliteRuntimeDatabaseOptions } from './open'
+import { getSqliteRuntimeDatabaseOptions } from './runtime-registry'
 
-export { listSqliteRuntimeDatabases } from './open'
+export { listSqliteRuntimeDatabases } from './runtime-registry'
 
 export type { SqliteDebugRuntimeControllerOptions, SqliteDebugWorkspaceOptions } from './types'
 
@@ -22,18 +23,25 @@ export function defineSqliteDebugWorkspace<T extends SqliteDebugWorkspaceOptions
 }
 
 export function createSqliteDebugController(options: SqliteDebugRuntimeControllerOptions) {
-  const adapter = options.adapter ?? getSqliteRuntimeDatabaseOptions(options.databaseName)?.adapter ?? defaultSqliteRuntimeAdapter
+  // Auto-discovered databases do not have an entry in the explicit workspace
+  // config. Reuse the active runtime's migration definitions so the diagnostics
+  // panel can compare the real database history with the same definitions that
+  // were used by openSqlite(). Explicit options still take precedence, which
+  // keeps the legacy single-database configuration deterministic.
+  const runtimeOptions = getSqliteRuntimeDatabaseOptions(options.databaseName)
+  const adapter = options.adapter ?? runtimeOptions?.adapter ?? defaultSqliteRuntimeAdapter
+  const migrations = options.migrations ?? runtimeOptions?.migrations
   const runtime: Record<string, unknown> = { target: adapter.target, engine: adapter.kind }
   void adapter.getRuntimeInfo().then(info => Object.assign(runtime, info), () => undefined)
   return createController({
     databaseName: options.databaseName,
     session: createSqliteDebugSessionWithAdapter({
       name: options.databaseName,
-      ...(options.migrations === undefined ? {} : { migrations: options.migrations }),
+      ...(migrations === undefined ? {} : { migrations }),
       adapter,
     }, adapter),
     enabled: options.enabled === true,
-    ...(options.migrations === undefined ? {} : { migrations: options.migrations }),
+    ...(migrations === undefined ? {} : { migrations }),
     ...(options.limits === undefined ? {} : { limits: options.limits }),
     runtime,
   })

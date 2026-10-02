@@ -9,6 +9,7 @@ import type {
   SqliteDebugFilter,
   SqliteDebugForeignKeyConstraint,
   SqliteDebugForeignKeyDiagnostics,
+  SqliteDebugForeignKeySchemaError,
   SqliteDebugForeignKeyViolation,
   SqliteDebugImportMapping,
   SqliteDebugLimits,
@@ -16,8 +17,10 @@ import type {
   SqliteDebugMigrationStatus,
   SqliteDebugOrder,
   SqliteDebugPage,
+  SqliteDebugPageCursor,
   SqliteDebugQueryAnalysis,
   SqliteDebugQueryPlanNode,
+  SqliteDebugQueryPlanTemporaryBTreeOperation,
   SqliteDebugQueryResult,
   SqliteDebugRowLocator,
   SqliteDebugSnapshot,
@@ -143,6 +146,54 @@ function normalizeSql(sql: string) {
   return separators[0] === undefined ? value : value.slice(0, separators[0]).trim()
 }
 
+/**
+ * Returns the top-level statement keyword, including the statement following
+ * a WITH clause. SQLite permits data-changing statements in a CTE, so using
+ * only the first token (`WITH`) would either reject read queries or make it
+ * possible to accidentally allow `WITH ... UPDATE` through the read gate.
+ */
+function statementKeyword(sql: string) {
+  const code = sqlCode(sql).trimStart().toLowerCase()
+  const first = /^([a-z]+)/.exec(code)?.[1] ?? ''
+  if (first !== 'with') {
+    return first
+  }
+
+  let depth = 0
+  for (let index = first.length; index < code.length; index += 1) {
+    const current = code[index]
+    if (current === '(') {
+      depth += 1
+      continue
+    }
+    if (current !== ')') {
+      continue
+    }
+    if (depth > 0) {
+      depth -= 1
+    }
+    if (depth !== 0) {
+      continue
+    }
+
+    // A CTE column list closes before its AS keyword. The query body closes
+    // before either another CTE (comma) or the main statement keyword.
+    let next = index + 1
+    while (next < code.length && /\s/.test(code[next] ?? '')) {
+      next += 1
+    }
+    if (code[next] === ',') {
+      continue
+    }
+    const token = /^[a-z]+/.exec(code.slice(next))?.[0] ?? ''
+    if (token === 'as' || token === 'not') {
+      continue
+    }
+    return token
+  }
+  return ''
+}
+
 function assertForbiddenSql(sql: string, write = false) {
   const normalized = sqlCode(sql).toLowerCase()
   const forbidden = /\b(?:attach|detach|load_extension)\b|pragma\s+(?:(?:main|temp)\s*\.\s*)?(?:writable_schema|database_list)\b|vacuum(?:\s+[a-z_][a-z0-9_]*)?\s+into\b/
@@ -157,7 +208,8 @@ function assertForbiddenSql(sql: string, write = false) {
 function assertReadSql(sql: string) {
   assertForbiddenSql(sql)
   const normalized = sqlCode(sql).trim().toLowerCase()
-  if (!/^(?:select|explain|pragma)\b/.test(normalized)) {
+  const keyword = statementKeyword(sql)
+  if (!['select', 'explain', 'pragma'].includes(keyword)) {
     throw new SqliteDebugError('SQLITE_DEBUG_READ_ONLY_SQL', 'Read mode only allows SELECT, EXPLAIN, and safe PRAGMA statements.')
   }
   if (normalized.startsWith('pragma')) {
@@ -170,8 +222,7 @@ function assertReadSql(sql: string) {
 
 function assertAnalyzableSql(sql: string) {
   assertReadSql(sql)
-  const normalized = sqlCode(sql).trimStart().toLowerCase()
-  if (!/^select\b/.test(normalized)) {
+  if (statementKeyword(sql) !== 'select') {
     throw new SqliteDebugError('SQLITE_DEBUG_READ_ONLY_SQL', 'Query analysis only accepts SELECT statements.')
   }
 }
@@ -191,6 +242,15 @@ function planNode(row: Record<string, unknown>, fallbackId: number): SqliteDebug
   const notUsed = planNumber(row['notused'] ?? row['notUsed'], 0)
   const detail = planText(row['detail'])
   const temporary = /\buse\s+temp(?:orary)?\s+b-tree\b/i.test(detail)
+  const temporaryBTreeOperation: SqliteDebugQueryPlanTemporaryBTreeOperation | undefined = temporary
+    ? /\bfor\s+(?:right\s+part\s+of\s+)?order\s+by\b/i.test(detail)
+      ? 'order-by'
+      : /\bfor\s+group\s+by\b/i.test(detail)
+        ? 'group-by'
+        : /\bfor\s+distinct\b/i.test(detail)
+          ? 'distinct'
+          : 'other'
+    : undefined
   const search = /^\s*search\b/i.test(detail)
   const scan = /^\s*scan\b/i.test(detail)
   const kind: SqliteDebugQueryPlanNode['kind'] = temporary ? 'temporary-b-tree' : search ? 'search' : scan ? 'scan' : 'other'
@@ -205,6 +265,7 @@ function planNode(row: Record<string, unknown>, fallbackId: number): SqliteDebug
     detail,
     depth: 0,
     kind,
+    ...(temporaryBTreeOperation ? { temporaryBTreeOperation } : {}),
     ...(table ? { table } : {}),
     ...(index ? { index } : {}),
   }
@@ -240,7 +301,13 @@ function analyzePlan(rows: readonly Record<string, unknown>[]) {
   const indexes = [...new Set(nodes.flatMap(node => node.index ? [node.index] : []))]
   const fullTableScans = nodes.filter(node => node.kind === 'scan' && node.table && !node.index && !/\bscan\s+constant\s+row\b/i.test(node.detail)).length
   const temporaryBtrees = nodes.filter(node => node.kind === 'temporary-b-tree').length
-  const automaticIndexes = nodes.filter(node => node.detail.match(/\busing\s+automatic\s+index\b/i)).length
+  const temporaryBTreeOperations = nodes.flatMap(node => node.temporaryBTreeOperation ? [node.temporaryBTreeOperation] : [])
+  // SQLite 3.38+ may include the `COVERING` qualifier between `AUTOMATIC`
+  // and `INDEX` (for example, `USING AUTOMATIC COVERING INDEX (x=?)`).
+  // Keep this check independent from the optional index name parser: automatic
+  // indexes have no stable name, but still indicate planner work worth showing
+  // in the performance diagnostics.
+  const automaticIndexes = nodes.filter(node => node.detail.match(/\busing\s+automatic(?:\s+covering)?\s+index\b/i)).length
   const warnings = [
     ...(fullTableScans > 0 ? ['full-table-scan' as const] : []),
     ...(temporaryBtrees > 0 ? ['temporary-b-tree' as const] : []),
@@ -251,6 +318,7 @@ function analyzePlan(rows: readonly Record<string, unknown>[]) {
     diagnostics: {
       fullTableScans,
       temporaryBtrees,
+      temporaryBTreeOperations,
       automaticIndexes,
       indexes,
       warnings,
@@ -274,6 +342,10 @@ function normalizeBytes(value: Uint8Array | ArrayBuffer) {
 
 function byteLength(value: string) {
   return typeof TextEncoder === 'undefined' ? value.length : new TextEncoder().encode(value).byteLength
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function jsonSafe(value: unknown): unknown {
@@ -519,14 +591,90 @@ function compileWhere(
   return { sql: clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '', parameters }
 }
 
-function compileOrder(columns: readonly string[], orderBy: readonly SqliteDebugOrder[] = []) {
+function compileOrder(
+  columns: readonly string[],
+  orderBy: readonly SqliteDebugOrder[] = [],
+  stableColumns: readonly string[] = [],
+) {
   const available = new Set(columns)
   for (const order of orderBy) {
     if (!available.has(order.column) || (order.direction !== 'asc' && order.direction !== 'desc')) {
       throw new SqliteDebugError('SQLITE_DEBUG_INVALID_FILTER', `Invalid order column or direction for "${order.column}".`)
     }
   }
-  return orderBy.length === 0 ? '' : ` ORDER BY ${orderBy.map(order => `${quoteIdentifier(order.column)} ${order.direction.toUpperCase()}`).join(', ')}`
+  const seen = new Set(orderBy.map(order => order.column))
+  const tieBreakers = stableColumns
+    .filter(column => !seen.has(column))
+    .map(column => ({ column, direction: 'asc' as const }))
+  const effectiveOrder = [...orderBy, ...tieBreakers]
+  return {
+    columns: effectiveOrder,
+    sql: effectiveOrder.length === 0 ? '' : ` ORDER BY ${effectiveOrder.map(order => `${quoteIdentifier(order.column)} ${order.direction.toUpperCase()}`).join(', ')}`,
+  }
+}
+
+function sameOrder(left: readonly SqliteDebugOrder[], right: readonly SqliteDebugOrder[]) {
+  return left.length === right.length && left.every((order, index) => {
+    const candidate = right[index]
+    return candidate?.column === order.column && candidate.direction === order.direction
+  })
+}
+
+function isCursorScalar(value: unknown): value is SqliteScalar {
+  return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint'
+    || typeof value === 'boolean' || value instanceof Uint8Array || value instanceof ArrayBuffer
+}
+
+/**
+ * Compile the strict lexicographic successor predicate for a mixed-direction
+ * SQLite order. `IS ?` is intentional: unlike `= ?`, it keeps NULL key values
+ * on the same branch as the cursor row.
+ */
+function compileCursorWhere(orderBy: readonly SqliteDebugOrder[], cursor: SqliteDebugPageCursor) {
+  if (!sameOrder(orderBy, cursor.orderBy) || cursor.values.length !== orderBy.length || !cursor.values.every(isCursorScalar)) {
+    throw new SqliteDebugError('SQLITE_DEBUG_INVALID_CURSOR', 'The pagination cursor does not match the current table order.')
+  }
+  const branches: string[] = []
+  const parameters: SqliteScalar[] = []
+  for (let index = 0; index < orderBy.length; index += 1) {
+    const order = orderBy[index]!
+    const value = cursor.values[index]!
+    const equal: string[] = []
+    for (let prefix = 0; prefix < index; prefix += 1) {
+      const previous = orderBy[prefix]!
+      const previousValue = cursor.values[prefix]!
+      if (previousValue === null) {
+        equal.push(`${quoteIdentifier(previous.column)} IS NULL`)
+      }
+      else {
+        equal.push(`${quoteIdentifier(previous.column)} IS ?`)
+        parameters.push(previousValue)
+      }
+    }
+    let successor: string | undefined
+    if (value === null) {
+      // ASC puts NULL first, while DESC puts NULL last. There are no DESC
+      // successors after a NULL cursor value.
+      if (order.direction === 'asc') {
+        successor = `${quoteIdentifier(order.column)} IS NOT NULL`
+      }
+    }
+    else if (order.direction === 'asc') {
+      successor = `${quoteIdentifier(order.column)} > ?`
+      parameters.push(value)
+    }
+    else {
+      successor = `(${quoteIdentifier(order.column)} < ? OR ${quoteIdentifier(order.column)} IS NULL)`
+      parameters.push(value)
+    }
+    if (successor) {
+      branches.push(`(${[...equal, successor].join(' AND ')})`)
+    }
+  }
+  return {
+    sql: branches.length > 0 ? `(${branches.join(' OR ')})` : '0',
+    parameters,
+  }
 }
 
 interface TableRowIdentity {
@@ -835,18 +983,54 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     assertDiagnosticResultSize(pragma)
     const pragmaValue = pragma.rows[0] ? Object.values(pragma.rows[0])[0] : 0
     const enabled = Number(pragmaValue) === 1
-    const violationResult = await current.query<{
+    interface ViolationRow {
+      readonly [key: string]: unknown
       table: string
       rowid: number | bigint | string | null
       parent: string
       fkid: number
-    }>('PRAGMA foreign_key_check')
-    assertResultSize(violationResult, limits)
-    if (violationResult.rows.length > limits.maxRows) {
-      throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The foreign-key violations exceed ${limits.maxRows} rows.`)
     }
-    assertDiagnosticResultSize(violationResult)
-    const violations: SqliteDebugForeignKeyViolation[] = violationResult.rows.map(row => ({
+    let violationRows: readonly ViolationRow[] = []
+    const schemaErrors: SqliteDebugForeignKeySchemaError[] = []
+    try {
+      const violationResult = await current.query<ViolationRow>('PRAGMA foreign_key_check')
+      assertResultSize(violationResult, limits)
+      if (violationResult.rows.length > limits.maxRows) {
+        throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The foreign-key violations exceed ${limits.maxRows} rows.`)
+      }
+      assertDiagnosticResultSize(violationResult)
+      violationRows = violationResult.rows
+    }
+    catch (error) {
+      // SQLite reports a schema mismatch (such as a parent key without a
+      // UNIQUE constraint) as an error from the whole-database check. Retry
+      // one table at a time so the diagnostics page can identify the broken
+      // declaration while still showing valid violations from other tables.
+      if (!/foreign\s+key\s+mismatch/i.test(errorMessage(error))) {
+        throw error
+      }
+      const rows: ViolationRow[] = []
+      for (const table of tables) {
+        try {
+          const result = await current.query<ViolationRow>(`PRAGMA main.foreign_key_check(${quoteIdentifier(table)})`)
+          assertDiagnosticResultSize(result)
+          rows.push(...result.rows)
+        }
+        catch (tableError) {
+          const message = errorMessage(tableError)
+          if (!/foreign\s+key\s+mismatch/i.test(message)) {
+            throw tableError
+          }
+          schemaErrors.push({ table, message })
+        }
+      }
+      if (rows.length > limits.maxRows) {
+        throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The foreign-key violations exceed ${limits.maxRows} rows.`)
+      }
+      assertResultSize(rows, limits)
+      violationRows = rows
+    }
+    const violations: SqliteDebugForeignKeyViolation[] = violationRows.map(row => ({
       table: String(row.table ?? ''),
       rowid: row.rowid ?? null,
       parent: String(row.parent ?? ''),
@@ -855,16 +1039,20 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     const warnings = [
       ...(!enabled && constraints.length > 0 ? ['foreign-keys-disabled' as const] : []),
       ...(violations.length > 0 ? ['foreign-key-violations' as const] : []),
+      ...(schemaErrors.length > 0 ? ['foreign-key-schema' as const] : []),
     ]
-    return {
+    const result = {
       enabled,
       constraints,
       violations,
+      schemaErrors,
       tableCount: tables.length,
       constrainedTableCount: new Set(constraints.map(constraint => constraint.table)).size,
       healthy: warnings.length === 0,
       warnings,
     }
+    assertResultSize(result, limits)
+    return result
   }
 
   async function metadata(bytes: Uint8Array, current: SqliteDebugSessionScope['database']): Promise<SqliteDebugSnapshotMetadata> {
@@ -919,11 +1107,28 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     async readTable(tableName, pageOptions = {}) {
       const limit = bounded(pageOptions.limit, 50, limits.maxRows)
       const requestedOffset = bounded(pageOptions.offset, 0, Number.MAX_SAFE_INTEGER)
+      if (pageOptions.cursor && requestedOffset !== 0) {
+        throw new SqliteDebugError('SQLITE_DEBUG_INVALID_CURSOR', 'A keyset cursor cannot be combined with a non-zero offset.')
+      }
       const current = await database()
       const details = await tableDetails(tableName)
       const columns = details.info.map(column => String(column.name))
       const where = compileWhere(columns, pageOptions.filters, pageOptions.search)
-      const order = compileOrder(columns, pageOptions.orderBy)
+      const stableColumns = details.capabilities.locator === 'primary-key'
+        ? details.capabilities.primaryKey
+        : details.capabilities.locator === 'rowid' && details.rowIdentity.rowidColumn
+          ? [details.rowIdentity.rowidColumn]
+          : []
+      // Offset pagination needs a deterministic order. Preserve the user's
+      // requested columns and append the full row locator as an ascending
+      // tie-breaker; objects without a reliable locator keep their natural
+      // SQLite order because there is no safe key to add.
+      const order = compileOrder(columns, pageOptions.orderBy, stableColumns)
+      const cursorWhere = pageOptions.cursor
+        ? details.capabilities.locator === 'none'
+          ? (() => { throw new SqliteDebugError('SQLITE_DEBUG_INVALID_CURSOR', 'Keyset pagination requires a stable primary key or rowid.') })()
+          : compileCursorWhere(order.columns, pageOptions.cursor)
+        : { sql: '', parameters: [] as SqliteScalar[] }
       const revision = scope().revision
       if (totalCacheRevision !== revision) {
         totalCacheRevision = revision
@@ -955,16 +1160,49 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
       const locatorSelect = details.capabilities.locator === 'rowid' && details.rowIdentity.rowidColumn
         ? `${quoteIdentifier(details.rowIdentity.rowidColumn)} AS ${quoteIdentifier(rowidAlias)}, `
         : ''
-      const result = await read(`SELECT ${locatorSelect}* FROM ${quoteIdentifier(tableName)}${where.sql}${order} LIMIT ? OFFSET ?`, [...where.parameters, limit, offset])
-      const rows = result.rows.map((row) => {
+      // table_xinfo marks generated/hidden columns separately from the visible
+      // table shape. Project visible columns explicitly so a hidden column
+      // cannot collide with the temporary rowid alias and returned row keys
+      // stay aligned with `page.columns`.
+      const projection = columns.length > 0 ? columns.map(quoteIdentifier).join(', ') : '*'
+      const whereSql = where.sql && cursorWhere.sql
+        ? `${where.sql} AND ${cursorWhere.sql}`
+        : where.sql || (cursorWhere.sql ? ` WHERE ${cursorWhere.sql}` : '')
+      const whereParameters = [...where.parameters, ...cursorWhere.parameters]
+      // Cursor pages fetch only the requested projection. A separate SELECT 1
+      // sentinel below detects a successor without pulling a potentially huge
+      // BLOB from the next row into the result-size budget.
+      const rawResult = await current.query(`SELECT ${locatorSelect}${projection} FROM ${quoteIdentifier(tableName)}${whereSql}${order.sql} LIMIT ? OFFSET ?`, [...whereParameters, limit, offset])
+      assertResultSize(rawResult, limits)
+      if (rawResult.rows.length > limits.maxRows) {
+        throw new SqliteDebugError('SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED', `The result exceeds ${limits.maxRows} rows.`)
+      }
+      let hasMore = offset + rawResult.rows.length < total
+      if (pageOptions.cursor && limit > 0) {
+        const successor = await current.query(`SELECT 1 AS __weapp_sqlite_has_more FROM ${quoteIdentifier(tableName)}${whereSql}${order.sql} LIMIT 1 OFFSET ?`, [...whereParameters, limit])
+        assertResultSize(successor, limits)
+        hasMore = successor.rows.length > 0
+      }
+      const resultRows = rawResult.rows.slice(0, limit)
+      const rows = resultRows.map((row) => {
         if (details.capabilities.locator !== 'rowid') {
           return row as Record<string, unknown>
         }
         return Object.fromEntries(Object.entries(row).filter(([key]) => key !== rowidAlias))
       })
-      const rowLocators = result.rows.map((row): SqliteDebugRowLocator => details.capabilities.locator === 'primary-key'
+      const rowLocators = resultRows.map((row): SqliteDebugRowLocator => details.capabilities.locator === 'primary-key'
         ? { kind: 'primary-key', values: Object.fromEntries(details.capabilities.primaryKey.map(column => [column, row[column] as SqliteScalar])) }
         : { kind: 'rowid', value: row[rowidAlias] as number | bigint })
+      const lastRow = resultRows.at(-1)
+      const nextCursor = hasMore && lastRow && order.columns.length > 0 && details.capabilities.locator !== 'none'
+        ? {
+          orderBy: order.columns,
+          values: order.columns.map((item) => {
+            const key = item.column === details.rowIdentity.rowidColumn ? rowidAlias : item.column
+            return lastRow[key] as SqliteScalar
+          }),
+        } satisfies SqliteDebugPageCursor
+        : undefined
       const page: SqliteDebugPage = {
         columns,
         rows,
@@ -972,6 +1210,8 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
         total,
         limit,
         offset,
+        hasMore,
+        ...(nextCursor ? { nextCursor } : {}),
       }
       assertResultSize(page, limits)
       return page
@@ -979,7 +1219,7 @@ export function createSqliteDebugController(options: SqliteDebugControllerOption
     async query(sql, parameters) {
       const normalized = normalizeSql(sql)
       assertReadSql(normalized)
-      const querySql = sqlCode(normalized).trimStart().toLowerCase().startsWith('select')
+      const querySql = statementKeyword(normalized) === 'select'
         ? `SELECT * FROM (${normalized}) LIMIT ${limits.maxRows + 1}`
         : normalized
       return read(querySql, parameters)

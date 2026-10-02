@@ -9,7 +9,7 @@ vi.mock('devframe/client', () => ({
 
 function rpcHarness(isTrusted: boolean) {
   const scoped = {
-    call: vi.fn(async () => []),
+    call: vi.fn(async (..._args: unknown[]) => [] as unknown[]),
     register: vi.fn(),
     unregister: vi.fn(),
   }
@@ -38,7 +38,7 @@ describe('Devframe client authentication', () => {
     const client = await connectDevtoolsClient()
 
     expect(authenticateWithUrlOtp).not.toHaveBeenCalled()
-    client.dispose()
+    await client.dispose()
   })
 
   it('exchanges an OTP when the host has not authorized the panel', async () => {
@@ -52,6 +52,24 @@ describe('Devframe client authentication', () => {
     const client = await connectDevtoolsClient()
 
     expect(authenticateWithUrlOtp).toHaveBeenCalledOnce()
-    client.dispose()
+    await client.dispose()
+  })
+
+  it('releases runtime debug sessions before closing the Devframe RPC', async () => {
+    const harness = rpcHarness(true)
+    const runtime = { id: 'web-1', label: 'Web', platform: 'web', databases: ['main'], sessionId: 'session-1', connectedAt: 'now', readOnly: false }
+    harness.scoped.call.mockImplementation(async (name: unknown) => name === 'list-runtimes' ? [runtime] : [])
+    vi.mocked(getDevframeRpcClient).mockResolvedValue(harness.rpc as never)
+
+    const client = await connectDevtoolsClient()
+    await client.listRuntimes()
+    const first = client.dispose()
+    const second = client.dispose()
+    expect(second).toBe(first)
+    await first
+
+    expect(harness.scoped.call).toHaveBeenCalledWith('release-session', expect.objectContaining({ runtimeId: 'web-1', sessionId: 'session-1', ownerId: expect.any(String) }))
+    expect(harness.scoped.unregister).toHaveBeenCalledOnce()
+    expect(harness.rpc.close).toHaveBeenCalledOnce()
   })
 })

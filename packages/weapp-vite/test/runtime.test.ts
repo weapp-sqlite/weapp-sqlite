@@ -1,14 +1,29 @@
 import type { SqliteConnection, SqliteMigration } from '@weapp-sqlite/core'
 import type { SqlJsInitializer } from '@weapp-sqlite/wasm'
 import type { SqliteRuntimeAdapter } from '@/types'
-import { createSqliteDebugController } from '@weapp-sqlite/debug'
+import { createSqliteDebugController, SqliteDebugError } from '@weapp-sqlite/debug'
 import initSqlJs from '@weapp-sqlite/sqljs/full'
 import initSqlJsLite from '@weapp-sqlite/sqljs/lite'
 import { resolveSqliteWasmAsset } from '@weapp-sqlite/sqljs/node'
 import { createSqliteWasmRuntimeAdapter } from '@/adapter'
 import { createMiniProgramSqliteRuntimeAdapterWithInitializer } from '@/advanced'
+import { createSqliteDebugController as createRuntimeDebugController } from '@/debug'
+import { createSqliteDebugSessionWithAdapter } from '@/debug-session'
 import { SqliteRuntimeError } from '@/errors'
-import { clearSqliteRuntimeRegistryForTests, createSqliteDebugSessionWithAdapter, openSqliteWithAdapter, removeSqliteWithAdapter } from '@/open'
+import { clearSqliteRuntimeRegistryForTests, openSqliteWithAdapter, removeSqliteWithAdapter } from '@/open'
+
+vi.mock('virtual:weapp-sqlite-runtime', () => ({
+  default: {
+    target: 'web',
+    kind: 'test-virtual',
+    probe: async () => ({ target: 'web', supported: true }),
+    open: async () => { throw new Error('virtual adapter is not used in this test') },
+    loadSnapshot: async () => undefined,
+    saveSnapshot: async () => undefined,
+    remove: async () => undefined,
+    getRuntimeInfo: async () => ({ target: 'web', engine: 'test-virtual' }),
+  },
+}))
 
 const fullInitializer: SqlJsInitializer = options => initSqlJs({
   ...options,
@@ -93,6 +108,37 @@ describe('unified SQLite runtime', () => {
     await reopened.close()
   })
 
+  it('reuses active migrations for an auto-discovered debug database', async () => {
+    const { adapter } = createAdapter()
+    const diagnosticMigrations: readonly SqliteMigration[] = [{
+      version: 1,
+      name: 'create_parents',
+      up: async transaction => transaction.exec('CREATE TABLE parents (id INTEGER PRIMARY KEY)').then(() => undefined),
+    }, {
+      version: 2,
+      name: 'create_children',
+      up: async transaction => transaction.exec('CREATE TABLE children (parent_id INTEGER REFERENCES parents(id))').then(() => undefined),
+    }]
+    const database = await openSqliteWithAdapter({ name: 'auto-diagnostics.sqlite', migrations: diagnosticMigrations }, adapter)
+    const controller = createRuntimeDebugController({ databaseName: 'auto-diagnostics.sqlite', enabled: true })
+
+    await expect(controller.getMigrationDiagnostics()).resolves.toMatchObject({
+      expected: [{ version: 1, name: 'create_parents' }, { version: 2, name: 'create_children' }],
+      applied: [expect.objectContaining({ version: 1, name: 'create_parents' }), expect.objectContaining({ version: 2, name: 'create_children' })],
+      pending: [],
+      warnings: [],
+      healthy: true,
+    })
+    await expect(controller.getForeignKeyDiagnostics()).resolves.toMatchObject({
+      tableCount: 2,
+      constrainedTableCount: 1,
+      constraints: [expect.objectContaining({ table: 'children', referencedTable: 'parents' })],
+    })
+
+    await controller.close()
+    await database.close()
+  })
+
   it('keeps application handles usable when debug sessions close or recover a snapshot', async () => {
     const { adapter } = createAdapter()
     const database = await openSqliteWithAdapter({ name: 'debug-shared', adapter }, adapter)
@@ -112,6 +158,44 @@ describe('unified SQLite runtime', () => {
     await expect(database.query('SELECT 1')).rejects.toThrow()
   })
 
+  it('keeps the previous connection usable when snapshot replacement cannot close it', async () => {
+    const { adapter } = createAdapter()
+    const originalOpen = adapter.open.bind(adapter)
+    const closeFailure = new Error('snapshot close failed')
+    let firstConnection = true
+    vi.spyOn(adapter, 'open').mockImplementation(async (name) => {
+      const connection = await originalOpen(name)
+      if (firstConnection) {
+        firstConnection = false
+        const close = connection.close
+        connection.close = vi.fn(async () => {
+          connection.close = close
+          throw closeFailure
+        })
+      }
+      return connection
+    })
+
+    const database = await openSqliteWithAdapter({ name: 'snapshot-close-failure', adapter }, adapter)
+    const controller = createDebugController('snapshot-close-failure', adapter)
+    await database.exec('CREATE TABLE notes (body TEXT)')
+    await database.exec('INSERT INTO notes VALUES (?)', ['before'])
+    const snapshot = await controller.exportDatabase()
+
+    await expect(controller.importDatabase(snapshot.bytes, { replace: true })).rejects.toMatchObject({
+      code: 'SQLITE_DEBUG_IMPORT_FAILED',
+      cause: closeFailure,
+    })
+    await expect(database.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'before' }] })
+    await database.exec('INSERT INTO notes VALUES (?)', ['after'])
+    await expect(database.query('SELECT body FROM notes ORDER BY rowid')).resolves.toMatchObject({
+      rows: [{ body: 'before' }, { body: 'after' }],
+    })
+
+    await controller.close()
+    await database.close()
+  })
+
   it('keeps another debug session usable when one panel disconnects', async () => {
     const { adapter } = createAdapter()
     const first = createDebugController('panel-shared', adapter)
@@ -121,6 +205,14 @@ describe('unified SQLite runtime', () => {
 
     await expect(second.query('SELECT name FROM sqlite_schema')).resolves.toMatchObject({ rows: [{ name: 'notes' }] })
     await second.close()
+  })
+
+  it('preserves the public debug error type for closed runtime sessions', async () => {
+    const { adapter } = createAdapter()
+    const session = createSqliteDebugSessionWithAdapter({ name: 'closed-session', adapter }, adapter)
+    await session.close()
+
+    await expect(session.runExclusive(async () => undefined)).rejects.toBeInstanceOf(SqliteDebugError)
   })
 
   it('serializes a transaction and a debug operation without deadlock', async () => {

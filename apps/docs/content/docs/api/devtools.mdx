@@ -33,4 +33,4 @@ console.log(server.url)
 await server.close()
 ```
 
-面板支持运行实例和数据库切换、结构管理、绑定参数 SQL、CRUD、SQLite/CSV/JSON 导入导出。SQL 历史按数据库保存最近 50 条，执行计划只调用 `EXPLAIN QUERY PLAN`，不会执行原语句；“性能诊断”会在同一计划上标出全表扫描、临时 B-tree 和自动索引；“诊断”页读取迁移历史与配置定义的差异，并展示外键开关、约束和 `foreign_key_check` 违规。生产构建关闭调试后不会打包面板桥、凭证和 client 资源。
+面板支持运行实例和数据库切换、结构管理、绑定参数 SQL、CRUD、SQLite/CSV/JSON 导入导出。SQL 历史按数据库保存最近 50 条，执行计划只调用 `EXPLAIN QUERY PLAN`，不会执行原语句；“性能诊断”会在同一计划上标出全表扫描、临时 B-tree 和自动索引，并说明临时 B-tree 是排序、分组还是去重所需；“诊断”页读取迁移历史与配置定义的差异，并展示外键开关、约束、`foreign_key_check` 违规和按表归属的 schema mismatch。生产构建关闭调试后不会打包面板桥、凭证和 client 资源。

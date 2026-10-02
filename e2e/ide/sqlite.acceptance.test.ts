@@ -14,6 +14,7 @@ interface PageAcceptance {
 }
 
 const runtimeProvider = process.env['WEAPP_VITE_E2E_RUNTIME_PROVIDER'] === 'headless' ? 'headless' : 'devtools'
+const wsEndpoint = process.env['WEAPP_VITE_E2E_WS_ENDPOINT']?.trim()
 const launcher = new Launcher()
 const runtimeLogs: string[] = []
 const runtimeFailures: string[] = []
@@ -69,13 +70,15 @@ async function waitForPhase(page: Page, phase: string): Promise<PageAcceptance> 
 }
 
 beforeAll(async () => {
-  miniProgram = await launcher.launch({
-    platform: 'wechat',
-    projectPath: path.join(demoRoot, 'dist/weapp'),
-    runtimeProvider,
-    trustProject: true,
-    timeout: 120_000,
-  }) as MiniProgram
+  miniProgram = wsEndpoint
+    ? await launcher.connect({ platform: 'wechat', wsEndpoint, timeout: 120_000 }) as MiniProgram
+    : await launcher.launch({
+      platform: 'wechat',
+      projectPath: path.join(demoRoot, 'dist/weapp'),
+      runtimeProvider,
+      trustProject: true,
+      timeout: 120_000,
+    }) as MiniProgram
   if (typeof miniProgram.waitForAppReady === 'function') {
     await miniProgram.waitForAppReady(60_000)
   }

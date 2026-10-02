@@ -6,11 +6,13 @@ import type {
   SqliteDebugIndex,
   SqliteDebugMigrationDiagnostics,
   SqliteDebugPage,
+  SqliteDebugPageCursor,
   SqliteDebugQueryAnalysis,
   SqliteDebugTable,
   SqliteDebugTableCapabilities,
   SqliteDebugUndoState,
 } from '@weapp-sqlite/debug'
+import type { SqliteDevtoolsRuntimeDescriptor } from '../src/protocol'
 
 export interface SqlHistoryEntry {
   readonly id: number
@@ -36,6 +38,8 @@ export interface DatabaseState {
   orderColumn: string
   orderDirection: 'asc' | 'desc'
   offset: number
+  /** Cursors for pages after the initial page; one entry means page two. */
+  cursorStack: SqliteDebugPageCursor[]
   limit: number
   selectedRows: Set<number>
   sql: string
@@ -52,6 +56,11 @@ export interface DatabaseState {
   notice: string
 }
 
+/** Capture the SQL editor input before an asynchronous request can mutate it. */
+export function snapshotSqlInput(state: Pick<DatabaseState, 'sql' | 'parameters'>) {
+  return { sql: state.sql.trim(), parameters: state.parameters }
+}
+
 export interface PlanNode {
   readonly id: number
   readonly parent: number
@@ -64,6 +73,22 @@ export interface RequestTicket {
   readonly lane: string
   readonly sequence: number
   readonly key: string
+}
+
+/**
+ * A runtime id is stable across reconnects, while its session id is not.
+ * Pending panel requests must be invalidated when the session is replaced so
+ * a delayed response from the old connection cannot update the new workspace.
+ */
+export function runtimeSessionChanged(
+  previous: readonly SqliteDevtoolsRuntimeDescriptor[],
+  next: readonly SqliteDevtoolsRuntimeDescriptor[],
+) {
+  const nextById = new Map(next.map(runtime => [runtime.id, runtime.sessionId]))
+  return previous.some((runtime) => {
+    const sessionId = nextById.get(runtime.id)
+    return sessionId !== undefined && sessionId !== runtime.sessionId
+  })
 }
 
 export class WorkspaceState {
@@ -90,6 +115,7 @@ export class WorkspaceState {
         orderColumn: '',
         orderDirection: 'asc',
         offset: 0,
+        cursorStack: [],
         limit: 50,
         selectedRows: new Set(),
         sql: 'SELECT name, type FROM sqlite_schema ORDER BY name',
@@ -126,6 +152,7 @@ export class WorkspaceState {
       search: '',
       orderColumn: '',
       offset: 0,
+      cursorStack: [],
       selectedRows: new Set<number>(),
     })
   }

@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { parseEditable, parseParameters, planNodes, WorkspaceState } from './state'
+import { parseEditable, parseParameters, planNodes, runtimeSessionChanged, snapshotSqlInput, WorkspaceState } from './state'
 
 describe('devtools panel state', () => {
+  it('detects a new session when a runtime keeps its id after reconnecting', () => {
+    const previous = [{ id: 'runtime-a', label: 'Web', platform: 'web', databases: ['one'], sessionId: 'session-1', connectedAt: 'now', readOnly: false }]
+    const sameSession = [{ ...previous[0]!, sessionId: 'session-1' }]
+    const reconnected = [{ ...previous[0]!, sessionId: 'session-2' }]
+
+    expect(runtimeSessionChanged(previous, sameSession)).toBe(false)
+    expect(runtimeSessionChanged(previous, reconnected)).toBe(true)
+    expect(runtimeSessionChanged(previous, [])).toBe(false)
+  })
+
   it('isolates database state and rejects stale requests', () => {
     const state = new WorkspaceState()
     state.select('runtime-a', 'one')
@@ -20,6 +30,18 @@ describe('devtools panel state', () => {
     for (let index = 0; index < 55; index++) { state.record(state.current, { sql: `select ${index}`, parameters: '[]', kind: 'query', status: 'success', elapsedMs: index, summary: 'ok' }) }
     expect(state.current.history).toHaveLength(50)
     expect(state.current.history[0]?.sql).toBe('select 54')
+  })
+
+  it('captures SQL parameters before the editor changes during execution', () => {
+    const state = new WorkspaceState()
+    state.current.sql = 'SELECT ?'
+    state.current.parameters = '[1]'
+    const snapshot = snapshotSqlInput(state.current)
+
+    state.current.sql = 'SELECT ? + 1'
+    state.current.parameters = '[2]'
+
+    expect(snapshot).toEqual({ sql: 'SELECT ?', parameters: '[1]' })
   })
 
   it('decodes bigint and blob parameter forms', () => {

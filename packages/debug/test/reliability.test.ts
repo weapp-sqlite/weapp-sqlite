@@ -1,11 +1,12 @@
 import type { SqliteDatabase, SqliteParameters, SqliteRow } from '@weapp-sqlite/core'
+import type { SqliteDebugLimits } from '@/index'
 import { createSqliteDatabase, migrate } from '@weapp-sqlite/core'
 import initSqlJs from '@weapp-sqlite/sqljs/full'
 import { resolveSqliteWasmAsset } from '@weapp-sqlite/sqljs/node'
 import { createSqliteWasmDriver } from '@weapp-sqlite/wasm'
 import { createSqliteDebugController } from '@/index'
 
-function createHarness() {
+function createHarness(options: { readonly limits?: SqliteDebugLimits } = {}) {
   const files = new Map<string, Uint8Array>()
   const statements: string[] = []
   const storage = {
@@ -24,6 +25,7 @@ function createHarness() {
   const controller = createSqliteDebugController({
     databaseName: 'reliability',
     enabled: true,
+    ...(options.limits ? { limits: options.limits } : {}),
     storage,
     async openDatabase() {
       const connection = await driver.open('reliability')
@@ -45,6 +47,169 @@ function createHarness() {
 }
 
 describe('debug row identity and atomic writes', () => {
+  it('adds a stable locator order to offset pages and leaves views untouched', async () => {
+    const { controller, statements } = createHarness()
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, bucket TEXT, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (id, bucket, body) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)', [3, 'same', 'third', 1, 'same', 'first', 2, 'same', 'second'], { allowWrite: true })
+
+      statements.length = 0
+      const first = await controller.readTable('notes', {
+        limit: 1,
+        orderBy: [{ column: 'bucket', direction: 'asc' }],
+      })
+      const second = await controller.readTable('notes', {
+        limit: 1,
+        offset: 1,
+        orderBy: [{ column: 'bucket', direction: 'asc' }],
+      })
+      expect(first.rows).toEqual([{ id: 1, bucket: 'same', body: 'first' }])
+      expect(second.rows).toEqual([{ id: 2, bucket: 'same', body: 'second' }])
+      expect(statements.some(statement => statement.includes('ORDER BY "bucket" ASC, "id" ASC'))).toBe(true)
+
+      statements.length = 0
+      await controller.readTable('notes', { limit: 1 })
+      expect(statements.some(statement => statement.includes('ORDER BY "id" ASC'))).toBe(true)
+
+      await controller.execute('CREATE TABLE composite (a TEXT, b INTEGER, body TEXT, PRIMARY KEY (a, b)) WITHOUT ROWID', undefined, { allowWrite: true })
+      statements.length = 0
+      await controller.readTable('composite', { limit: 1 })
+      expect(statements.some(statement => statement.includes('ORDER BY "a" ASC, "b" ASC'))).toBe(true)
+
+      await controller.execute('CREATE VIEW note_view AS SELECT id, bucket, body FROM notes', undefined, { allowWrite: true })
+      statements.length = 0
+      const viewPage = await controller.readTable('note_view', { limit: 1 })
+      expect(viewPage.rowLocators).toEqual([])
+      expect(statements.some(statement => statement.includes('FROM "note_view" LIMIT'))).toBe(true)
+      expect(statements.some(statement => statement.includes('FROM "note_view" ORDER BY'))).toBe(false)
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('uses a stable keyset cursor for deep pages and preserves mixed NULL ordering', async () => {
+    const { controller, statements } = createHarness()
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, bucket TEXT, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute(
+        'INSERT INTO notes (id, bucket, body) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?), (?, ?, ?)',
+        [1, null, 'one', 2, 'same', 'two', 3, 'same', 'three', 4, null, 'four'],
+        { allowWrite: true },
+      )
+
+      statements.length = 0
+      const first = await controller.readTable('notes', {
+        limit: 2,
+        orderBy: [{ column: 'bucket', direction: 'asc' }],
+      })
+      expect(first.rows.map(row => row['id'])).toEqual([1, 4])
+      expect(first.hasMore).toBe(true)
+      expect(first.nextCursor).toEqual({
+        orderBy: [
+          { column: 'bucket', direction: 'asc' },
+          { column: 'id', direction: 'asc' },
+        ],
+        values: [null, 4],
+      })
+      const firstCursor = first.nextCursor
+      if (!firstCursor) {
+        throw new Error('Expected a keyset cursor for the first page.')
+      }
+      expect(statements.at(-1)).toContain('LIMIT ? OFFSET ?')
+
+      statements.length = 0
+      const second = await controller.readTable('notes', {
+        limit: 2,
+        orderBy: [{ column: 'bucket', direction: 'asc' }],
+        cursor: firstCursor,
+      })
+      expect(second.rows.map(row => row['id'])).toEqual([2, 3])
+      expect(second.hasMore).toBe(false)
+      expect(second.nextCursor).toBeUndefined()
+      expect(statements.some(statement => statement.includes('IS NULL'))).toBe(true)
+      expect(statements.some(statement => statement.includes('LIMIT ? OFFSET ?'))).toBe(true)
+
+      const descending = await controller.readTable('notes', {
+        limit: 2,
+        orderBy: [{ column: 'bucket', direction: 'desc' }],
+      })
+      expect(descending.rows.map(row => row['id'])).toEqual([2, 3])
+      expect(descending.nextCursor).toBeDefined()
+      const descendingCursor = descending.nextCursor
+      if (!descendingCursor) {
+        throw new Error('Expected a keyset cursor for the descending page.')
+      }
+      const descendingNext = await controller.readTable('notes', {
+        limit: 2,
+        orderBy: [{ column: 'bucket', direction: 'desc' }],
+        cursor: descendingCursor,
+      })
+      expect(descendingNext.rows.map(row => row['id'])).toEqual([1, 4])
+      await expect(controller.readTable('notes', {
+        limit: 2,
+        orderBy: [{ column: 'id', direction: 'asc' }],
+        cursor: descendingCursor,
+      })).rejects.toMatchObject({ code: 'SQLITE_DEBUG_INVALID_CURSOR' })
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('keeps keyset pagination bounded at maxRows and combines it with filters', async () => {
+    const { controller } = createHarness({ limits: { maxRows: 2 } })
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, bucket TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (id, bucket) VALUES (?, ?), (?, ?), (?, ?), (?, ?)', [1, 'keep', 2, 'skip', 3, 'keep', 4, 'keep'], { allowWrite: true })
+      const first = await controller.readTable('notes', {
+        limit: 2,
+        filters: [{ column: 'bucket', operator: 'eq', value: 'keep' }],
+      })
+      expect(first.rows.map(row => row['id'])).toEqual([1, 3])
+      expect(first.hasMore).toBe(true)
+      expect(first.nextCursor?.values).toEqual([3])
+      const firstCursor = first.nextCursor
+      if (!firstCursor) {
+        throw new Error('Expected a keyset cursor for the filtered page.')
+      }
+      const second = await controller.readTable('notes', {
+        limit: 2,
+        filters: [{ column: 'bucket', operator: 'eq', value: 'keep' }],
+        cursor: firstCursor,
+      })
+      expect(second.rows.map(row => row['id'])).toEqual([4])
+      expect(second.hasMore).toBe(false)
+      expect(second.limit).toBe(2)
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('keeps generated hidden columns out of the visible page and rowid locator', async () => {
+    const { controller } = createHarness()
+    try {
+      await controller.execute(
+        'CREATE TABLE notes (body TEXT, __weapp_sqlite_rowid TEXT GENERATED ALWAYS AS (body || \'-generated\') STORED)',
+        undefined,
+        { allowWrite: true },
+      )
+      await controller.insertRow('notes', { body: 'first' }, { allowWrite: true })
+
+      const page = await controller.readTable('notes')
+      expect(page.columns).toEqual(['body'])
+      expect(page.rows).toEqual([{ body: 'first' }])
+      expect(page.rowLocators).toEqual([{ kind: 'rowid', value: 1 }])
+
+      await controller.updateRow('notes', page.rowLocators[0]!, { body: 'changed' }, { allowWrite: true })
+      await expect(controller.query('SELECT body FROM notes')).resolves.toMatchObject({ rows: [{ body: 'changed' }] })
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
   it.each([
     { name: 'nullable text key', definition: 'id TEXT PRIMARY KEY', keys: ['id'] },
     { name: 'nullable composite key', definition: 'a TEXT, b TEXT, PRIMARY KEY (a, b)', keys: ['a', 'b'] },

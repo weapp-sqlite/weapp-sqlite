@@ -10,7 +10,7 @@ export interface SqliteDevtoolsClient {
   request: <K extends SqliteDevtoolsRequestMethod>(runtimeId: string, databaseName: string, method: K, args: Parameters<SqliteDebugController[K]>) => Promise<Awaited<ReturnType<SqliteDebugController[K]>>>
   subscribe: (listener: (runtimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => void) => () => void
   subscribeStatus: (listener: (status: 'connecting' | 'connected' | 'disconnected') => void) => () => void
-  dispose: () => void
+  dispose: () => Promise<void>
 }
 
 /** Connects the panel to the host Devframe RPC namespace. */
@@ -28,6 +28,8 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
   const runtimeListeners = new Set<(runtimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => void>()
   const statusListeners = new Set<(status: 'connecting' | 'connected' | 'disconnected') => void>()
   let runtimes: readonly SqliteDevtoolsRuntimeDescriptor[] = []
+  let disposing: Promise<void> | undefined
+  const ownerId = `panel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
   const status = () => {
     const next = rpc.status === 'connected' ? 'connected' : rpc.status === 'connecting' ? 'connecting' : 'disconnected'
     for (const listener of statusListeners) {
@@ -41,6 +43,10 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
     handler: (nextRuntimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => {
       // Keep session ids in sync so requests cannot target a stale runtime.
       runtimes = nextRuntimes
+      // A runtime may connect after the panel's initial list-runtimes call.
+      // Refresh the lease set as well; otherwise disposing that panel would
+      // not release a newly discovered runtime.
+      void scoped.call('list-runtimes', ownerId).catch(() => undefined)
       for (const listener of runtimeListeners) {
         listener(nextRuntimes)
       }
@@ -51,7 +57,7 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
   status()
   return {
     async listRuntimes() {
-      runtimes = await scoped.call('list-runtimes') as readonly SqliteDevtoolsRuntimeDescriptor[]
+      runtimes = await scoped.call('list-runtimes', ownerId) as readonly SqliteDevtoolsRuntimeDescriptor[]
       return runtimes
     },
     request: (async (runtimeId, databaseName, method, args) => {
@@ -76,8 +82,17 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
       return () => statusListeners.delete(listener)
     },
     dispose() {
-      scoped.unregister?.()
-      rpc.close?.()
+      return disposing ??= (async () => {
+        // Release debug controllers before closing the Devframe transport. A
+        // runtime keeps its application-owned database handles alive.
+        await Promise.allSettled(runtimes.map(runtime => Promise.resolve().then(() => scoped.call('release-session', {
+          runtimeId: runtime.id,
+          sessionId: runtime.sessionId,
+          ownerId,
+        }))))
+        scoped.unregister?.()
+        rpc.close?.()
+      })()
     },
   } as unknown as SqliteDevtoolsClient
 }

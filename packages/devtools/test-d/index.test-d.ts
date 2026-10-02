@@ -4,6 +4,7 @@ import type {
   SqliteDevtoolsClient,
   SqliteDevtoolsMethod,
   SqliteDevtoolsPlugin,
+  SqliteDevtoolsReleaseSession,
   SqliteDevtoolsServer,
 } from '../dist/index.mjs'
 import type {
@@ -26,9 +27,16 @@ expectType<SqliteDevtoolsPlugin>(createSqliteDevtoolsPlugin(controller))
 
 expectType<Promise<SqliteDevtoolsServer>>(startSqliteDevtoolsServer({ port: 0 }))
 expectType<Promise<SqliteDevtoolsClient>>(connectDevtoolsClient())
+declare const devtoolsClient: SqliteDevtoolsClient
+expectType<Promise<void>>(devtoolsClient.dispose())
 expectAssignable<SqliteDevtoolsMethod>('analyzeQuery')
 expectAssignable<SqliteDevtoolsMethod>('getMigrationDiagnostics')
 expectAssignable<SqliteDevtoolsMethod>('getForeignKeyDiagnostics')
+
+declare const releaseSession: SqliteDevtoolsReleaseSession
+expectType<string>(releaseSession.runtimeId)
+expectType<string>(releaseSession.sessionId)
+expectType<string | undefined>(releaseSession.ownerId)
 
 declare const runtimeOptions: ConnectSqliteDevtoolsRuntimeOptions
 expectType<SqliteDevtoolsRuntimeConnection>(connectSqliteDevtoolsRuntime(runtimeOptions))

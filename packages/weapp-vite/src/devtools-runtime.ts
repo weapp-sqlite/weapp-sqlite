@@ -16,11 +16,16 @@ export interface InitializeSqliteDevtoolsOptions {
 export function initializeSqliteDevtools(options: InitializeSqliteDevtoolsOptions) {
   const configured = normalizeSqliteDebugWorkspaceOptions(options.workspace).filter(item => item.enabled !== false)
   const controllers = new Map<string, { generation: number | undefined, controller: SqliteDebugController }>()
+  let releasing: Promise<void> | undefined
   function releaseControllers() {
-    for (const { controller } of controllers.values()) {
-      void controller.close().catch(() => undefined)
+    if (releasing) {
+      return releasing
     }
+    const current = [...controllers.values()]
     controllers.clear()
+    return releasing = Promise.allSettled(current.map(({ controller }) => controller.close())).then(() => undefined).finally(() => {
+      releasing = undefined
+    })
   }
   function listDatabases() {
     if (options.workspace.enabled === false) {
@@ -70,7 +75,7 @@ export function initializeSqliteDevtools(options: InitializeSqliteDevtoolsOption
     refresh: () => connection.refresh(),
     close() {
       connection.close()
-      releaseControllers()
+      void releaseControllers()
     },
   }
 }

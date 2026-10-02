@@ -79,4 +79,6 @@ export default defineSqliteDebugWorkspace({
 
 工作台自动复用当前目标 adapter 的数据库、快照和文件交付能力。启用 `devtools` 后可在独立 Devframe 面板中选择运行实例和数据库，支持 Web WebSocket 与微信 `wx.connectSocket`。watch 期间服务和 runtime token 复用，断线中的写操作不会重放；生产构建通过编译常量排除 route、通信桥、凭证、写 SQL、CSV/JSON codec、导入逻辑和 `saveFileToDisk` / `shareFileMessage` / `chooseMessageFile`。
 
+面板自动发现的数据库会沿用该运行实例 `openSqlite()` 已注册的迁移定义。即使数据库没有显式写入 `databases` 配置，迁移诊断仍会比较真实连接中的历史与应用实际使用的版本；外键诊断同样读取该连接的约束和 `foreign_key_check` 结果，并在 schema mismatch 时按表返回结构错误。
+
 面板 SQL 历史按数据库隔离并保留最近 50 条，执行计划通过 `EXPLAIN QUERY PLAN` 和参数绑定生成，不执行原 SQL。独立宿主也可以从 `@weapp-sqlite/devtools` 导入 `startSqliteDevtoolsServer()`；它返回一次性认证 URL、runtime WebSocket endpoint 和 `close()` 生命周期方法。

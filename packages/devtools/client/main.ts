@@ -6,7 +6,7 @@ import type { PanelContext } from './context'
 import { connectDevtoolsClient } from '../src/client'
 import { createTable } from './actions'
 import { button, element, empty, select } from './dom'
-import { parseParameters, planNodes, WorkspaceState } from './state'
+import { parseParameters, planNodes, runtimeSessionChanged, snapshotSqlInput, WorkspaceState } from './state'
 import { dataView, diagnosticsView, fileMenu, historyView, schemaView, sqlView } from './views'
 import './styles.css'
 
@@ -89,7 +89,9 @@ async function refreshTable() {
       request('listIndexes', tableName),
       request('readTable', tableName, {
         limit: state.current.limit,
-        offset: state.current.offset,
+        ...(state.current.cursorStack.length
+          ? { cursor: state.current.cursorStack.at(-1)! }
+          : { offset: state.current.offset }),
         ...(state.current.search ? { search: state.current.search } : {}),
         ...(state.current.filters.length ? { filters: state.current.filters } : {}),
         ...(state.current.orderColumn ? { orderBy: [{ column: state.current.orderColumn, direction: state.current.orderDirection }] } : {}),
@@ -102,11 +104,13 @@ async function refreshTable() {
 
 async function runSql(kind: 'query' | 'execute' | 'explain' | 'analyze') {
   const current = state.current
-  const sql = current.sql.trim()
+  const input = snapshotSqlInput(current)
+  const sql = input.sql
+  const parameterText = input.parameters
   if (!sql) { toast('请输入 SQL。', true); return }
   const started = performance.now()
   let parameters
-  try { parameters = parseParameters(current.parameters) }
+  try { parameters = parseParameters(parameterText) }
   catch (error) { toast(errorMessage(error), true); return }
   const ticket = state.begin('sql')
   await perform(kind === 'query' ? '查询完成' : kind === 'explain' ? '执行计划完成' : kind === 'analyze' ? '性能诊断完成' : '写入完成', async () => {
@@ -140,11 +144,13 @@ async function runSql(kind: 'query' | 'execute' | 'explain' | 'analyze') {
       if (!state.accepts(ticket)) { return }
       Object.assign(current, { plan: undefined, analysis: undefined, sqlResult: undefined, sqlSummary: `${result.changes} 行受影响 · ${result.elapsedMs.toFixed(1)} ms` })
       summary = current.sqlSummary
+      current.offset = 0
+      current.cursorStack = []
       await refreshTable()
     }
-    state.record(current, { sql, parameters: current.parameters, kind, status: 'success', elapsedMs: performance.now() - started, summary })
+    state.record(current, { sql, parameters: parameterText, kind, status: 'success', elapsedMs: performance.now() - started, summary })
   })
-  if (current.error) { state.record(current, { sql, parameters: current.parameters, kind, status: 'error', elapsedMs: performance.now() - started, summary: current.error }) }
+  if (current.error) { state.record(current, { sql, parameters: parameterText, kind, status: 'error', elapsedMs: performance.now() - started, summary: current.error }) }
 }
 
 function render() {
@@ -207,11 +213,18 @@ async function connect() {
       status = next === 'connected' || next === 'connecting' ? next : 'disconnected'; if (status === 'disconnected') { state.invalidate() } render()
     })
     client.subscribe((next) => {
+      const sessionChanged = runtimeSessionChanged(runtimes, next)
       runtimes = next
+      if (sessionChanged) {
+        state.invalidate()
+      }
       const selected = runtimes.find(runtime => runtime.id === state.runtimeId)
       if (!selected || !selected.databases.includes(state.databaseName)) {
         state.select(selected?.id ?? runtimes[0]?.id ?? '', selected?.databases[0] ?? runtimes[0]?.databases[0] ?? '')
         if (state.runtimeId) { void refresh() }
+      }
+      else if (sessionChanged) {
+        void refresh()
       }
       render()
     })

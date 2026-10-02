@@ -63,7 +63,100 @@ describe('query performance diagnostics', () => {
       const analysis = await controller.analyzeQuery('SELECT id FROM notes ORDER BY body')
       expect(analysis.diagnostics.temporaryBTree).toBe(true)
       expect(analysis.diagnostics.warnings).toContain('temporary-b-tree')
+      expect(analysis.diagnostics.temporaryBTreeOperations).toEqual(['order-by'])
+      expect(analysis.nodes.find(node => node.kind === 'temporary-b-tree')?.temporaryBTreeOperation).toBe('order-by')
       await expect(controller.query('SELECT count(*) AS total FROM notes')).resolves.toMatchObject({ rows: [{ total: 2 }] })
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('identifies whether temporary B-trees serve grouping or distinctness', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({
+      databaseName: 'performance-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      enabled: true,
+    })
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (body) VALUES (?), (?), (?)', ['one', 'one', 'two'], { allowWrite: true })
+
+      const grouped = await controller.analyzeQuery('SELECT body, count(*) FROM notes GROUP BY body')
+      expect(grouped.diagnostics.temporaryBTreeOperations).toContain('group-by')
+      expect(grouped.nodes.some(node => node.temporaryBTreeOperation === 'group-by')).toBe(true)
+
+      const distinct = await controller.analyzeQuery('SELECT DISTINCT body FROM notes')
+      expect(distinct.diagnostics.temporaryBTreeOperations).toContain('distinct')
+      expect(distinct.nodes.some(node => node.temporaryBTreeOperation === 'distinct')).toBe(true)
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('reports automatic covering indexes in join plans', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({
+      databaseName: 'performance-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      enabled: true,
+    })
+    try {
+      await controller.execute('CREATE TABLE parents (id INTEGER)', undefined, { allowWrite: true })
+      await controller.execute('CREATE TABLE children (parent_id INTEGER)', undefined, { allowWrite: true })
+
+      const analysis = await controller.analyzeQuery(
+        'SELECT parents.id FROM parents JOIN children ON parents.id = children.parent_id',
+      )
+      expect(analysis.nodes.some(node => /USING AUTOMATIC COVERING INDEX/i.test(node.detail))).toBe(true)
+      expect(analysis.diagnostics.automaticIndexes).toBeGreaterThan(0)
+      expect(analysis.diagnostics.warnings).toContain('automatic-index')
+    }
+    finally {
+      await controller.close()
+    }
+  })
+
+  it('accepts read-only CTEs, bounds their result, and rejects CTE writes', async () => {
+    const harness = createHarness()
+    const controller = createSqliteDebugController({
+      databaseName: 'performance-test',
+      openDatabase: harness.openDatabase,
+      storage: harness.storage,
+      enabled: true,
+      limits: { maxRows: 1 },
+    })
+    try {
+      await controller.execute('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)', undefined, { allowWrite: true })
+      await controller.execute('INSERT INTO notes (body) VALUES (?), (?)', ['one', 'two'], { allowWrite: true })
+
+      const query = await controller.query(
+        'WITH filtered (id, body) AS (SELECT id, body FROM notes WHERE body = ?) SELECT id, body FROM filtered',
+        ['one'],
+      )
+      expect(query.rows).toEqual([{ id: 1, body: 'one' }])
+      await expect(controller.query(
+        'WITH all_rows AS (SELECT id FROM notes) SELECT id FROM all_rows',
+      )).rejects.toMatchObject({ code: 'SQLITE_DEBUG_RESULT_LIMIT_EXCEEDED' })
+
+      const analysis = await controller.analyzeQuery(
+        'WITH filtered AS (SELECT id, body FROM notes WHERE body = ?) SELECT id FROM filtered',
+        ['one'],
+      )
+      expect(analysis.sql).toContain('WITH filtered')
+      expect(analysis.nodes.length).toBeGreaterThan(0)
+
+      await expect(controller.query(
+        'WITH changed AS (SELECT id FROM notes) UPDATE notes SET body = ? WHERE id IN (SELECT id FROM changed)',
+        ['unsafe'],
+      )).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
+      await expect(controller.analyzeQuery(
+        'WITH changed AS (SELECT id FROM notes) DELETE FROM notes WHERE id IN (SELECT id FROM changed)',
+      )).rejects.toMatchObject({ code: 'SQLITE_DEBUG_READ_ONLY_SQL' })
     }
     finally {
       await controller.close()

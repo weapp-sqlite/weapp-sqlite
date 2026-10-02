@@ -68,6 +68,33 @@ describe('runtime transport', () => {
     expect(decodeSqliteDevtoolsValue(result.result.value)).toEqual({ columns: ['n'], rows: [{ n: 1n }] })
   })
 
+  it('releases debug controllers on panel close while keeping the runtime socket alive', async () => {
+    const harness = socketHarness()
+    const query = vi.fn(async () => ({ columns: [], rows: [] }))
+    const onDisconnect = vi.fn(async () => undefined)
+    const connection = connectSqliteDevtoolsRuntime({
+      endpoint: 'ws://127.0.0.1:1234/runtime',
+      token: 'secret',
+      runtime: { id: 'web-release', label: 'Web', platform: 'web' },
+      listDatabases: () => ['main'],
+      getController: () => ({ query } as unknown as SqliteDebugController),
+      createSocket: harness.factory,
+      onDisconnect,
+    })
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    harness.receive({ type: 'ready', sessionId: 'release-session', allowWrite: true })
+    harness.receive({ type: 'release', sessionId: 'release-session', requestId: 'release-1' })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(onDisconnect).toHaveBeenCalledOnce()
+    expect(harness.socket.close).not.toHaveBeenCalled()
+    expect(harness.sent.at(-1)).toMatchObject({ type: 'release-result', requestId: 'release-1', result: { ok: true } })
+
+    harness.receive({ type: 'request', sessionId: 'release-session', requestId: 'query-1', databaseName: 'main', method: 'query', args: { type: 'array', value: ['select'] } })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(query).toHaveBeenCalledWith('select')
+    connection.close()
+  })
+
   it('does not replay requests after disconnect', async () => {
     const harness = socketHarness()
     const controller = { query: vi.fn(async () => ({ columns: [], rows: [] })) } as unknown as SqliteDebugController

@@ -1,5 +1,6 @@
 export { createSqliteDebugController } from './controller'
 export { serializeSqliteDebugError, SqliteDebugError } from './errors'
+export type { SqliteDebugErrorCode } from './errors'
 export type { SqliteDebugSession, SqliteDebugSessionScope } from './session'
 export type {
   SqliteDebugColumn,
@@ -13,6 +14,7 @@ export type {
   SqliteDebugForeignKeyConstraint,
   SqliteDebugForeignKeyDiagnostics,
   SqliteDebugForeignKeyDiagnosticWarning,
+  SqliteDebugForeignKeySchemaError,
   SqliteDebugForeignKeyViolation,
   SqliteDebugImportColumn,
   SqliteDebugImportMapping,
@@ -27,8 +29,10 @@ export type {
   SqliteDebugMigrationStatus,
   SqliteDebugOrder,
   SqliteDebugPage,
+  SqliteDebugPageCursor,
   SqliteDebugQueryAnalysis,
   SqliteDebugQueryPlanNode,
+  SqliteDebugQueryPlanTemporaryBTreeOperation,
   SqliteDebugQueryPlanWarning,
   SqliteDebugQueryResult,
   SqliteDebugReadOptions,

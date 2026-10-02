@@ -3,6 +3,11 @@ import type { PanelContext } from './context'
 import { addColumn, confirmAction, createIndex, editRow, exportFile, importFile, rename } from './actions'
 import { button, element, empty, field, input, select, table } from './dom'
 
+function resetPagination(state: { offset: number, cursorStack: unknown[] }) {
+  state.offset = 0
+  state.cursorStack = []
+}
+
 export function dataView(context: PanelContext) {
   const state = context.state.current
   const content = element('section', 'data-view')
@@ -16,9 +21,9 @@ export function dataView(context: PanelContext) {
   search.placeholder = '搜索当前表…'
   search.addEventListener('keydown', (event) => {
     const keyboard = event as KeyboardEvent
-    if (keyboard.key === 'Enter') { state.offset = 0; void context.refreshTable() }
+    if (keyboard.key === 'Enter') { resetPagination(state); void context.refreshTable() }
   })
-  tools.append(search, button('搜索', () => { state.offset = 0; return context.refreshTable() }, '', context.busy), element('div', 'spacer'), button('新增行', () => editRow(context), 'primary', !writable))
+  tools.append(search, button('搜索', () => { resetPagination(state); return context.refreshTable() }, '', context.busy), element('div', 'spacer'), button('新增行', () => editRow(context), 'primary', !writable))
   tools.append(button(`删除选中${state.selectedRows.size ? ` (${state.selectedRows.size})` : ''}`, () => {
     const locators = [...state.selectedRows].map(index => state.page?.rowLocators[index]).filter(item => item !== undefined)
     confirmAction(context, `删除 ${locators.length} 行`, state.table, () => context.request('deleteRows', state.table, locators, { allowWrite: true, confirmTable: state.table }))
@@ -42,10 +47,10 @@ export function dataView(context: PanelContext) {
   value.placeholder = '筛选值'
   filters.append(element('span', 'small-label', 'FILTER'), column, operator, value, button('添加筛选', () => {
     state.filters.push({ column: column.value, operator: operator.value as SqliteDebugFilter['operator'], ...(/^(?:isNull|isNotNull)$/.test(operator.value) ? {} : { value: value.value }) })
-    state.offset = 0
+    resetPagination(state)
     return context.refreshTable()
   }, '', context.busy || !state.columns.length))
-  if (state.filters.length) { filters.append(button(`清除 ${state.filters.length} 个筛选`, () => { state.filters = []; state.offset = 0; return context.refreshTable() }, 'text-button')) }
+  if (state.filters.length) { filters.append(button(`清除 ${state.filters.length} 个筛选`, () => { state.filters = []; resetPagination(state); return context.refreshTable() }, 'text-button')) }
   content.append(filters)
   if (state.filters.length) {
     const chips = element('div', 'filter-chips')
@@ -57,11 +62,14 @@ export function dataView(context: PanelContext) {
     return content
   }
   const page = state.page
+  // Keep panels usable while an older runtime is still connected and does not
+  // include the keyset pagination fields yet.
+  const hasMore = page.hasMore ?? page.offset + page.rows.length < page.total
   content.append(table(state.page.columns, state.page.rows, {
     sort: (column) => {
       state.orderDirection = state.orderColumn === column && state.orderDirection === 'asc' ? 'desc' : 'asc'
       state.orderColumn = column
-      state.offset = 0
+      resetPagination(state)
       void context.refreshTable()
     },
     selectedRows: state.selectedRows,
@@ -73,10 +81,24 @@ export function dataView(context: PanelContext) {
       : {}),
   }))
   const footer = element('div', 'pagination')
-  footer.append(element('span', '', `${state.page.rows.length ? state.page.offset + 1 : 0}–${state.page.offset + state.page.rows.length} / ${state.page.total} 行`))
+  const pageStart = state.cursorStack.length ? state.cursorStack.length * page.limit : page.offset
+  footer.append(element('span', '', `${state.page.rows.length ? pageStart + 1 : 0}–${pageStart + state.page.rows.length} / ${state.page.total} 行`))
   if (state.orderColumn) { footer.append(element('span', 'muted', `${state.orderColumn} ${state.orderDirection.toUpperCase()}`)) }
   const pageSizes = [...new Set([25, 50, 100, state.limit])].sort((left, right) => left - right)
-  footer.append(element('div', 'spacer'), select('每页行数', pageSizes.map(size => ({ value: String(size), label: `${size} 行 / 页` })), String(state.limit), (value) => { state.limit = Number(value); state.offset = 0; void context.refreshTable() }), button('上一页', () => { state.offset = Math.max(0, state.offset - page.limit); return context.refreshTable() }, '', context.busy || page.offset === 0), button('下一页', () => { state.offset += page.limit; return context.refreshTable() }, '', context.busy || page.limit === 0 || page.offset + page.limit >= page.total))
+  footer.append(
+    element('div', 'spacer'),
+    select('每页行数', pageSizes.map(size => ({ value: String(size), label: `${size} 行 / 页` })), String(state.limit), (value) => { state.limit = Number(value); resetPagination(state); void context.refreshTable() }),
+    button('上一页', () => {
+      if (state.cursorStack.length) { state.cursorStack.pop() }
+      else { state.offset = Math.max(0, state.offset - page.limit) }
+      return context.refreshTable()
+    }, '', context.busy || (state.cursorStack.length === 0 && page.offset === 0)),
+    button('下一页', () => {
+      if (page.nextCursor) { state.cursorStack.push(page.nextCursor); state.offset = 0 }
+      else { state.offset += page.limit }
+      return context.refreshTable()
+    }, '', context.busy || page.limit === 0 || !hasMore),
+  )
   content.append(footer)
   if (state.capabilities?.reason) { content.append(element('p', 'capability-note', state.capabilities.reason)) }
   return content
@@ -152,9 +174,17 @@ export function sqlView(context: PanelContext) {
     const diagnostics = element('div', 'diagnostics-panel')
     diagnostics.append(element('h3', 'section-title', '查询性能诊断'))
     const summary = state.analysis.diagnostics
-    diagnostics.append(element('p', 'section-note', `全表扫描 ${summary.fullTableScans} 次 · 临时 B-tree ${summary.temporaryBtrees} 次 · 自动索引 ${summary.automaticIndexes} 次`))
+    const temporaryBTreeOperations = summary.temporaryBTreeOperations ?? []
+    const operationLabels = new Map([
+      ['order-by', '排序'],
+      ['group-by', '分组'],
+      ['distinct', '去重'],
+      ['other', '其他'],
+    ])
+    const temporaryBTreeDetail = [...new Set(temporaryBTreeOperations.map(operation => operationLabels.get(operation) ?? operation))].join('、')
+    diagnostics.append(element('p', 'section-note', `全表扫描 ${summary.fullTableScans} 次 · 临时 B-tree ${summary.temporaryBtrees} 次${temporaryBTreeDetail ? `（${temporaryBTreeDetail}）` : ''} · 自动索引 ${summary.automaticIndexes} 次`))
     if (summary.warnings.length) {
-      diagnostics.append(element('div', 'diagnostic-warnings', summary.warnings.map(warning => warning === 'full-table-scan' ? '存在全表扫描' : warning === 'temporary-b-tree' ? '使用临时 B-tree' : '使用自动索引').join(' · ')))
+      diagnostics.append(element('div', 'diagnostic-warnings', summary.warnings.map(warning => warning === 'full-table-scan' ? '存在全表扫描' : warning === 'temporary-b-tree' ? `使用临时 B-tree${temporaryBTreeDetail ? `（${temporaryBTreeDetail}）` : ''}` : '使用自动索引').join(' · ')))
     }
     else {
       diagnostics.append(element('p', 'section-note', summary.indexes.length ? `使用索引：${summary.indexes.join(', ')}` : '未发现计划警告。'))
@@ -209,8 +239,9 @@ export function diagnosticsView(context: PanelContext) {
     content.append(empty('尚未检查外键', '点击“重新检查”读取约束开关和完整性检查结果。'))
   }
   else {
+    const schemaErrors = foreignKeys.schemaErrors ?? []
     const status = foreignKeys.healthy ? '健康' : `需要关注 · ${foreignKeys.warnings.join('、')}`
-    content.append(element('p', foreignKeys.healthy ? 'diagnostics-ok' : 'diagnostic-warnings', `${status} · ${foreignKeys.enabled ? 'foreign_keys 已开启' : 'foreign_keys 已关闭'} · 约束 ${foreignKeys.constraints.length} · 违规 ${foreignKeys.violations.length}`))
+    content.append(element('p', foreignKeys.healthy ? 'diagnostics-ok' : 'diagnostic-warnings', `${status} · ${foreignKeys.enabled ? 'foreign_keys 已开启' : 'foreign_keys 已关闭'} · 约束 ${foreignKeys.constraints.length} · 违规 ${foreignKeys.violations.length} · 结构错误 ${schemaErrors.length}`))
     if (foreignKeys.constraints.length) {
       const rows = foreignKeys.constraints.map(item => ({
         table: item.table,
@@ -224,6 +255,9 @@ export function diagnosticsView(context: PanelContext) {
     }
     if (foreignKeys.violations.length) {
       content.append(element('p', 'section-note', `违规行：${foreignKeys.violations.map(item => `${item.table}#${String(item.rowid ?? '—')} → ${item.parent}`).join('、')}`))
+    }
+    if (schemaErrors.length) {
+      content.append(element('p', 'section-note', `外键结构错误：${schemaErrors.map(item => `${item.table}：${item.message}`).join('；')}`))
     }
   }
   return content
