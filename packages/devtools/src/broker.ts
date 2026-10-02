@@ -130,7 +130,7 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
           changed()
           return
         }
-        if (message.type !== 'result' || !isIdentifier(message.requestId) || !isRecord(message.result)) { throw new Error('Invalid runtime response') }
+        if ((message.type !== 'result' && message.type !== 'release-result') || !isIdentifier(message.requestId) || !isRecord(message.result)) { throw new Error('Invalid runtime response') }
         const pending = peer.pending.get(message.requestId)
         if (!pending) { return }
         const result = message.result
@@ -184,6 +184,34 @@ export function createSqliteDevtoolsBroker(options: SqliteDevtoolsBrokerOptions 
           const timer = setTimeout(() => {
             peer.pending.delete(requestId)
             resolve(errorResult('SQLITE_DEVTOOLS_TIMEOUT', 'SQLite operation timed out. It was not retried; its outcome may be unknown.'))
+          }, options.requestTimeoutMs ?? 30000)
+          peer.pending.set(requestId, { resolve, timer })
+          peer.socket.send(frame, (error) => {
+            if (error) { remove(peer); peer.socket.terminate() }
+          })
+        })
+      }
+      catch (error) { return { ok: false, error: serializeDevtoolsError(error) } }
+    },
+    async releaseSession(input: unknown): Promise<SqliteDevtoolsResult> {
+      try {
+        if (!isRecord(input) || !isIdentifier(input.runtimeId) || !isIdentifier(input.sessionId)) {
+          throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_INVALID_REQUEST', 'Unknown SQLite runtime session.')
+        }
+        const peer = peers.get(input.runtimeId)
+        if (!peer || peer.descriptor.sessionId !== input.sessionId || peer.socket.readyState !== WebSocket.OPEN) {
+          return errorResult('SQLITE_DEVTOOLS_DISCONNECTED', 'The selected runtime session is no longer connected.')
+        }
+        if (peer.pending.size >= 64) { return errorResult('SQLITE_DEVTOOLS_BUSY', 'Too many pending SQLite operations.') }
+        const requestId = randomUUID()
+        const frame = JSON.stringify({ type: 'release', sessionId: peer.descriptor.sessionId, requestId })
+        if (Buffer.byteLength(frame) > SQLITE_DEVTOOLS_MAX_MESSAGE_BYTES) {
+          return errorResult('SQLITE_DEVTOOLS_PAYLOAD_LIMIT', 'SQLite session release exceeds the message limit.')
+        }
+        return await new Promise<SqliteDevtoolsResult>((resolve) => {
+          const timer = setTimeout(() => {
+            peer.pending.delete(requestId)
+            resolve(errorResult('SQLITE_DEVTOOLS_TIMEOUT', 'SQLite debug session release timed out.'))
           }, options.requestTimeoutMs ?? 30000)
           peer.pending.set(requestId, { resolve, timer })
           peer.socket.send(frame, (error) => {

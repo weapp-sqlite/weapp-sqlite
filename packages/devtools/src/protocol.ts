@@ -84,6 +84,12 @@ export interface SqliteDevtoolsInvocation {
   readonly args: SqliteDevtoolsWireValue
 }
 
+/** Releases only the debug controllers owned by a panel session. */
+export interface SqliteDevtoolsReleaseSession {
+  readonly runtimeId: string
+  readonly sessionId: string
+}
+
 export function isSqliteDevtoolsMethod(value: unknown): value is SqliteDevtoolsMethod {
   return typeof value === 'string' && ([...SQLITE_DEVTOOLS_READ_METHODS, ...SQLITE_DEVTOOLS_WRITE_METHODS, 'close'] as readonly string[]).includes(value)
 }

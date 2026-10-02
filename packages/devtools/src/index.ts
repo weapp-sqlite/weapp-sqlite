@@ -17,6 +17,7 @@ declare module 'devframe' {
   interface DevframeRpcServerFunctions {
     'weapp-sqlite:list-runtimes': () => SqliteDevtoolsRuntimeDescriptor[]
     'weapp-sqlite:invoke': (input: SqliteDevtoolsInvocation) => Promise<SqliteDevtoolsResult>
+    'weapp-sqlite:release-session': (input: { runtimeId: string, sessionId: string }) => Promise<SqliteDevtoolsResult>
   }
   interface DevframeRpcClientFunctions {
     'weapp-sqlite:state-updated': (runtimes: SqliteDevtoolsRuntimeDescriptor[]) => void
@@ -46,6 +47,7 @@ export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevfra
       const scope = ctx.scope(SQLITE_DEVTOOLS_SCOPE)
       scope.rpc.register(defineRpcFunction({ name: 'list-runtimes', type: 'query', jsonSerializable: true, handler: broker.listRuntimes }))
       scope.rpc.register(defineRpcFunction({ name: 'invoke', type: 'action', jsonSerializable: true, handler: broker.invoke }))
+      scope.rpc.register(defineRpcFunction({ name: 'release-session', type: 'action', jsonSerializable: true, handler: broker.releaseSession }))
       unsubscribe?.()
       unsubscribe = broker.subscribe(() => {
         void scope.rpc.broadcast({ method: 'state-updated', args: [broker.listRuntimes()], event: true }).catch(() => {})
@@ -153,4 +155,4 @@ export async function startSqliteDevtoolsServer(options: StartSqliteDevtoolsServ
 
 export type { SqliteDevtoolsClient } from './client'
 export { connectDevtoolsClient } from './client'
-export type { SqliteDevtoolsInvocation, SqliteDevtoolsMethod, SqliteDevtoolsRuntimeDescriptor } from './protocol'
+export type { SqliteDevtoolsInvocation, SqliteDevtoolsMethod, SqliteDevtoolsReleaseSession, SqliteDevtoolsRuntimeDescriptor } from './protocol'

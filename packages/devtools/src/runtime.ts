@@ -23,7 +23,8 @@ export interface ConnectSqliteDevtoolsRuntimeOptions {
   readonly listDatabases: () => readonly string[]
   readonly getController: (databaseName: string) => SqliteDebugController | Promise<SqliteDebugController>
   readonly createSocket: SqliteDevtoolsSocketFactory
-  readonly onDisconnect?: () => void
+  /** Releases debug-only resources without closing application database handles. */
+  readonly onDisconnect?: () => void | Promise<void>
   readonly reconnectDelayMs?: number
 }
 
@@ -59,6 +60,8 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
   let allowWrite = false
   let requestIds = new Set<string>()
   let reconnectAttempt = 0
+  let releaseVersion = 0
+  let releaseInProgress: Promise<void> | undefined
 
   function databases() {
     const names = [...options.listDatabases()]
@@ -86,8 +89,9 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
     socket = undefined
     try { previous?.close() }
     catch { /* 宿主可能已关闭连接。 */ }
-    try { options.onDisconnect?.() }
-    catch { /* 释放调试资源的回调不能阻断重连状态机。 */ }
+    void Promise.resolve().then(() => options.onDisconnect?.()).catch(() => {
+      // 释放调试资源的回调不能阻断重连状态机。
+    })
     if (!disposed && !reconnectTimer) {
       const delay = Math.min(5000, (options.reconnectDelayMs ?? 500) * 2 ** Math.min(reconnectAttempt++, 4))
       reconnectTimer = setTimeout(() => { reconnectTimer = undefined; connect() }, delay)
@@ -108,6 +112,44 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
         reconnectAttempt = 0
         return
       }
+      if (message.type === 'release') {
+        if (!sessionId || message.sessionId !== sessionId || !isIdentifier(message.requestId)) {
+          throw new Error('Invalid runtime release')
+        }
+        const requestedSession = sessionId
+        ++releaseVersion
+        const release = (async () => {
+          await options.onDisconnect?.()
+        })()
+        releaseInProgress = release
+        try {
+          await release
+          if (!disposed && current === generation && requestedSession === sessionId) {
+            send({
+              type: 'release-result',
+              sessionId: requestedSession,
+              requestId: message.requestId,
+              result: { ok: true, value: encodeSqliteDevtoolsValue(undefined) },
+            })
+          }
+        }
+        catch (error) {
+          if (!disposed && current === generation && requestedSession === sessionId) {
+            send({
+              type: 'release-result',
+              sessionId: requestedSession,
+              requestId: message.requestId,
+              result: { ok: false, error: serializeDevtoolsError(error) },
+            })
+          }
+        }
+        finally {
+          if (releaseInProgress === release) {
+            releaseInProgress = undefined
+          }
+        }
+        return
+      }
       if (message.type !== 'request' || !sessionId || message.sessionId !== sessionId || !isIdentifier(message.requestId)) {
         throw new Error('Invalid runtime request')
       }
@@ -117,8 +159,13 @@ export function connectSqliteDevtoolsRuntime(options: ConnectSqliteDevtoolsRunti
       requestIds.add(message.requestId)
       const requestId = message.requestId
       const requestedSession = sessionId
+      const requestedReleaseVersion = releaseVersion
       let result
       try {
+        if (releaseInProgress) {
+          await releaseInProgress
+        }
+        if (disposed || current !== generation || requestedSession !== sessionId || requestedReleaseVersion !== releaseVersion) { return }
         if (!isSqliteDevtoolsMethod(message.method) || message.method === 'close' || !isIdentifier(message.databaseName) || !databases().includes(message.databaseName)) {
           throw new SqliteDevtoolsError('SQLITE_DEVTOOLS_INVALID_REQUEST', 'Unknown SQLite database or operation.')
         }

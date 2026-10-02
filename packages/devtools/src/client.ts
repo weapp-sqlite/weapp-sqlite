@@ -10,7 +10,7 @@ export interface SqliteDevtoolsClient {
   request: <K extends SqliteDevtoolsRequestMethod>(runtimeId: string, databaseName: string, method: K, args: Parameters<SqliteDebugController[K]>) => Promise<Awaited<ReturnType<SqliteDebugController[K]>>>
   subscribe: (listener: (runtimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => void) => () => void
   subscribeStatus: (listener: (status: 'connecting' | 'connected' | 'disconnected') => void) => () => void
-  dispose: () => void
+  dispose: () => Promise<void>
 }
 
 /** Connects the panel to the host Devframe RPC namespace. */
@@ -28,6 +28,7 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
   const runtimeListeners = new Set<(runtimes: readonly SqliteDevtoolsRuntimeDescriptor[]) => void>()
   const statusListeners = new Set<(status: 'connecting' | 'connected' | 'disconnected') => void>()
   let runtimes: readonly SqliteDevtoolsRuntimeDescriptor[] = []
+  let disposing: Promise<void> | undefined
   const status = () => {
     const next = rpc.status === 'connected' ? 'connected' : rpc.status === 'connecting' ? 'connecting' : 'disconnected'
     for (const listener of statusListeners) {
@@ -76,8 +77,16 @@ export async function connectDevtoolsClient(): Promise<SqliteDevtoolsClient> {
       return () => statusListeners.delete(listener)
     },
     dispose() {
-      scoped.unregister?.()
-      rpc.close?.()
+      return disposing ??= (async () => {
+        // Release debug controllers before closing the Devframe transport. A
+        // runtime keeps its application-owned database handles alive.
+        await Promise.allSettled(runtimes.map(runtime => Promise.resolve().then(() => scoped.call('release-session', {
+          runtimeId: runtime.id,
+          sessionId: runtime.sessionId,
+        }))))
+        scoped.unregister?.()
+        rpc.close?.()
+      })()
     },
   } as unknown as SqliteDevtoolsClient
 }
