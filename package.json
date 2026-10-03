@@ -88,7 +88,7 @@
     "only-allow": "^1.2.2",
     "pathe": "^2.0.3",
     "pkg-types": "^2.3.3",
-    "repoctl": "^5.6.0",
+    "repoctl": "^5.7.1",
     "stylelint": "^17.16.0",
     "tailwindcss": "^4.3.3",
     "tsd": "^0.33.0",
