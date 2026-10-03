@@ -29,6 +29,10 @@ on:
         description: Version used for unpublished-version recovery
         required: false
         type: string
+      source_sha:
+        description: Original merged release commit for source recovery (full SHA; publish modes only)
+        required: false
+        type: string
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -65,10 +69,25 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Test release tooling
+        run: pnpm test:release
+
       - name: Run repo release CI
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO_RELEASE_MODE: ${{ inputs.mode || 'auto' }}
           REPO_RELEASE_PACKAGE: ${{ inputs.package }}
           REPO_RELEASE_VERSION: ${{ inputs.version }}
+          REPO_RELEASE_RECOVERY_SOURCE_SHA: ${{ inputs.source_sha }}
         run: pnpm exec repo release ci
+
+      - name: Preserve release recovery evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            repoctl-release-progress.json
+            repoctl-publish-progress.json
+            pnpm-publish-summary.json
+          if-no-files-found: ignore

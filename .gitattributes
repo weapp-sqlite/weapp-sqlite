@@ -120,6 +120,8 @@ yarn.lock         text -diff
 *.toml            text
 *.yaml            text
 *.yml             text
+# Unified diff context prefixes precede indentation from bundled dependencies.
+patches/*.patch   text eol=lf whitespace=-space-before-tab
 browserslist      text
 Makefile          text
 makefile          text
