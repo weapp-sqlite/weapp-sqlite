@@ -1,5 +1,9 @@
 # weapp-sqlite
 
+<p align="center">
+  <img src="./assets/weapp-sqlite-logo-horizontal.svg" alt="weapp-sqlite" width="520">
+</p>
+
 一个面向小程序与 Web 宿主的可插拔 SQLite driver workspace。
 
 文档站：[`sqlite.weapp.dev`](https://sqlite.weapp.dev)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，并由 Cloudflare Worker 的 Static Assets 托管。
