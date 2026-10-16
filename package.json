@@ -26,6 +26,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
+    "brand:generate": "tsx scripts/brand-assets.ts",
+    "brand:check": "tsx scripts/brand-assets.ts --check",
     "test": "vitest run",
     "test:release": "node --import tsx --test scripts/release.test.ts",
     "test:dev": "vitest",
@@ -89,6 +91,7 @@
     "pathe": "^2.0.3",
     "pkg-types": "^2.3.3",
     "repoctl": "^5.7.1",
+    "sharp": "0.35.5",
     "stylelint": "^17.16.0",
     "tailwindcss": "^4.3.3",
     "tsd": "^0.33.0",
