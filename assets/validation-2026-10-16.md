@@ -10,6 +10,7 @@
 - 文档导航使用不裁切的 32px 图标，新增 SVG / 16px / 32px favicon 与 180px Apple touch icon；README 随系统主题切换组合标。
 - 根目录新增开发依赖 `sharp`，用于本地素材生成；没有修改运行时包或公共 API。
 - 文档站增加包级 lint-staged 配置，使提交检查使用文档站的 ESLint 9，根目录继续使用 ESLint 10。
+- SVG 在 Git 属性中固定为 LF，避免 Windows 自动换行转换触发素材字节校验误报；CI 的六组系统/Node 组合运行 `brand:check`。
 
 ## 检查结果
 
