@@ -9,6 +9,16 @@ export const metadata: Metadata = {
     template: '%s | weapp-sqlite',
   },
   description: '面向小程序与 Web 的可插拔 SQLite driver。',
+  icons: {
+    icon: [
+      { url: '/weapp-sqlite-icon.svg', type: 'image/svg+xml', sizes: 'any' },
+      { url: '/favicon-32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon-16.png', type: 'image/png', sizes: '16x16' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', type: 'image/png', sizes: '180x180' },
+    ],
+  },
   openGraph: {
     type: 'website',
     siteName: 'weapp-sqlite',

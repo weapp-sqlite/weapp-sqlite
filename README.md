@@ -1,7 +1,10 @@
 # weapp-sqlite
 
 <p align="center">
-  <img src="./assets/weapp-sqlite-logo-horizontal.svg" alt="weapp-sqlite" width="520">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/weapp-sqlite-logo-reversed.svg">
+    <img src="./assets/weapp-sqlite-logo-horizontal.svg" alt="weapp-sqlite" width="440">
+  </picture>
 </p>
 
 一个面向小程序与 Web 宿主的可插拔 SQLite driver workspace。

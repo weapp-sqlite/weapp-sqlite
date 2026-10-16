@@ -11,9 +11,9 @@ export function baseOptions(): BaseLayoutProps {
             src="/weapp-sqlite-icon.svg"
             alt=""
             aria-hidden="true"
-            width={28}
-            height={28}
-            className="h-7 w-7 rounded-lg"
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0"
           />
           <span className="font-mono text-sm font-semibold tracking-tight">
             {appName}<span className="ml-1 text-emerald-500">/</span>
