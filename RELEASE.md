@@ -76,7 +76,7 @@ repoctl 的 `website` 站点由两个工作流管理：`repoctl-docs.yml`（Docu
 3. 再启用预览流程，确认预览 Worker `weapp-sqlite-docs-preview` 和 `preview.sqlite.weapp.dev` 的域名配置，验证预览工作流、首页、深层文档、搜索和禁止收录行为。
 4. 待下一次完整稳定发布建立基线，通过 repoctl 部署正式 Worker `weapp-sqlite-docs`，确认 `sqlite.weapp.dev` 的来源和页面，再将此流程作为唯一正式部署入口。
 
-截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`；组织级 `CLOUDFLARE_ACCOUNT_ID` 和 `CLOUDFLARE_API_TOKEN` secrets 已配置并对本仓库开放，通过工作流继承接入。已有的 environment `CLOUDFLARE_ACCOUNT_ID` variable 作为回退，组织级同名 secret 优先于该 variable。旧 Workers Builds Git 连接已断开，控制台已恢复为“连接”入口。迁移 PR 的两次旧构建曾覆盖正式站，均已回滚；正式站已核验恢复到迁移前版本 `59d35450-8569-4472-aae9-9e968ef37713`，承载 100% 流量。预览站已由 [Documentation #39948826846](https://github.com/weapp-sqlite/weapp-sqlite/actions/runs/39948826846) 完成首次受管部署，来源为 `9759d43d354359e905a45a83c92275bfcc3d5644`；首页、文档、搜索、Markdown、OG、404 和禁止收录均已线上核验。过期的预览重试已被主线前进检查拦截，没有覆盖新站点；同一部署身份重跑成功返回 skipped，没有重复上传。nightly 发布和消费者安装仍待验收。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`；组织级 `CLOUDFLARE_ACCOUNT_ID` 和 `CLOUDFLARE_API_TOKEN` secrets 已配置并对本仓库开放，通过工作流继承接入。已有的 environment `CLOUDFLARE_ACCOUNT_ID` variable 作为回退，组织级同名 secret 优先于该 variable。旧 Workers Builds Git 连接已断开，控制台已恢复为“连接”入口。迁移 PR 的两次旧构建曾覆盖正式站，均已回滚；正式站已核验恢复到迁移前版本 `59d35450-8569-4472-aae9-9e968ef37713`，承载 100% 流量。预览站已由 [Documentation #39948826846](https://github.com/weapp-sqlite/weapp-sqlite/actions/runs/39948826846) 完成首次受管部署，来源为 `9759d43d354359e905a45a83c92275bfcc3d5644`；首页、文档、搜索、Markdown、OG、404 和禁止收录均已线上核验。过期的预览重试已被主线前进检查拦截，没有覆盖新站点；同一部署身份重跑成功返回 skipped，没有重复上传。nightly 的发布批次与消费者安装结果见 Release 工作流的诊断 artifacts；同一批次的九个包须全部通过后才算发布完成。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
 
 ## 网站恢复
 
