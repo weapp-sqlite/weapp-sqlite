@@ -70,7 +70,7 @@ repoctl 的 `website` 站点由两个工作流管理：`repoctl-docs.yml`（Docu
 3. 再启用预览流程，确认预览 Worker `weapp-sqlite-docs-preview` 和 `preview.sqlite.weapp.dev` 的域名配置，验证预览工作流、首页、深层文档、搜索和禁止收录行为。
 4. 待下一次完整稳定发布建立基线，通过 repoctl 部署正式 Worker `weapp-sqlite-docs`，确认 `sqlite.weapp.dev` 的来源和页面，再将此流程作为唯一正式部署入口。
 
-两个 GitHub environments 已创建并限制为 `main`，`CLOUDFLARE_ACCOUNT_ID` 已配置为 environment variable；`CLOUDFLARE_API_TOKEN` 尚未配置。域名、首次部署和旧 Builds 开关仍需在上线时逐项确认。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`，`CLOUDFLARE_ACCOUNT_ID` 已配置为 environment variable；`CLOUDFLARE_API_TOKEN` 尚未配置。旧 Workers Builds 已通过 Disable builds 关闭，包括非生产分支触发；正式站保留迁移前的版本。预览域名、首次部署和 nightly 消费者安装仍待上线验证。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
 
 ## 网站恢复
 

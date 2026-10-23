@@ -47,7 +47,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate repository automation
-        run: pnpm exec repo config validate && pnpm exec repo doctor --json && pnpm exec repo doctor --rules nightly-workflow,nightly-provider,nightly-schedule,nightly-cli --strict --json
+        run: pnpm exec repo config validate && pnpm exec repo doctor --rules nightly-workflow,nightly-provider,nightly-schedule,nightly-cli --strict --json
+
+      # Node 22 compatibility coverage does not need to match the default .nvmrc version.
+      - name: Check default development environment
+        if: ${{ matrix.node-version == '24.22.1' }}
+        run: pnpm exec repo doctor --json
 
       - name: Check brand assets
         run: pnpm brand:check
