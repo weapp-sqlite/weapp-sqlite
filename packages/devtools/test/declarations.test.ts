@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -29,9 +29,22 @@ it('preserves Devframe definitions and RPC augmentation for real CJS and ESM con
     const installedPackage = path.join(consumer, 'node_modules/@weapp-sqlite/devtools')
     await mkdir(installedPackage, { recursive: true })
     await writeFile(path.join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }))
-    await copyFile(path.join(packageRoot, 'package.json'), path.join(installedPackage, 'package.json'))
-    await symlink(path.join(packageRoot, 'node_modules'), path.join(installedPackage, 'node_modules'), 'junction')
+    const packageJson = await readFile(path.join(packageRoot, 'package.json'), 'utf8')
+    await writeFile(path.join(installedPackage, 'package.json'), packageJson)
+    const { dependencies } = JSON.parse(packageJson) as { dependencies: Record<string, string> }
+    // Flatten the package links before crossing a Windows drive boundary;
+    // junctions for a whole node_modules directory lose relative workspace links.
+    for (const name of Object.keys(dependencies)) {
+      const target = await realpath(path.join(packageRoot, 'node_modules', name))
+      const installedDependency = path.join(installedPackage, 'node_modules', name)
+      await mkdir(path.dirname(installedDependency), { recursive: true })
+      await symlink(target, installedDependency, 'junction')
+      const manifest = JSON.parse(await readFile(path.join(installedDependency, 'package.json'), 'utf8')) as { name: string }
+      expect(manifest.name).toBe(name)
+      expect(await realpath(installedDependency)).toBe(target)
+    }
     await symlink(await realpath(path.join(packageRoot, 'node_modules/devframe')), path.join(consumer, 'node_modules/devframe'), 'junction')
+    expect(await realpath(path.join(consumer, 'node_modules/devframe'))).toBe(await realpath(path.join(installedPackage, 'node_modules/devframe')))
     const installedTypes = path.join(consumer, 'node_modules/@types')
     await mkdir(installedTypes)
     // Resolve pnpm's package link before exposing it to the consumer, including
