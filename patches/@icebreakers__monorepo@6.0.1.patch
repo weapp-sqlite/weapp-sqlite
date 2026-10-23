@@ -1,5 +1,5 @@
 diff --git a/dist/commands-D1KtdxnV.mjs b/dist/commands-D1KtdxnV.mjs
-index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..58b5c3c6ef529bab313c7e1857c26fc02253928f 100644
+index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..563d9433f43410db3138f4610492a3df5d079ff5 100644
 --- a/dist/commands-D1KtdxnV.mjs
 +++ b/dist/commands-D1KtdxnV.mjs
 @@ -1,7 +1,7 @@
@@ -73,6 +73,86 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..58b5c3c6ef529bab313c7e1857c26fc0
  		}
  	}
  }
+@@ -12628,7 +12639,11 @@ async function verifyNightlyConsumer(report, options) {
+ 				dependencies: Object.fromEntries(report.packages.map((pkg) => [pkg.name, report.provider === "npm" ? "snapshot-nightly" : pkg.locator])),
+ 				...!report.packages.some((pkg) => pkg.name === "@types/node") ? { devDependencies: { "@types/node": nodeTypes.version } } : {}
+ 			}, null, 2)}\n`),
+-			writeFile(path$1.join(directory, "pnpm-workspace.yaml"), "packages: []\n"),
++			writeFile(path$1.join(directory, "pnpm-workspace.yaml"), stringify({
++				packages: [],
++				// Only this confirmed batch may bypass pnpm's release-age fallback.
++				...report.provider === "npm" ? { minimumReleaseAgeExclude: report.packages.map((pkg) => `${pkg.name}@${pkg.version}`) } : {}
++			})),
+ 			writeFile(path$1.join(directory, "user.npmrc"), ""),
+ 			writeFile(path$1.join(directory, "global.npmrc"), "")
+ 		]);
+@@ -12747,13 +12762,13 @@ function object$1(value) {
+ 	return value !== null && typeof value === "object" && !Array.isArray(value);
+ }
+ function createNightlyRegistry(options) {
+-	async function request(pathname, deadline = Number.POSITIVE_INFINITY) {
++	async function request(pathname, deadline = Number.POSITIVE_INFINITY, accept = "application/json") {
+ 		const timeout = Math.min(1e4, deadline - Date.now());
+ 		if (timeout <= 0) throw new Error("Nightly registry confirmation timed out.");
+ 		let response;
+ 		try {
+ 			response = await (options.registryFetch ?? fetch)(new URL(pathname, registry), {
+-				headers: { accept: "application/json" },
++				headers: { accept },
+ 				signal: AbortSignal.timeout(Math.max(1, Math.floor(timeout)))
+ 			});
+ 		} catch {
+@@ -12765,7 +12780,11 @@ function createNightlyRegistry(options) {
+ 		if (!object$1(value)) throw new Error(`Nightly registry returned invalid metadata for ${pathname}.`);
+ 		return value;
+ 	}
+-	return { async publication(name, allowMissingVersion = false, deadline) {
++	return {
++		installation(name, deadline) {
++			return request(encodeURIComponent(name), deadline, "application/vnd.npm.install-v1+json");
++		},
++		async publication(name, allowMissingVersion = false, deadline) {
+ 		const tags = await request(`-/package/${encodeURIComponent(name)}/dist-tags`, deadline);
+ 		if (tags && Object.values(tags).some((value) => typeof value !== "string" || !value)) throw new Error(`Nightly registry returned invalid dist-tags for ${name}.`);
+ 		const version = tags?.[tag];
+@@ -12819,7 +12838,7 @@ async function inspectNpmNightly(report, options) {
+ 	}
+ 	return complete;
+ }
+-async function confirmNpmNightly(report, options) {
++async function confirmNpmNightly(report, options, allowPending = true) {
+ 	const snapshot = report.snapshot;
+ 	const client = createNightlyRegistry(options);
+ 	const deadline = Date.now() + 9e5;
+@@ -12833,11 +12852,20 @@ async function confirmNpmNightly(report, options) {
+ 				continue;
+ 			}
+ 			if (publication.metadata.dist?.integrity !== pkg.integrity || !validPublishedIdentity(publication.metadata) || !matchesSnapshotMetadata(publication.metadata.repoctlSnapshot, snapshot)) throw new Error(`Nightly registry evidence conflicts with the published artifact for ${pkg.name}.`);
++			// npm's install packument can lag behind its exact-version and dist-tag endpoints.
++			const installation = await client.installation(pkg.name, deadline);
++			const manifest = installation?.versions?.[pkg.version];
++			if (manifest && (manifest.name !== pkg.name || manifest.version !== pkg.version || manifest.dist?.integrity !== pkg.integrity || typeof manifest.dist?.tarball !== "string" || !manifest.dist.tarball || manifest.dist.tarball !== publication.metadata.dist?.tarball)) throw new Error(`Nightly installation metadata conflicts with the published artifact for ${pkg.name}.`);
++			if (installation?.["dist-tags"]?.[tag] !== pkg.version || !manifest) {
++				pending.push(pkg.name);
++				continue;
++			}
+ 		}
+ 		if (!pending.length) {
+ 			report.confirmed = true;
+ 			return;
+ 		}
++		if (!allowPending) throw new Error(`Nightly channel changed after consumer verification: ${pending.join(", ")}.`);
+ 		if (Date.now() >= deadline || attempt === 179) throw new Error(`Nightly tags did not become visible: ${pending.join(", ")}.`);
+ 		await (options.sleep ?? setTimeout$1)(Math.min(5e3, Math.max(0, deadline - Date.now())));
+ 	}
+@@ -13109,6 +13137,7 @@ async function nightly(options, execute) {
+ 			updatePackages(report);
+ 			await checkpoint();
+ 			await verifyNightlyConsumer(report, options);
++			if (report.provider === "npm") await confirmNpmNightly(report, options, false);
+ 			report.status = "published";
+ 		}
+ 		return report;
 diff --git a/dist/tsconfig-rZG7b9Ul.mjs b/dist/tsconfig-rZG7b9Ul.mjs
 index 4c5a70d2899594b89a3c25f91441c98c1b69c593..931f4e7dd91cbe9bf343a6e44e8baf919f3c945a 100644
 --- a/dist/tsconfig-rZG7b9Ul.mjs
