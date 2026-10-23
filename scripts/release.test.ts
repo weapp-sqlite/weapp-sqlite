@@ -10,7 +10,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
-import { createReleasePullRequest, getWorkspaceData, logger, releaseCi } from 'repoctl'
+import { clearWorkspaceCache, createReleasePullRequest, getWorkspaceData, logger, releaseCi } from 'repoctl'
 
 const repository = fileURLToPath(new URL('..', import.meta.url))
 const packageName = '@release-fixture/runtime'
@@ -367,4 +367,228 @@ test('the actual first DevTools release resolves all nine packages to the prepar
     packages.map(({ manifest }) => ({ name: manifest.name, version: manifest.version })).sort((a, b) => a.name!.localeCompare(b.name!)),
   )
   assert.deepEqual(new Set(targets.map(pkg => pkg.target)), new Set([prepared]))
+})
+
+// Each stage uses a fresh Node process, matching the managed workflow. Git is
+// real; package-manager commands and the provider boundary never reach a remote.
+const sourceRecoveryRunner = String.raw`
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFile, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+const input = JSON.parse(process.argv[1])
+const { releaseCi, loadMonorepoConfigDetails, validateMonorepoConfig } = await import(input.module)
+const key = createHash('sha256').update(JSON.stringify({
+  repository: 'release-fixture/repository', distTag: 'latest',
+  packages: input.packages.map(pkg => pkg.name + '@' + pkg.version).sort(),
+})).digest('hex')
+const commands = []
+const forbidden = async () => { throw new Error('Remote mutation forbidden in release regression') }
+globalThis.fetch = forbidden
+function git(cwd, ...args) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout.trim()
+}
+const original = git(input.cwd, 'show', input.sourceSha + ':repoctl.config.ts')
+function assertFrozen(cwd) {
+  assert.equal(git(cwd, 'rev-parse', 'HEAD'), input.sourceSha)
+  assert.equal(git(cwd, 'diff', '--binary', 'HEAD'), '')
+  return readFile(path.join(cwd, 'repoctl.config.ts'), 'utf8').then(value => assert.equal(value.replace(/\r\n/g, '\n').trim(), original))
+}
+const github = {
+  ensurePullRequest: forbidden,
+  ensureRelease: forbidden,
+  writeAutomationState: forbidden,
+  readAutomationState: async () => undefined,
+  ensureTag: async ({ tag, target }) => {
+    // All fixture tags already exist. This adapter never creates one.
+    assert.ok(input.packages.some(pkg => pkg.name + '@' + pkg.version === tag))
+    assert.equal(target, input.sourceSha)
+  },
+  readTagTarget: async () => input.sourceSha,
+  listReleases: async () => input.packages.map(pkg => ({ tag_name: pkg.name + '@' + pkg.version, draft: false, prerelease: false })),
+  readReleaseState: async requested => {
+    assert.equal(requested, key)
+    return JSON.parse(await readFile(input.checkpoint, 'utf8'))
+  },
+  writeReleaseState: async (requested, state) => {
+    assert.equal(requested, key)
+    const previous = JSON.parse(await readFile(input.checkpoint, 'utf8'))
+    const revision = String(Number(previous.revision) + 1)
+    // The fake provider persists only to the test's local temporary directory.
+    await writeFile(input.checkpoint, JSON.stringify({ revision, state }))
+    return revision
+  },
+}
+const frozenChecks = []
+const spawn = (command, args, options) => {
+  if (command === 'corepack' && args[0] === 'enable') {
+    commands.push([command, ...args])
+    frozenChecks.push(assertFrozen(options.cwd))
+    return { status: 0, stdout: '', stderr: '' }
+  }
+  if (command === 'pnpm') {
+    assert.ok(args.join(' ') === 'install --frozen-lockfile'
+      || args[0] === 'run' && ['build', 'lint', 'test'].includes(args[1]), 'Unexpected pnpm mutation: ' + args.join(' '))
+    commands.push([command, ...args])
+    frozenChecks.push(assertFrozen(options.cwd))
+    return { status: 0, stdout: '', stderr: '' }
+  }
+  if (command === 'npm' && args[0] === 'view') {
+    const pkg = input.packages.find(pkg => pkg.name + '@' + pkg.version === args[1])
+    assert.ok(pkg)
+    return { status: 0, stderr: '', stdout: args[2] === 'version' ? pkg.version : JSON.stringify({
+      ...pkg, gitHead: input.sourceSha, 'dist-tags': { latest: pkg.version },
+    }) }
+  }
+  assert.equal(command, 'git')
+  assert.ok(['merge-base', 'rev-parse', 'remote', 'clone', 'checkout', 'ls-tree', 'show', 'log', 'diff', 'ls-files', 'rev-list', 'status', 'cat-file'].includes(args[0]), 'Unexpected Git mutation: ' + args.join(' '))
+  return spawnSync(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] })
+}
+let output
+try {
+  const result = await releaseCi({
+    cwd: input.cwd, branch: 'main', mode: 'publish', stage: input.stage, sourceSha: input.sourceSha,
+    config: { qualityScripts: [] }, github, spawn,
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => ['path', 'systemroot', 'windir', 'comspec', 'pathext', 'temp', 'tmp'].includes(key.toLowerCase()))),
+      GITHUB_REPOSITORY: 'release-fixture/repository', GITHUB_REF_NAME: 'main',
+      GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ID: '101', GITHUB_RUN_ATTEMPT: '1' },
+  })
+  await Promise.all(frozenChecks)
+  if (['plan', 'verify', 'prepare', 'upload', 'confirm'].includes(input.stage)) {
+    const frozen = path.join(input.cwd, '.git/repoctl-release-ci/source/checkout')
+    await assertFrozen(frozen)
+    // Historical loading must not poison the strict current-config cache.
+    await assert.rejects(loadMonorepoConfigDetails(frozen), /tooling\.lintStaged/)
+  }
+  assert.ok(validateMonorepoConfig({ tooling: { lintStaged: {} } }).some(item => item.path === 'tooling.lintStaged'))
+  output = { ok: true, done: result.done, count: Array.isArray(result) ? result.length : result.candidates.length, commands }
+} catch (error) {
+  await Promise.all(frozenChecks)
+  output = { ok: false, message: error.message, diagnostics: error.diagnostics, commands }
+}
+console.log('SOURCE_RECOVERY_RESULT=' + JSON.stringify(output))
+`
+
+interface SourceRecoveryFixture {
+  cwd: string
+  sourceSha: string
+  checkpoint: string
+  packages: Array<{ name: string, version: string }>
+}
+
+async function sourceRecoveryFixture(cwd: string, sourceSha: string): Promise<SourceRecoveryFixture> {
+  const head = git(cwd, 'rev-parse', 'HEAD')
+  let candidates: SourceRecoveryFixture['packages']
+  // Future versions in the invoking checkout must not rewrite this old cohort.
+  git(cwd, 'checkout', '--quiet', '--detach', sourceSha)
+  try {
+    clearWorkspaceCache()
+    const { packages } = await getWorkspaceData(cwd)
+    candidates = packages.map(({ manifest }) => ({ name: manifest.name!, version: manifest.version! }))
+  }
+  finally {
+    git(cwd, 'checkout', '--quiet', '--detach', head)
+    clearWorkspaceCache()
+  }
+  git(cwd, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+  const checkpoint = path.join(cwd, '.git', 'mock-provider.json')
+  await writeFile(checkpoint, JSON.stringify({
+    revision: '1',
+    state: {
+      schemaVersion: 1,
+      writer: 'regression',
+      repository: 'release-fixture/repository',
+      candidates,
+      packages: candidates.map(pkg => ({ ...pkg, target: sourceSha })),
+      accepted: candidates,
+      npm: 'complete',
+      metadata: candidates.map(pkg => `${pkg.name}@${pkg.version}`),
+      complete: true,
+      uploadComplete: true,
+      hooks: {},
+    },
+  }))
+  return { cwd, sourceSha, checkpoint, packages: candidates }
+}
+
+function runSourceRecovery(fixture: SourceRecoveryFixture, stage: NonNullable<ReleaseCiOptions['stage']>) {
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', sourceRecoveryRunner, JSON.stringify({
+    ...fixture,
+    stage,
+    module: import.meta.resolve('repoctl'),
+  })], { cwd: repository, encoding: 'utf8', timeout: 30_000 })
+  assert.equal(result.status, 0, `${result.error?.message ?? ''}\n${result.stderr}\n${result.stdout}`)
+  const line = result.stdout.split('\n').find(line => line.startsWith('SOURCE_RECOVERY_RESULT='))
+  assert.ok(line, result.stdout)
+  return JSON.parse(line.slice('SOURCE_RECOVERY_RESULT='.length)) as {
+    ok: boolean
+    message?: string
+    done?: string[]
+    count?: number
+    commands: string[][]
+    diagnostics?: Array<{ path: string }>
+  }
+}
+
+test('actual unmodified v5 release source resumes through every managed stage in fresh processes', async (t) => {
+  const sourceSha = git(repository, 'log', '--format=%H', '--diff-filter=A', '--', 'packages/devtools/CHANGELOG.md').split('\n').at(-1)!
+  const cwd = await temporaryDirectory(t)
+  git(repository, 'clone', '--quiet', '--no-hardlinks', repository, cwd)
+  const fixture = await sourceRecoveryFixture(cwd, sourceSha)
+  const stages = ['plan', 'verify', 'prepare', 'upload', 'confirm', 'finalize'] as const
+  for (const [index, stage] of stages.entries()) {
+    const result = runSourceRecovery(fixture, stage)
+    assert.equal(result.ok, true, `${stage}: ${result.message}`)
+    assert.equal(result.count, 9)
+    assert.deepEqual(result.done, stages.slice(0, index + 1))
+    assert.deepEqual(result.commands.filter(command => command[0] === 'pnpm'), stage === 'verify'
+      ? [['pnpm', 'install', '--frozen-lockfile'], ['pnpm', 'run', 'build'], ['pnpm', 'run', 'lint'], ['pnpm', 'run', 'test']]
+      : [])
+    if (stage === 'verify') {
+      // An already-complete stage is idempotent even in another process.
+      assert.equal(runSourceRecovery(fixture, stage).ok, true)
+    }
+  }
+  await assert.rejects(readFile(path.join(cwd, '.git/repoctl-release-ci/source/checkout/repoctl.config.ts')), { code: 'ENOENT' })
+  assert.equal(git(cwd, 'diff', '--binary', 'HEAD'), '')
+})
+
+test('single-invocation recovery preserves the original v5 configuration through finalization', async (t) => {
+  const sourceSha = git(repository, 'log', '--format=%H', '--diff-filter=A', '--', 'packages/devtools/CHANGELOG.md').split('\n').at(-1)!
+  const cwd = await temporaryDirectory(t)
+  git(repository, 'clone', '--quiet', '--no-hardlinks', repository, cwd)
+  const result = runSourceRecovery(await sourceRecoveryFixture(cwd, sourceSha), 'all')
+  assert.equal(result.ok, true, result.message ?? '')
+  assert.equal(result.count, 9)
+  assert.deepEqual(result.commands.filter(command => command[0] === 'pnpm'), [
+    ['pnpm', 'install', '--frozen-lockfile'],
+    ['pnpm', 'run', 'build'],
+    ['pnpm', 'run', 'lint'],
+    ['pnpm', 'run', 'test'],
+  ])
+  assert.equal(git(cwd, 'diff', '--binary', 'HEAD'), '')
+})
+
+test('historical recovery rejects other removed fields and invalid release configuration', async (t) => {
+  for (const invalid of [
+    { path: 'tooling.husky', value: { tooling: { lintStaged: {}, husky: {} } } },
+    { path: 'commands.release.qualityScripts', value: { tooling: { lintStaged: {} }, commands: { release: { qualityScripts: 'invalid' } } } },
+  ]) {
+    const { cwd } = await fixture(t)
+    await write(cwd, 'repoctl.config.ts', `export default ${JSON.stringify(invalid.value)}\n`)
+    const sourceSha = await prepareFirstRelease(cwd)
+    await write(cwd, 'repoctl.config.ts', 'export default {}\n')
+    commit(cwd, 'fix: current tooling configuration')
+    git(cwd, 'remote', 'add', 'origin', cwd)
+    const recovery = await sourceRecoveryFixture(cwd, sourceSha)
+    assert.equal(runSourceRecovery(recovery, 'plan').ok, true)
+    const result = runSourceRecovery(recovery, 'verify')
+    assert.equal(result.ok, false)
+    assert.deepEqual(result.diagnostics?.map(item => item.path), [invalid.path])
+    assert.deepEqual(result.commands.filter(command => command[0] === 'pnpm'), [['pnpm', 'install', '--frozen-lockfile']])
+    assert.equal(git(cwd, 'diff', '--binary', 'HEAD'), '')
+  }
 })

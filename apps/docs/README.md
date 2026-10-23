@@ -28,6 +28,18 @@ pnpm --filter @weapp-sqlite/docs preview
 
 repoctl 的 `website` 站点使用 `repoctl-docs.yml`（Documentation）和 `repoctl-docs-deploy.yml` 先构建、验证来源，再部署同一份产物。`docs:deploy:preview` 与 `docs:deploy:stable` 是其部署 hooks，不重新构建，也不是日常手工部署入口。
 
-GitHub environments `docs-website-preview` 和 `docs-website-stable` 仅允许 `main` 部署，各需要 `CLOUDFLARE_API_TOKEN` secret。`CLOUDFLARE_ACCOUNT_ID` 可使用 environment variable 或 secret，工作流优先读取 secret。迁移时先关闭旧 Workers Builds 对正式 Worker 的自动触发，再启用并验证预览流程；保留当前正式站，等待下一次完整稳定发布建立新基线。不要让 Cloudflare Builds 和 repoctl 同时更新正式域名。
+Wrangler 的 `build.command` 在上传前复用部署身份、Git HEAD、产物和渠道检查。顶部配置固定校验 `stable`，`env.preview` 固定校验 `preview`；裸 `wrangler deploy`、`wrangler versions upload` 和裸 `wrangler deploy --dry-run` 都必须满足对应条件。门禁不重新构建 Next.js，也不影响 `wrangler dev` 和 `wrangler types`。
 
-这里描述的是仓库约定；远端凭据、域名、工作流首次运行和旧 Builds 关闭状态需在上线时确认。正式部署及文档修补应从稳定发布记录恢复，操作步骤见仓库 [RELEASE.md](../../RELEASE.md) 和[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+本地只检查 Wrangler 配置和资产打包时，先构建，再使用固定执行 `--dry-run` 的入口；它不创建稳定发布记录或上传产物：
+
+```bash
+pnpm docs:build
+pnpm --filter @weapp-sqlite/docs deploy:dry preview
+pnpm --filter @weapp-sqlite/docs deploy:dry stable
+```
+
+这两个 dry-run 使用同一份本地产物检查两套部署配置，不代表该产物满足正式发布条件。入口临时复制配置、移除上传门禁并固定执行 `--dry-run`，随后删除临时配置；没有关闭真实部署门禁的环境变量。
+
+GitHub environments `docs-website-preview` 和 `docs-website-stable` 仅允许 `main` 部署，各需要 `CLOUDFLARE_API_TOKEN` secret。`CLOUDFLARE_ACCOUNT_ID` 可使用 environment variable 或 secret，工作流优先读取 secret。迁移时先断开旧正式 Worker 的 Workers Builds Git 连接，再启用并验证预览流程；不要只依赖 Disable builds 开关，本次迁移中启用 Disable builds 后仍发生了旧构建。断开连接不会删除当前 Active Deployment 或域名；保留现有正式站，等待下一次完整稳定发布建立新基线。
+
+远端凭据、域名和工作流首次运行需在上线时确认，已完成的切换状态记录在仓库 [RELEASE.md](../../RELEASE.md)。正式部署及文档修补应从稳定发布记录恢复，操作步骤见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。

@@ -10,7 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "types:check": "pnpm typecheck",
     "lint": "eslint",
-    "deploy:dry": "wrangler deploy --dry-run",
+    "deploy:dry": "node --import tsx ../../scripts/docs-deployment/dry-run.ts",
     "wrangler:types": "wrangler types"
   },
   "dependencies": {

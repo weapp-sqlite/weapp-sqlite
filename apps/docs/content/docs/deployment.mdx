@@ -58,6 +58,18 @@ repoctl 的站点名称为 `website`。`repoctl-docs.yml`（Documentation）接�
 
 根脚本 `docs:deploy:preview` 与 `docs:deploy:stable` 是 repoctl 的部署 hooks，只接受已构建并通过来源校验的产物。它们不负责重新构建；日常部署和失败恢复使用工作流入口。
 
+Wrangler 自身的 `build.command` 也会在 `deploy` 和 `versions upload` 前执行相同的来源与产物检查。配置中固定指定渠道，不能用预览身份通过正式配置的门禁；裸部署和裸 `deploy --dry-run` 均受检查。这个步骤只校验，不重复构建 Next.js；本地 `wrangler dev` 与 `wrangler types` 正常使用。
+
+只检查本地配置和资产打包时使用专用入口，不需要伪造稳定发布身份：
+
+```bash
+pnpm docs:build
+pnpm --filter @weapp-sqlite/docs deploy:dry preview
+pnpm --filter @weapp-sqlite/docs deploy:dry stable
+```
+
+该入口用同一份本地产物分别检查预览和正式配置，在临时配置中移除上传门禁，并固定调用 `wrangler deploy --dry-run`，完成后删除临时配置。它不会上传、建立正式发布记录或证明产物符合正式发布条件，也不提供可用于真实部署的跳过门禁开关。
+
 需要检查计划时，可在具有 GitHub 只读权限、完整 Git 历史的环境中运行：
 
 ```sh
@@ -75,7 +87,7 @@ GITHUB_REPOSITORY=weapp-sqlite/weapp-sqlite pnpm exec repo docs plan website --c
 仓库配置不表示 Cloudflare 和 GitHub 的远端状态已完成迁移。上线按以下顺序进行：
 
 1. 配置两个 GitHub environments 的凭据，确认仅允许 `main` 部署，并确认 `weapp.dev` 在目标账号。
-2. 先在 Cloudflare Dashboard 的 **Workers & Pages → `weapp-sqlite-docs` → Settings → Builds** 中关闭旧自动构建触发，避免 `main` 继续绕过稳定基线更新正式站。保留当前 Active Deployment 和自定义域名。
+2. 先在 Cloudflare Dashboard 的 **Workers & Pages → `weapp-sqlite-docs` → Settings → Builds** 中断开旧 Workers Builds Git 连接，避免主线和非生产分支绕过稳定基线更新正式站。不要只依赖 Disable builds 开关；本次迁移中启用 Disable builds 后仍发生了旧构建。断开 Git 连接不删除当前 Active Deployment 或自定义域名。
 3. 再启用预览流程，确认预览 Worker 和域名配置，验证 `preview.sqlite.weapp.dev` 的页面、搜索、未发布提示及禁止收录行为。
 4. 等待下一次完整稳定发布建立基线，由 repoctl 部署正式站，核对源码来源、渠道、域名和页面。
 

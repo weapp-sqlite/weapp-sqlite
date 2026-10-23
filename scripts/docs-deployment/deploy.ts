@@ -1,5 +1,4 @@
 import type { DocsChannel } from './identity'
-import { execFileSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -7,8 +6,9 @@ import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 // eslint-disable-next-line e18e/ban-dependencies -- Deployment needs the same cross-platform pnpm command resolution as the build.
 import { execa } from 'execa'
+import { assertDocumentationArtifact } from './artifact'
 import { activeMatchingVersion, cloudflareClient, hasCustomDomain, readDeploymentVersion, verifyPublicBuild } from './cloudflare'
-import { assertBuildIdentity, assertDeploymentContext, buildIdentity, deploymentMessage, docsHeaders, docsTargets, resolveChannel } from './identity'
+import { deploymentMessage, docsTargets, resolveChannel } from './identity'
 
 export interface DeployDocumentationOptions {
   channel: DocsChannel
@@ -22,16 +22,9 @@ export interface DeployDocumentationOptions {
 export async function deployDocumentation(options: DeployDocumentationOptions) {
   const { channel } = options
   const env = options.env ?? process.env
-  assertDeploymentContext(env, channel)
   const root = options.root ?? fileURLToPath(new URL('../../', import.meta.url))
   const website = path.join(root, 'apps/docs')
-  const output = path.join(website, 'out')
-  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
-  const identity = buildIdentity(env, sourceSha)
-  assertBuildIdentity(JSON.parse(await readFile(path.join(output, 'docs-build.json'), 'utf8')), identity)
-  if (await readFile(path.join(output, '_headers'), 'utf8') !== docsHeaders(channel)) {
-    throw new Error('Documentation indexing headers do not match the selected channel; rebuild the selected snapshot.')
-  }
+  const identity = await assertDocumentationArtifact(root, env, channel)
   const target = docsTargets[channel]
   const client = cloudflareClient(env, options.request)
   let versionId = await activeMatchingVersion(client, target.worker, identity)

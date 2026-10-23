@@ -2,6 +2,8 @@
 
 本仓库使用 repoctl 6.0.1、pnpm 12.14.0 和 Lefthook 2.2.2。开发与发布统一使用 Node.js 24.22.1；工具链支持范围为 `^22.23.4 || ^24.22.1 || >=26.12.1`，公开 runtime 包保留各自现有的 Node.js 要求。
 
+repoctl 的实现依赖 `@icebreakers/monorepo@6.0.1` 使用仓库内的 pnpm 补丁：修复分阶段历史恢复时重复创建包管理器目录的 `EEXIST`，并允许恢复旧发布提交中已废弃的 `tooling.lintStaged` 配置。此兼容只作用于历史来源恢复，其余配置仍严格校验，历史源码不被改写。升级上游时须先运行发布回归，确认原生修复覆盖这些场景后再移除补丁。
+
 ## 正式版本与预发布版本
 
 用户可见的包变更通过 `pnpm change` 添加中文 change intent，版本准备保留原生 `pnpm version -r` 入口。公开包、私有包及根包均参与版本计算；私有示例可能因直接或多级工作区依赖传播而更新版本，包含公开包和私有包的同一 changeset 也应正常处理。实际发布候选和发布 PR 的公开包说明校验仅针对可发布包，私有包不会上传到 npm。
@@ -22,7 +24,7 @@ pnpm add -D @weapp-sqlite/devtools@snapshot-nightly
 
 nightly 不消耗 changeset、不修改仓库中的正式版本、不推进 `latest`，也不会触发正式文档发布。repoctl 根据来源提交及 CI 构建身份生成快照版本，在隔离源码中构建、校验包及内部依赖后发布公开包；私有工作区只参与构建。恢复同一次失败构建时保留原构建身份和发布证据，新的构建使用新的身份。
 
-首次启用前，确认所有九个公开 npm 包的可信发布配置允许本仓库的 `release.yml`。仅设置 GitHub 的 `NPM_TRUSTED_PUBLISHING` 变量不能替代 npm 侧授权。
+首次启用前，确认所有九个公开 npm 包的可信发布配置允许本仓库的 `release.yml`。仅设置 GitHub 的 `NPM_TRUSTED_PUBLISHING` 变量不能替代 npm 侧授权。2026-10-23 已通过 npm 包设置逐项核对：九个包均绑定 `weapp-sqlite/weapp-sqlite` 的 `release.yml`，状态 Valid，允许 `npm publish`，未限制 environment。
 
 ## 发布来源与回归
 
@@ -66,11 +68,11 @@ repoctl 的 `website` 站点由两个工作流管理：`repoctl-docs.yml`（Docu
 远端启用顺序：
 
 1. 确认两个 GitHub environments 仅允许 `main` 部署。各环境使用 `CLOUDFLARE_API_TOKEN` secret；`CLOUDFLARE_ACCOUNT_ID` 可配置为 environment variable 或 secret，工作流优先读取 secret。Token 需具备目标账号的 Workers 部署及 `weapp.dev` 自定义域名所需权限。
-2. 先在 Cloudflare Dashboard 关闭旧 `weapp-sqlite-docs` 的 Workers Builds 自动触发，避免 `main` 绕过稳定基线继续更新正式站。关闭构建触发不删除当前部署或域名。
+2. 先在 Cloudflare Dashboard 断开旧 `weapp-sqlite-docs` 的 Workers Builds Git 连接，避免 `main` 和非生产分支绕过稳定基线更新正式站。不要只依赖 Disable builds 开关；本次迁移中开关开启后仍发生了旧构建。断开 Git 连接不删除当前部署或域名。
 3. 再启用预览流程，确认预览 Worker `weapp-sqlite-docs-preview` 和 `preview.sqlite.weapp.dev` 的域名配置，验证预览工作流、首页、深层文档、搜索和禁止收录行为。
 4. 待下一次完整稳定发布建立基线，通过 repoctl 部署正式 Worker `weapp-sqlite-docs`，确认 `sqlite.weapp.dev` 的来源和页面，再将此流程作为唯一正式部署入口。
 
-截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`，`CLOUDFLARE_ACCOUNT_ID` 已配置为 environment variable；`CLOUDFLARE_API_TOKEN` 尚未配置。旧 Workers Builds 已通过 Disable builds 关闭，包括非生产分支触发；正式站保留迁移前的版本。预览域名、首次部署和 nightly 消费者安装仍待上线验证。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`，`CLOUDFLARE_ACCOUNT_ID` 已配置为 environment variable；`CLOUDFLARE_API_TOKEN` 尚未配置。旧 Workers Builds Git 连接已断开，控制台已恢复为“连接”入口。迁移 PR 的两次旧构建曾覆盖正式站，均已回滚；正式站已核验恢复到迁移前版本 `59d35450-8569-4472-aae9-9e968ef37713`，承载 100% 流量。预览域名、首次部署和 nightly 消费者安装仍待上线验证。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
 
 ## 网站恢复
 

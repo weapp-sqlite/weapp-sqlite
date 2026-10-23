@@ -10,6 +10,8 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { activeMatchingVersion, cloudflareClient, hasCustomDomain, readDeploymentVersion, verifyPublicBuild } from './cloudflare'
 import { deployDocumentation } from './deploy'
+import { dryRunDocumentation } from './dry-run'
+import { guardWranglerBuild } from './guard'
 import { assertBuildIdentity, assertDeploymentContext, buildIdentity, deploymentMessage, docsHeaders, docsTargets, resolveChannel } from './identity'
 
 const sourceSha = 'a'.repeat(40)
@@ -291,6 +293,78 @@ test('provider permission errors prevent Wrangler from running', async (t) => {
     runWrangler: async () => assert.fail('Permission errors must not trigger an upload'),
   }), /HTTP 403/)
   await assert.rejects(readFile(env['REPO_DOCS_RESULT_FILE']!), { code: 'ENOENT' })
+})
+
+test('Wrangler upload commands reject bare and wrong-channel deployment contexts', async (t) => {
+  const { root, env } = await fixture(t, 'preview')
+  for (const command of ['deploy', 'versions upload']) {
+    await assert.rejects(guardWranglerBuild('stable', { WRANGLER_COMMAND: command }, root), /Direct website deployment/)
+    await assert.rejects(guardWranglerBuild('stable', { ...env, WRANGLER_COMMAND: command }, root), /Direct website deployment/)
+    await assert.doesNotReject(guardWranglerBuild('preview', { ...env, WRANGLER_COMMAND: command }, root))
+  }
+})
+
+test('Wrangler stable uploads require the same source and artifact checks as the provider', async (t) => {
+  const { root, env, output, expected } = await fixture(t)
+  const commandEnv = { ...env, WRANGLER_COMMAND: 'deploy' }
+  await assert.doesNotReject(guardWranglerBuild('stable', commandEnv, root))
+  await assert.rejects(guardWranglerBuild('stable', { ...commandEnv, REPO_DOCS_RELEASE_ID: '' }, root), /managed docs-website-stable/)
+  await assert.rejects(guardWranglerBuild('stable', { ...commandEnv, REPO_DOCS_SOURCE_SHA: 'c'.repeat(40) }, root), /checkout does not match/)
+  await writeFile(path.join(output, 'docs-build.json'), JSON.stringify({ ...expected, deploymentId: 'd'.repeat(64) }))
+  await assert.rejects(guardWranglerBuild('stable', commandEnv, root), /artifact does not match/)
+  await writeFile(path.join(output, 'docs-build.json'), JSON.stringify(expected))
+  await writeFile(path.join(output, '_headers'), docsHeaders('preview'))
+  await assert.rejects(guardWranglerBuild('stable', commandEnv, root), /indexing headers/)
+})
+
+test('Wrangler dev and types need no release context, while unknown commands fail closed', async () => {
+  for (const command of ['dev', 'types']) {
+    await assert.doesNotReject(guardWranglerBuild('stable', { WRANGLER_COMMAND: command }, '/nonexistent-documentation-checkout'))
+  }
+  await assert.rejects(guardWranglerBuild('stable', {}), /Unsupported Wrangler build command/)
+  await assert.rejects(guardWranglerBuild('stable', { WRANGLER_COMMAND: 'unexpected' }), /Unsupported Wrangler build command/)
+})
+
+test('local dry-runs use a temporary configuration and cannot forward a real upload command', async (t) => {
+  const { root } = await fixture(t)
+  const config = await readFile(new URL('../../apps/docs/wrangler.jsonc', import.meta.url), 'utf8')
+  const filename = path.join(root, 'apps/docs/wrangler.jsonc')
+  await writeFile(filename, config)
+  for (const channel of ['preview', 'stable'] as const) {
+    let temporaryFile = ''
+    await dryRunDocumentation(channel, {
+      root,
+      runWrangler: async (args, cwd) => {
+        assert.equal(cwd, path.join(root, 'apps/docs'))
+        temporaryFile = args[5]!
+        assert.deepEqual(args, ['exec', 'wrangler', 'deploy', '--dry-run', '--config', temporaryFile, '--env', ''])
+        const temporaryConfig = JSON.parse(await readFile(temporaryFile, 'utf8'))
+        assert.equal(temporaryConfig.name, docsTargets[channel].worker)
+        assert.equal(temporaryConfig.vars.REPO_DOCS_CHANNEL, channel)
+        assert.equal(temporaryConfig.routes[0].pattern, new URL(docsTargets[channel].url).hostname)
+        assert.equal(temporaryConfig.build, undefined)
+        assert.equal(temporaryConfig.env, undefined)
+        assert.equal(temporaryConfig.main, path.join(root, 'apps/docs/worker/index.ts'))
+        assert.equal(temporaryConfig.assets.directory, path.join(root, 'apps/docs/out'))
+      },
+    })
+    await assert.rejects(readFile(temporaryFile), { code: 'ENOENT' })
+  }
+  assert.equal(await readFile(filename, 'utf8'), config)
+})
+
+test('a failed local dry-run removes its temporary unguarded configuration', async (t) => {
+  const { root } = await fixture(t)
+  await writeFile(path.join(root, 'apps/docs/wrangler.jsonc'), await readFile(new URL('../../apps/docs/wrangler.jsonc', import.meta.url)))
+  let temporaryFile = ''
+  await assert.rejects(dryRunDocumentation('stable', {
+    root,
+    runWrangler: async (args) => {
+      temporaryFile = args[5]!
+      throw new Error('Local packaging failed')
+    },
+  }), /Local packaging failed/)
+  await assert.rejects(readFile(temporaryFile), { code: 'ENOENT' })
 })
 
 test('custom domain verification requires the expected Worker production environment', async () => {
