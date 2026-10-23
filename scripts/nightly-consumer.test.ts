@@ -103,58 +103,85 @@ function reportFixture(directory = ''): NightlyReport {
 }
 
 function installationManifest() {
-  return { name, version, dist: { integrity, tarball } }
+  return { name, version, dist: { integrity, tarball }, repoctlSnapshot: { ...repoctlSnapshot } }
 }
 
 type InstallationManifest = ReturnType<typeof installationManifest>
+type MetadataSurface = 'full' | 'abbreviated'
+
+const metadataAccept = {
+  full: 'application/json; q=1.0, */*',
+  abbreviated: 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*',
+}
 
 function installationPackument(manifest: InstallationManifest | undefined = installationManifest(), tag = version) {
   return { 'dist-tags': { 'latest': '1.0.0', 'snapshot-nightly': tag }, 'versions': manifest ? { [version]: manifest } : {} }
 }
 
-function registryFixture(packuments: ReturnType<typeof installationPackument>[], fullTag = version) {
-  let installationReads = 0
+function registryFixture(options: Partial<Record<MetadataSurface, ReturnType<typeof installationPackument>[]>> & { publicationTag?: string } = {}) {
+  const packuments = {
+    full: options.full ?? [installationPackument()],
+    abbreviated: options.abbreviated ?? [installationPackument()],
+  }
+  const publicationTag = options.publicationTag ?? version
+  const reads = { full: 0, abbreviated: 0 }
   let exactReads = 0
-  const registryFetch: typeof fetch = async (input, options) => {
-    assert.ok(!options?.method || options.method === 'GET', 'Consumer verification must not mutate the registry')
+  const registryFetch: typeof fetch = async (input, request) => {
+    assert.ok(!request?.method || request.method === 'GET', 'Consumer verification must not mutate the registry')
     const url = new URL(String(input))
     assert.equal(url.origin, 'https://registry.npmjs.org')
-    const accept = new Headers(options?.headers).get('accept')
-    if (url.pathname === `/${encodeURIComponent(name)}`) {
-      assert.equal(accept, 'application/vnd.npm.install-v1+json')
-      const packument = packuments[Math.min(installationReads++, packuments.length - 1)]
+    const accept = new Headers(request?.headers).get('accept')
+    if (url.pathname === `/@${encodeURIComponent(name.slice(1))}`) {
+      const surface = accept === metadataAccept.full ? 'full' : 'abbreviated'
+      assert.equal(accept, metadataAccept[surface], 'Use pnpm\'s actual metadata Accept headers')
+      const sequence = packuments[surface]
+      const packument = sequence[Math.min(reads[surface]++, sequence.length - 1)]
       assert.ok(packument)
-      return Response.json(packument)
+      const response = structuredClone(packument)
+      if (surface === 'abbreviated') {
+        for (const manifest of Object.values(response.versions)) {
+          Reflect.deleteProperty(manifest, 'repoctlSnapshot')
+        }
+      }
+      return Response.json(response)
     }
     assert.equal(accept, 'application/json')
     if (url.pathname === `/-/package/${encodeURIComponent(name)}/dist-tags`) {
-      return Response.json({ 'latest': '1.0.0', 'snapshot-nightly': fullTag })
+      return Response.json({ 'latest': '1.0.0', 'snapshot-nightly': publicationTag })
     }
-    assert.equal(url.pathname, `/${encodeURIComponent(name)}/${encodeURIComponent(fullTag)}`)
+    assert.equal(url.pathname, `/${encodeURIComponent(name)}/${encodeURIComponent(publicationTag)}`)
     exactReads++
-    return Response.json({ ...installationManifest(), version: fullTag, repoctlSnapshot })
+    return Response.json({ ...installationManifest(), version: publicationTag, repoctlSnapshot })
   }
-  return { registryFetch, reads: () => ({ installationReads, exactReads }) }
+  return { registryFetch, reads: () => ({ ...reads, exact: exactReads }) }
 }
 
-test('nightly confirmation waits for stale install tags and missing expected versions to become ready', async () => {
-  const report = reportFixture()
-  const registry = registryFixture([
-    installationPackument(installationManifest(), '0.0.0-stage'),
-    { 'dist-tags': { 'latest': '1.0.0', 'snapshot-nightly': version }, 'versions': {} },
-    installationPackument(),
-  ])
-  const waits: number[] = []
-  await (await native).confirmNpmNightly(report, {
-    cwd: '',
-    registryFetch: registry.registryFetch,
-    sleep: async (ms) => {
-      waits.push(ms)
-    },
-  })
-  assert.equal(report.confirmed, true)
-  assert.equal(waits.length, 2)
-  assert.deepEqual(registry.reads(), { installationReads: 3, exactReads: 3 })
+test('nightly confirmation waits independently for full and abbreviated metadata to become ready', async (t) => {
+  for (const surface of ['full', 'abbreviated'] as const) {
+    await t.test(surface, async () => {
+      const report = reportFixture()
+      const registry = registryFixture({
+        [surface]: [
+          installationPackument(installationManifest(), '0.0.0-stage'),
+          { 'dist-tags': { 'latest': '1.0.0', 'snapshot-nightly': version }, 'versions': {} },
+          installationPackument(),
+        ],
+      })
+      const waits: number[] = []
+      await (await native).confirmNpmNightly(report, {
+        cwd: '',
+        registryFetch: registry.registryFetch,
+        sleep: async (ms) => {
+          waits.push(ms)
+        },
+      })
+      assert.equal(report.confirmed, true)
+      assert.equal(waits.length, 2)
+      assert.equal(registry.reads()[surface], 3)
+      assert.equal(registry.reads().exact, 3)
+      assert.ok(registry.reads().full > 0 && registry.reads().abbreviated > 0)
+    })
+  }
 })
 
 test('nightly confirmation rejects conflicting installation metadata without retrying', async (t) => {
@@ -170,28 +197,31 @@ test('nightly confirmation rejects conflicting installation metadata without ret
     missingTarball: (manifest) => { Reflect.deleteProperty(manifest.dist, 'tarball') },
     emptyTarball: (manifest) => { manifest.dist.tarball = '' },
   }
-  for (const [field, mutate] of Object.entries(conflicts)) {
-    for (const staleTag of [false, true]) {
-      await t.test(`${field}, ${staleTag ? 'stale' : 'current'} tag`, async () => {
-        const report = reportFixture()
-        const manifest = installationManifest()
-        mutate(manifest)
-        const registry = registryFixture([installationPackument(manifest, staleTag ? '0.0.0-stage' : version)])
-        await assert.rejects((await native).confirmNpmNightly(report, {
-          cwd: '',
-          registryFetch: registry.registryFetch,
-          sleep: async () => { assert.fail('Conflicting artifact metadata must not be retried') },
-        }), /installation metadata conflicts/)
-        assert.notEqual(report.confirmed, true)
-        assert.deepEqual(registry.reads(), { installationReads: 1, exactReads: 1 })
-      })
+  for (const surface of ['full', 'abbreviated'] as const) {
+    for (const [field, mutate] of Object.entries(conflicts)) {
+      for (const staleTag of [false, true]) {
+        await t.test(`${surface}, ${field}, ${staleTag ? 'stale' : 'current'} tag`, async () => {
+          const report = reportFixture()
+          const manifest = installationManifest()
+          mutate(manifest)
+          const registry = registryFixture({ [surface]: [installationPackument(manifest, staleTag ? '0.0.0-stage' : version)] })
+          await assert.rejects((await native).confirmNpmNightly(report, {
+            cwd: '',
+            registryFetch: registry.registryFetch,
+            sleep: async () => { assert.fail('Conflicting artifact metadata must not be retried') },
+          }), /installation metadata conflicts/)
+          assert.notEqual(report.confirmed, true)
+          assert.equal(registry.reads()[surface], 1)
+          assert.equal(registry.reads().exact, 1)
+        })
+      }
     }
   }
 })
 
 test('installation readiness retains the exact metadata identity check', async () => {
   const report = reportFixture()
-  const registry = registryFixture([installationPackument()])
+  const registry = registryFixture()
   await assert.rejects((await native).confirmNpmNightly(report, {
     cwd: '',
     registryFetch: async (input, options) => {
@@ -206,23 +236,40 @@ test('installation readiness retains the exact metadata identity check', async (
     sleep: async () => { assert.fail('A conflicting snapshot identity must not be retried') },
   }), /registry evidence conflicts/)
   assert.notEqual(report.confirmed, true)
-  assert.deepEqual(registry.reads(), { installationReads: 0, exactReads: 1 })
+  assert.deepEqual(registry.reads(), { full: 0, abbreviated: 0, exact: 1 })
 })
 
-test('the post-consumer check rejects full and abbreviated tag changes immediately', async (t) => {
-  for (const surface of ['full', 'abbreviated']) {
+test('full installation metadata must retain the confirmed snapshot identity', async () => {
+  const report = reportFixture()
+  const manifest = installationManifest()
+  manifest.repoctlSnapshot.identityKey = 'b'.repeat(64)
+  const registry = registryFixture({ full: [installationPackument(manifest)] })
+  await assert.rejects((await native).confirmNpmNightly(report, {
+    cwd: '',
+    registryFetch: registry.registryFetch,
+    sleep: async () => { assert.fail('A conflicting full metadata identity must not be retried') },
+  }), /installation metadata conflicts/)
+  assert.notEqual(report.confirmed, true)
+  assert.deepEqual(registry.reads(), { full: 1, abbreviated: 0, exact: 1 })
+})
+
+test('the post-consumer check rejects publication, full and abbreviated tag changes immediately', async (t) => {
+  for (const surface of ['publication', 'full', 'abbreviated'] as const) {
     await t.test(surface, async () => {
       const report = reportFixture()
       report.confirmed = true
-      const registry = registryFixture([
-        installationPackument(installationManifest(), surface === 'abbreviated' ? '0.0.0-stage' : version),
-      ], surface === 'full' ? '0.0.0-stage' : version)
+      const registry = registryFixture(surface === 'publication'
+        ? { publicationTag: '0.0.0-stage' }
+        : { [surface]: [installationPackument(installationManifest(), '0.0.0-stage')] })
       await assert.rejects((await native).confirmNpmNightly(report, {
         cwd: '',
         registryFetch: registry.registryFetch,
         sleep: async () => { assert.fail('A changed channel after consumption must not wait for convergence') },
       }, false), /channel changed after consumer verification/)
-      assert.deepEqual(registry.reads(), { installationReads: surface === 'full' ? 0 : 1, exactReads: 1 })
+      assert.equal(registry.reads().exact, 1)
+      if (surface !== 'publication') {
+        assert.equal(registry.reads()[surface], 1)
+      }
     })
   }
 })
@@ -256,7 +303,7 @@ async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' |
       installs++
       installationDirectory = String(settings?.cwd)
       const manifest = JSON.parse(readFileSync(path.join(installationDirectory, 'package.json'), 'utf8'))
-      assert.deepEqual(manifest.dependencies, { [name]: provider === 'npm' ? 'snapshot-nightly' : report.packages[0]!.locator }, 'The consumer must exercise the published channel')
+      assert.deepEqual(manifest.dependencies, { [name]: provider === 'npm' ? version : report.packages[0]!.locator }, 'A confirmed batch must not resolve mutable dist-tags a second time')
       const expectedWorkspace = {
         packages: [],
         ...provider === 'npm' ? { minimumReleaseAgeExclude: [`${name}@${version}`] } : {},
@@ -271,7 +318,7 @@ async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' |
         name,
         version: failure === 'stale' ? '0.0.0-stage' : version,
         type: 'module',
-        repoctlSnapshot,
+        repoctlSnapshot: failure === 'stale' ? { ...repoctlSnapshot, identityKey: 'b'.repeat(64) } : repoctlSnapshot,
         exports: { '.': {
           import: { types: './index.d.mts', default: './index.mjs' },
           require: { types: './index.d.cts', default: './index.cjs' },
@@ -292,7 +339,7 @@ async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' |
   return { report, options, commands, installation: () => ({ installs, directory: installationDirectory }) }
 }
 
-test('the native nightly consumer installs the tagged batch with exact release-age exclusions and runs ESM, CJS and TypeScript', async (t) => {
+test('the native nightly consumer installs the confirmed exact batch and runs ESM, CJS and TypeScript', async (t) => {
   const fixture = await consumerFixture(t)
   await (await native).verifyNightlyConsumer(fixture.report, fixture.options)
   assert.equal(fixture.report.consumer?.status, 'verified')
@@ -318,6 +365,14 @@ test('the native nightly consumer preserves stale-version, tarball, runtime and 
       const message = { stale: /unexpected version or identity/, tarball: /Fixture tarball could not be read/, runtime: /Actual nightly runtime failure/, types: /MissingNightlyConsumerType/ }[failure]
       await assert.rejects((await native).verifyNightlyConsumer(fixture.report, fixture.options), message)
       assert.equal(fixture.report.consumer?.status, 'failed')
+      if (failure === 'stale') {
+        const diagnostic = fixture.report.consumer?.error ?? ''
+        assert.match(diagnostic, /expected.*actual/u)
+        assert.ok(diagnostic.includes(version))
+        assert.ok(diagnostic.includes(identityKey))
+        assert.ok(diagnostic.includes('b'.repeat(64)))
+        assert.match(diagnostic, /0\.0\.0-stage/u)
+      }
       assert.equal(fixture.installation().installs, 1)
       await assert.rejects(readdir(fixture.installation().directory), { code: 'ENOENT' })
     })
