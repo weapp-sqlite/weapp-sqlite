@@ -43,14 +43,16 @@ export default {
 
 站点不保存 SQLite 数据库，不需要数据库 binding。应用中的 `sql-wasm.wasm` 仍由各个小程序或 Web demo 自己打包。
 
-GitHub 的 `docs-website-preview` 和 `docs-website-stable` environments 仅允许 `main` 部署，分别使用以下配置：
+GitHub 的 `docs-website-preview` 和 `docs-website-stable` environments 仅允许 `main` 部署。凭据可来自对本仓库开放的组织级或仓库级 secrets，由调用工作流通过 `secrets: inherit` 传入；也可配置在对应 environment 中：
 
 | 配置 | 存储位置 | 用途 |
 | --- | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Environment secret | 部署目标账号的 Worker、静态资产和自定义域名 |
-| `CLOUDFLARE_ACCOUNT_ID` | Environment variable 或 secret | 目标 Cloudflare 账号；两者都存在时优先使用 secret |
+| `CLOUDFLARE_API_TOKEN` | 组织、仓库或 environment secret | 部署目标账号的 Worker、静态资产和自定义域名 |
+| `CLOUDFLARE_ACCOUNT_ID` | 组织、仓库或 environment secret / variable | 目标 Cloudflare 账号；工作流优先读取 secret，再回退到 variable |
 
-Token 需要目标 Worker 的部署权限；首次绑定域名时还需具备 `weapp.dev` 的 DNS / Custom Domain 所需权限。域名必须属于目标账号。凭据放在 GitHub environments 中，不提交到仓库。
+同名 secret 以 environment 配置优先，其次是仓库配置，最后是对本仓库开放的组织配置。`CLOUDFLARE_ACCOUNT_ID` 的 secret 优先于 variable，即使 secret 来自组织、variable 来自 environment。继承凭据不改变 environment 的 `main` 部署限制。
+
+Token 需要目标 Worker 的部署权限；首次绑定域名时还需具备 `weapp.dev` 的 DNS / Custom Domain 所需权限。域名必须属于目标账号。Token 保存在 GitHub secrets 中，不提交到仓库。当前组织级 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` secrets 已配置并对本仓库开放，部署是否成功仍以工作流与线上验收证据为准。
 
 ## 部署工作流
 
@@ -86,7 +88,7 @@ GITHUB_REPOSITORY=weapp-sqlite/weapp-sqlite pnpm exec repo docs plan website --c
 
 仓库配置不表示 Cloudflare 和 GitHub 的远端状态已完成迁移。上线按以下顺序进行：
 
-1. 配置两个 GitHub environments 的凭据，确认仅允许 `main` 部署，并确认 `weapp.dev` 在目标账号。
+1. 确认两个 GitHub environments 仅允许 `main` 部署，继承或环境级配置的凭据对部署任务可用，并确认 `weapp.dev` 在目标账号。
 2. 先在 Cloudflare Dashboard 的 **Workers & Pages → `weapp-sqlite-docs` → Settings → Builds** 中断开旧 Workers Builds Git 连接，避免主线和非生产分支绕过稳定基线更新正式站。不要只依赖 Disable builds 开关；本次迁移中启用 Disable builds 后仍发生了旧构建。断开 Git 连接不删除当前 Active Deployment 或自定义域名。
 3. 再启用预览流程，确认预览 Worker 和域名配置，验证 `preview.sqlite.weapp.dev` 的页面、搜索、未发布提示及禁止收录行为。
 4. 等待下一次完整稳定发布建立基线，由 repoctl 部署正式站，核对源码来源、渠道、域名和页面。
@@ -103,7 +105,7 @@ gh workflow run repoctl-docs.yml --repo weapp-sqlite/weapp-sqlite --ref main -f 
 
 Documentation 的手动输入为 `site`、`channel`、`source-sha`、`release` 和 `commits`。预览使用 `source-sha` 指定主线提交；正式文档修补使用 `release` 选择稳定基线，`commits` 接收空格分隔的、已进入主线的单父文档提交。修补范围限于 `apps/docs/content/docs` 下的 Markdown/MDX，以及 `apps/docs/public` 下的图片，不包括配置、依赖或应用代码。repoctl 会检查修改范围，避免把未发布代码混入正式网站。缺少完整稳定基线时，应等待下一次正式发布。
 
-恢复时保留工作流日志、计划和部署记录，核对来源身份后重试。凭据失败时检查对应 environment 的 secret 名称、账号和权限；不要将 Token 贴到 issue 或聊天中。
+恢复时保留工作流日志、计划和部署记录，核对来源身份后重试。凭据失败时检查 secret 名称、组织访问策略、工作流继承、同名 environment secret 覆盖以及账号权限；不要将 Token 贴到 issue 或聊天中。
 
 ## 部署后检查
 

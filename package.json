@@ -35,7 +35,7 @@
     "tsd": "turbo run tsd --concurrency=1",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.acceptance.json",
     "format": "eslint . --fix",
-    "check:publish": "tsx scripts/check-publish-packages.ts",
+    "check:publish": "tsx scripts/check-publish-packages.ts && repo package check",
     "deps:check": "tsx scripts/dependencies.ts check",
     "deps:update": "tsx scripts/dependencies.ts update",
     "up:pkg": "pnpm run deps:update",

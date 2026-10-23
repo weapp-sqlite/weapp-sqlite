@@ -3,9 +3,10 @@ import type { SqliteDebugWorkspaceOptions } from '../dist/debug.mjs'
 // eslint-disable-next-line antfu/no-import-dist
 import type { WeappSqlitePluginOptions } from '../dist/plugin.mjs'
 import { expectAssignable, expectType } from 'tsd'
-import { weappSqlite } from '..'
 // eslint-disable-next-line antfu/no-import-dist
 import { defineSqliteDebugWorkspace } from '../dist/debug.mjs'
+// eslint-disable-next-line antfu/no-import-dist
+import { weappSqlite } from '../dist/plugin.mjs'
 
 const workspace = defineSqliteDebugWorkspace({
   databases: [

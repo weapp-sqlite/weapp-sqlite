@@ -26,6 +26,8 @@ nightly 不消耗 changeset、不修改仓库中的正式版本、不推进 `lat
 
 隔离源码由 Git archive 导出，不包含 `.git`。根 `prepare` 只在本地 Git checkout 中安装 Lefthook，CI、显式禁用 hooks 或源码归档会跳过安装；依赖安装和包构建仍正常执行。若 nightly 在上传前失败，先根据诊断报告和 npm registry 确认是否已有包上传，再决定重试路径。
 
+`pnpm check:publish` 除仓库元数据和文件清单外，还调用 repoctl 的实际包检查，验证 tarball、ESM/CommonJS 类型声明及独立消费者安装。CI 在 Ubuntu Node 24 中执行同一检查，避免到 nightly 上传前才发现发布产物问题。
+
 首次启用前，确认所有九个公开 npm 包的可信发布配置允许本仓库的 `release.yml`。仅设置 GitHub 的 `NPM_TRUSTED_PUBLISHING` 变量不能替代 npm 侧授权。2026-10-23 已通过 npm 包设置逐项核对：九个包均绑定 `weapp-sqlite/weapp-sqlite` 的 `release.yml`，状态 Valid，允许 `npm publish`，未限制 environment。
 
 ## 发布来源与回归
@@ -69,12 +71,12 @@ repoctl 的 `website` 站点由两个工作流管理：`repoctl-docs.yml`（Docu
 
 远端启用顺序：
 
-1. 确认两个 GitHub environments 仅允许 `main` 部署。各环境使用 `CLOUDFLARE_API_TOKEN` secret；`CLOUDFLARE_ACCOUNT_ID` 可配置为 environment variable 或 secret，工作流优先读取 secret。Token 需具备目标账号的 Workers 部署及 `weapp.dev` 自定义域名所需权限。
+1. 确认两个 GitHub environments 仅允许 `main` 部署。`CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 可使用对本仓库开放的组织级或仓库级 secrets，由调用工作流通过 `secrets: inherit` 传入；也可在对应 environment 中配置，同名 environment secret 优先。`CLOUDFLARE_ACCOUNT_ID` 还支持 variable，但工作流优先读取 secret。继承凭据不改变 environment 的 `main` 部署限制。Token 需具备目标账号的 Workers 部署及 `weapp.dev` 自定义域名所需权限。
 2. 先在 Cloudflare Dashboard 断开旧 `weapp-sqlite-docs` 的 Workers Builds Git 连接，避免 `main` 和非生产分支绕过稳定基线更新正式站。不要只依赖 Disable builds 开关；本次迁移中开关开启后仍发生了旧构建。断开 Git 连接不删除当前部署或域名。
 3. 再启用预览流程，确认预览 Worker `weapp-sqlite-docs-preview` 和 `preview.sqlite.weapp.dev` 的域名配置，验证预览工作流、首页、深层文档、搜索和禁止收录行为。
 4. 待下一次完整稳定发布建立基线，通过 repoctl 部署正式 Worker `weapp-sqlite-docs`，确认 `sqlite.weapp.dev` 的来源和页面，再将此流程作为唯一正式部署入口。
 
-截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`，`CLOUDFLARE_ACCOUNT_ID` 已配置为 environment variable；`CLOUDFLARE_API_TOKEN` 尚未配置。旧 Workers Builds Git 连接已断开，控制台已恢复为“连接”入口。迁移 PR 的两次旧构建曾覆盖正式站，均已回滚；正式站已核验恢复到迁移前版本 `59d35450-8569-4472-aae9-9e968ef37713`，承载 100% 流量。预览域名、首次部署和 nightly 消费者安装仍待上线验证。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+截至 2026-10-23，两个 GitHub environments 已创建并限制为 `main`；组织级 `CLOUDFLARE_ACCOUNT_ID` 和 `CLOUDFLARE_API_TOKEN` secrets 已配置并对本仓库开放，通过工作流继承接入。已有的 environment `CLOUDFLARE_ACCOUNT_ID` variable 作为回退，组织级同名 secret 优先于该 variable。旧 Workers Builds Git 连接已断开，控制台已恢复为“连接”入口。迁移 PR 的两次旧构建曾覆盖正式站，均已回滚；正式站已核验恢复到迁移前版本 `59d35450-8569-4472-aae9-9e968ef37713`，承载 100% 流量。预览站已由 [Documentation #39948826846](https://github.com/weapp-sqlite/weapp-sqlite/actions/runs/39948826846) 完成首次受管部署，来源为 `9759d43d354359e905a45a83c92275bfcc3d5644`；首页、文档、搜索、Markdown、OG、404 和禁止收录均已线上核验。过期的预览重试已被主线前进检查拦截，没有覆盖新站点；同一部署身份重跑成功返回 skipped，没有重复上传。nightly 的发布批次与消费者安装结果见 Release 工作流的诊断 artifacts；同一批次的九个包须全部通过后才算发布完成。详细检查见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
 
 ## 网站恢复
 

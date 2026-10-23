@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { createNightlyPlan, createSnapshotPlan, getWorkspaceData, releaseNightly } from 'repoctl'
+import { checkPackages, createNightlyPlan, createSnapshotPlan, getWorkspaceData, releaseNightly } from 'repoctl'
 import { parse } from 'yaml'
 import config from '../repoctl.config'
 
@@ -334,4 +334,72 @@ test('prepare preserves real hook installation failures', async (t) => {
   const malformed = runPrepareHooks(cwd)
   assert.notEqual(malformed.status, 0, 'A broken hook configuration must not make installation look successful')
   assert.match(`${malformed.stdout}\n${malformed.stderr}`, /yaml|config/i)
+})
+
+test('package consumers match Node null export boundaries while retaining types and real runtime failures', async (t) => {
+  const { cwd } = await temporaryRepository(t)
+  await write(cwd, 'package.json', JSON.stringify({ name: 'exports-fixture-workspace', private: true }))
+  await write(cwd, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n')
+  const targets = {
+    '.': null,
+    './empty': [],
+    './nested': [{ unknown: './dist/blocked.mjs' }, null],
+    './array-fallback': [null, './dist/allowed.mjs'],
+    './unmatched': { unknown: './dist/blocked.mjs' },
+  }
+  const mappings = Object.fromEntries(Object.entries(targets).map(([subpath, node]) => [subpath, {
+    import: { types: './dist/index.d.mts', node, default: subpath === './unmatched' ? './dist/allowed.mjs' : './dist/blocked.mjs' },
+    require: {
+      types: './dist/index.d.cts',
+      node: JSON.parse(JSON.stringify(node).replaceAll('.mjs', '.cjs')),
+      default: subpath === './unmatched' ? './dist/allowed.cjs' : './dist/blocked.cjs',
+    },
+  }]))
+  const name = 'fixture-conditional-targets'
+  const pkg = path.join(cwd, 'packages/conditional')
+  await write(pkg, 'package.json', JSON.stringify({ name, version: '1.0.0', type: 'module', exports: mappings, files: ['dist'] }))
+  for (const extension of ['mts', 'cts']) {
+    await write(pkg, `dist/index.d.${extension}`, 'export declare const value: number\n')
+  }
+  await write(pkg, 'dist/allowed.mjs', 'export const value = 42\n')
+  await write(pkg, 'dist/allowed.cjs', 'exports.value = 42\n')
+  for (const extension of ['mjs', 'cjs']) {
+    await write(pkg, `dist/blocked.${extension}`, 'throw new Error("Bundler hook required")\n')
+  }
+  await mkdir(path.join(cwd, 'node_modules'))
+  await symlink(pkg, path.join(cwd, 'node_modules', name), 'junction')
+  for (const subpath of Object.keys(targets)) {
+    const specifier = `${name}${subpath === '.' ? '' : subpath.slice(1)}`
+    for (const format of ['module', 'commonjs']) {
+      const expression = format === 'module' ? `(await import(${JSON.stringify(specifier)})).value` : `require(${JSON.stringify(specifier)}).value`
+      const actual = spawnSync(process.execPath, ['--input-type', format, '--eval', `console.log(${expression})`], { cwd, encoding: 'utf8' })
+      if (subpath === './array-fallback' || subpath === './unmatched') {
+        assert.equal(actual.status, 0, actual.stderr)
+        assert.equal(actual.stdout.trim(), '42')
+      }
+      else {
+        assert.notEqual(actual.status, 0)
+        assert.match(actual.stderr, /ERR_PACKAGE_PATH_NOT_EXPORTED/)
+        assert.doesNotMatch(actual.stderr, /Bundler hook required/)
+      }
+    }
+  }
+
+  const broken = path.join(cwd, 'packages/broken')
+  await write(broken, 'package.json', JSON.stringify({ name: 'fixture-runtime-failure', version: '1.0.0', type: 'module', exports: './index.mjs' }))
+  await write(broken, 'index.mjs', 'throw new Error("Genuine runtime failure")\n')
+  const report = await checkPackages({ cwd })
+  if (report.temporaryDirectory) {
+    t.after(() => rm(report.temporaryDirectory!, { recursive: true, force: true }))
+  }
+  const valid = report.packages.find(result => result.name === name)
+  assert.ok(valid)
+  assert.equal(valid.status, 'passed', JSON.stringify(valid.diagnostics))
+  const runtimeChecks = valid.commands.filter(command => command.args.includes('--eval'))
+  assert.equal(runtimeChecks.length, 4, 'Only the two supported Node subpaths should execute in both formats')
+  const typeChecks = valid.commands.filter(command => command.args.includes('--noEmit'))
+  assert.equal(typeChecks.length, 10, 'Both type declaration formats remain checked for all five subpaths')
+  const invalid = report.packages.find(result => result.name === 'fixture-runtime-failure')
+  assert.equal(invalid?.status, 'failed')
+  assert.ok(invalid?.diagnostics.some(diagnostic => diagnostic.code === 'RUNTIME_IMPORT' && diagnostic.message.includes('Genuine runtime failure')))
 })

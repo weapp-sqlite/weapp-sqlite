@@ -1,4 +1,5 @@
-import type { Plugin, ResolvedConfig, ViteDevServer, WeappVitePlatform } from 'weapp-vite'
+import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
+import type { WeappViteHostMeta, WeappVitePlatform } from 'weapp-vite'
 import type { WeappVitePluginApi } from 'weapp-vite/types'
 import type { SqliteWasmVariant, WeappSqlitePluginOptions, WeappSqliteWasmPackage } from './types'
 import { readFileSync, rmSync } from 'node:fs'
@@ -7,7 +8,6 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import process from 'node:process'
 import { resolveSqliteWasmAsset, sqliteWasmAssetName } from '@weapp-sqlite/sqljs/node'
-import { resolveWeappViteHostMeta } from 'weapp-vite'
 import { createSqliteDevtoolsHost } from './devtools-plugin'
 import {
   GENERATED_PAGE_MARKER,
@@ -306,7 +306,10 @@ function virtualRuntimeSource(
   ].join('\n')
 }
 
-function resolveTarget(config: ResolvedConfig): WeappVitePlatform {
+async function resolveTarget(config: ResolvedConfig & { readonly weappVite?: WeappViteHostMeta }): Promise<WeappVitePlatform> {
+  // weapp-vite exposes an ESM-only entry. Resolve it when Vite awaits this
+  // hook so the plugin factory remains synchronous for CommonJS configs.
+  const { resolveWeappViteHostMeta } = await import('weapp-vite')
   const meta = resolveWeappViteHostMeta(config)
   const target = meta?.platform
   if (!target || !SUPPORTED_TARGETS.has(target)) {
@@ -491,7 +494,7 @@ function localizeCrossSubpackageImports(
   }
 }
 
-export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
+export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vite', { with: { 'resolution-mode': 'import' } }).Plugin {
   const debug = normalizeDebugOptions(options)
   const wasm = normalizeWasmOptions(options)
   let target: WeappVitePlatform | undefined
@@ -588,7 +591,7 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): Plugin {
       }
     },
     async configResolved(config) {
-      target = resolveTarget(config)
+      target = await resolveTarget(config)
       isWebServe = target === 'web' && config.command === 'serve'
       watchBuild = Boolean(config.build?.watch)
       devtoolsEnabled = debug.enabled && debug.devtools && (target === 'web' || target === 'weapp')

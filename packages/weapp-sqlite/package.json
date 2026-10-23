@@ -23,7 +23,6 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
       "import": {
         "types": "./dist/index.d.mts",
         "default": "./dist/index.mjs"
@@ -34,29 +33,60 @@
       }
     },
     "./runtime": {
-      "types": "./dist/runtime.d.mts",
-      "import": "./dist/runtime.mjs",
-      "require": "./dist/runtime.cjs"
+      "import": {
+        "types": "./dist/runtime.d.mts",
+        "node": null,
+        "default": "./dist/runtime.mjs"
+      },
+      "require": {
+        "types": "./dist/runtime.d.cts",
+        "node": null,
+        "default": "./dist/runtime.cjs"
+      }
     },
     "./adapter": {
-      "types": "./dist/adapter.d.mts",
-      "import": "./dist/adapter.mjs",
-      "require": "./dist/adapter.cjs"
+      "import": {
+        "types": "./dist/adapter.d.mts",
+        "default": "./dist/adapter.mjs"
+      },
+      "require": {
+        "types": "./dist/adapter.d.cts",
+        "default": "./dist/adapter.cjs"
+      }
     },
     "./debug": {
-      "types": "./dist/debug.d.mts",
-      "import": "./dist/debug.mjs",
-      "require": "./dist/debug.cjs"
+      "import": {
+        "types": "./dist/debug.d.mts",
+        "node": null,
+        "default": "./dist/debug.mjs"
+      },
+      "require": {
+        "types": "./dist/debug.d.cts",
+        "node": null,
+        "default": "./dist/debug.cjs"
+      }
     },
     "./advanced": {
-      "types": "./dist/advanced.d.mts",
-      "import": "./dist/advanced.mjs",
-      "require": "./dist/advanced.cjs"
+      "import": {
+        "types": "./dist/advanced.d.mts",
+        "default": "./dist/advanced.mjs"
+      },
+      "require": {
+        "types": "./dist/advanced.d.cts",
+        "default": "./dist/advanced.cjs"
+      }
     },
     "./workspace": {
-      "types": "./dist/workspace.d.mts",
-      "import": "./dist/workspace.mjs",
-      "require": "./dist/workspace.cjs"
+      "import": {
+        "types": "./dist/workspace.d.mts",
+        "node": null,
+        "default": "./dist/workspace.mjs"
+      },
+      "require": {
+        "types": "./dist/workspace.d.cts",
+        "node": null,
+        "default": "./dist/workspace.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
