@@ -4,7 +4,7 @@ import type { TestContext } from 'node:test'
 import type { NightlyOptions, SnapshotReport } from 'repoctl'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -250,4 +250,88 @@ test('staged lint routes root and docs filenames intact without touching the rea
     { cwd: path.join(cwd, 'apps/docs'), args: ['exec', 'eslint', '--fix', '--no-warn-ignored', '--', docsFile.slice('apps/docs/'.length)] },
   ])
   assert.equal(git(cwd, 'diff', '--cached', '--binary'), before)
+})
+
+async function prepareHooksFixture(cwd: string, installDependency = false) {
+  const manifest = JSON.parse(await readFile(path.join(repository, 'package.json'), 'utf8'))
+  assert.equal(manifest.scripts.prepare, 'node scripts/prepare-hooks.ts')
+  await write(cwd, 'package.json', JSON.stringify({ type: 'module', scripts: { prepare: manifest.scripts.prepare } }))
+  await write(cwd, '.gitignore', 'node_modules/\n')
+  await mkdir(path.join(cwd, 'scripts'), { recursive: true })
+  await copyFile(path.join(repository, 'scripts/prepare-hooks.ts'), path.join(cwd, 'scripts/prepare-hooks.ts'))
+  await copyFile(path.join(repository, 'lefthook.yml'), path.join(cwd, 'lefthook.yml'))
+  if (installDependency) {
+    await mkdir(path.join(cwd, 'node_modules'), { recursive: true })
+    await symlink(path.dirname(require.resolve('lefthook/package.json')), path.join(cwd, 'node_modules/lefthook'), 'junction')
+  }
+}
+
+function runPrepareHooks(cwd: string, overrides: NodeJS.ProcessEnv = {}) {
+  const env = { ...process.env }
+  for (const key of Object.keys(env)) {
+    if (key === 'CI' || key.startsWith('LEFTHOOK') || key.startsWith('GIT_')) {
+      delete env[key]
+    }
+  }
+  return spawnSync(process.execPath, ['scripts/prepare-hooks.ts'], {
+    cwd,
+    env: { ...env, GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_CONFIG_NOSYSTEM: '1', ...overrides },
+    encoding: 'utf8',
+    timeout: 30_000,
+  })
+}
+
+test('prepare skips CI, explicit opt-out and source archives before resolving Lefthook', async (t) => {
+  const { cwd } = await temporaryRepository(t)
+  await prepareHooksFixture(cwd)
+  for (const env of [{ CI: 'true' }, { CI: '1' }, { LEFTHOOK: '0' }, { LEFTHOOK: 'false' }]) {
+    const result = runPrepareHooks(cwd, env)
+    assert.equal(result.status, 0, result.stderr)
+    await assert.rejects(readFile(path.join(cwd, '.git/hooks/pre-commit')), { code: 'ENOENT' })
+  }
+  // Even inside a parent checkout, an archive must not install the parent's hooks.
+  const archive = path.join(cwd, 'archive')
+  await prepareHooksFixture(archive)
+  const result = runPrepareHooks(archive)
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /outside a Git checkout/)
+  await assert.rejects(readFile(path.join(cwd, '.git/hooks/pre-commit')), { code: 'ENOENT' })
+})
+
+test('prepare installs real Lefthook hooks in developer checkouts and linked worktrees', async (t) => {
+  const { cwd, directory } = await temporaryRepository(t)
+  await prepareHooksFixture(cwd, true)
+  git(cwd, 'add', '--all')
+  git(cwd, 'commit', '--quiet', '-m', 'test: prepare developer hook fixture')
+  const hookFiles = ['pre-commit', 'commit-msg', 'pre-push'].map(hook => path.join(cwd, '.git/hooks', hook))
+  for (const ci of ['false', '0']) {
+    const result = runPrepareHooks(cwd, { CI: ci })
+    assert.equal(result.status, 0, result.stderr)
+    for (const file of hookFiles) {
+      assert.match(await readFile(file, 'utf8'), /lefthook/)
+    }
+  }
+  const worktree = path.join(directory, 'worktree')
+  git(cwd, 'worktree', 'add', '--quiet', '--detach', worktree, 'HEAD')
+  await prepareHooksFixture(worktree, true)
+  assert.match(await readFile(path.join(worktree, '.git'), 'utf8'), /^gitdir:/)
+  await Promise.all(hookFiles.map(file => rm(file)))
+  const result = runPrepareHooks(worktree)
+  assert.equal(result.status, 0, result.stderr)
+  for (const file of hookFiles) {
+    assert.match(await readFile(file, 'utf8'), /lefthook/)
+  }
+})
+
+test('prepare preserves real hook installation failures', async (t) => {
+  const { cwd } = await temporaryRepository(t)
+  await prepareHooksFixture(cwd)
+  const missing = runPrepareHooks(cwd)
+  assert.notEqual(missing.status, 0, 'A developer checkout requires the installed Lefthook dependency')
+  assert.match(missing.stderr, /Cannot find module/)
+  await prepareHooksFixture(cwd, true)
+  await writeFile(path.join(cwd, 'lefthook.yml'), 'pre-commit: [invalid YAML\n')
+  const malformed = runPrepareHooks(cwd)
+  assert.notEqual(malformed.status, 0, 'A broken hook configuration must not make installation look successful')
+  assert.match(`${malformed.stdout}\n${malformed.stderr}`, /yaml|config/i)
 })

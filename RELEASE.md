@@ -24,6 +24,8 @@ pnpm add -D @weapp-sqlite/devtools@snapshot-nightly
 
 nightly 不消耗 changeset、不修改仓库中的正式版本、不推进 `latest`，也不会触发正式文档发布。repoctl 根据来源提交及 CI 构建身份生成快照版本，在隔离源码中构建、校验包及内部依赖后发布公开包；私有工作区只参与构建。恢复同一次失败构建时保留原构建身份和发布证据，新的构建使用新的身份。
 
+隔离源码由 Git archive 导出，不包含 `.git`。根 `prepare` 只在本地 Git checkout 中安装 Lefthook，CI、显式禁用 hooks 或源码归档会跳过安装；依赖安装和包构建仍正常执行。若 nightly 在上传前失败，先根据诊断报告和 npm registry 确认是否已有包上传，再决定重试路径。
+
 首次启用前，确认所有九个公开 npm 包的可信发布配置允许本仓库的 `release.yml`。仅设置 GitHub 的 `NPM_TRUSTED_PUBLISHING` 变量不能替代 npm 侧授权。2026-10-23 已通过 npm 包设置逐项核对：九个包均绑定 `weapp-sqlite/weapp-sqlite` 的 `release.yml`，状态 Valid，允许 `npm publish`，未限制 environment。
 
 ## 发布来源与回归
