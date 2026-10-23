@@ -13,6 +13,16 @@ const require = createRequire(import.meta.url)
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url))
 
+async function runNode(args: string[], cwd: string) {
+  try {
+    return await execFileAsync(process.execPath, args, { cwd })
+  }
+  catch (error) {
+    const failure = error as Error & { stdout?: string, stderr?: string }
+    throw new Error([failure.message, `Working directory: ${cwd}`, failure.stdout, failure.stderr].filter(Boolean).join('\n'), { cause: error })
+  }
+}
+
 it('preserves Devframe definitions and RPC augmentation for real CJS and ESM consumers', async () => {
   const consumer = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-devtools-types-'))
   try {
@@ -23,13 +33,14 @@ it('preserves Devframe definitions and RPC augmentation for real CJS and ESM con
     await symlink(path.join(packageRoot, 'node_modules'), path.join(installedPackage, 'node_modules'), 'junction')
     await symlink(await realpath(path.join(packageRoot, 'node_modules/devframe')), path.join(consumer, 'node_modules/devframe'), 'junction')
     await symlink(path.join(workspaceRoot, 'node_modules/@types'), path.join(consumer, 'node_modules/@types'), 'junction')
-    await execFileAsync(process.execPath, [require.resolve('tsdown/run'), '--out-dir', path.join(installedPackage, 'dist'), '--log-level', 'silent'], { cwd: packageRoot })
+    await runNode([require.resolve('tsdown/run'), '--out-dir', path.join(installedPackage, 'dist'), '--log-level', 'silent'], packageRoot)
+    await Promise.all(['index.d.cts', 'index.d.mts', 'devframe.d.cts', 'devframe-rpc.d.mts'].map(file => readFile(path.join(installedPackage, 'dist', file), 'utf8')))
     const source = await readFile(path.join(packageRoot, 'test-d/consumer.cts'), 'utf8')
     await writeFile(path.join(consumer, 'consumer.cts'), source)
     await writeFile(path.join(consumer, 'consumer.mts'), source)
     // Node16 retains the strict ESM/CJS declaration boundary on newer TypeScript
     // versions, matching NodeNext consumers on TypeScript 5.6.
-    const result = await execFileAsync(process.execPath, [require.resolve('typescript/bin/tsc'), '--noEmit', '--strict', '--skipLibCheck', 'false', '--module', 'node16', '--target', 'es2022', '--types', 'node', 'consumer.cts', 'consumer.mts'], { cwd: consumer })
+    const result = await runNode([require.resolve('typescript/bin/tsc'), '--noEmit', '--strict', '--skipLibCheck', 'false', '--module', 'node16', '--target', 'es2022', '--types', 'node', 'consumer.cts', 'consumer.mts'], consumer)
     expect(result.stdout).toBe('')
   }
   finally {
