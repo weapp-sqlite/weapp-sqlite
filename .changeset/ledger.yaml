@@ -15,6 +15,10 @@
   dir: packages/core
   intents:
     - purple-pumas-call
+"@weapp-sqlite/core@0.2.1":
+  dir: packages/core
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/debug@0.1.0":
   dir: packages/debug
   intents:
@@ -43,6 +47,10 @@
     - tidy-hidden-columns
     - tidy-snapshots-undo
     - wise-keys-diagnose
+"@weapp-sqlite/debug@0.2.1":
+  dir: packages/debug
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/devtools@0.1.0":
   dir: packages/devtools
   intents:
@@ -61,6 +69,10 @@
     - strict-runtime-bridge
     - tidy-devtools-lifecycle
     - wise-keys-diagnose
+"@weapp-sqlite/devtools@0.1.1":
+  dir: packages/devtools
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/docs@0.1.0":
   dir: apps/docs
   intents:
@@ -85,6 +97,10 @@
   dir: packages/miniprogram
   intents:
     - khaki-snakes-brake
+"@weapp-sqlite/miniprogram@0.2.1":
+  dir: packages/miniprogram
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/sqljs@0.2.0":
   dir: packages/sqljs
   intents:
@@ -97,6 +113,10 @@
   dir: packages/sqljs
   intents:
     - purple-pumas-call
+"@weapp-sqlite/sqljs@0.3.1":
+  dir: packages/sqljs
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/wasm@0.1.0":
   dir: packages/wasm
   intents:
@@ -114,6 +134,10 @@
   dir: packages/wasm
   intents:
     - purple-pumas-call
+"@weapp-sqlite/wasm@0.2.1":
+  dir: packages/wasm
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/weapp-vite@0.1.0":
   dir: packages/weapp-vite
   intents:
@@ -145,6 +169,10 @@
     - sour-pots-jump
     - tidy-snapshots-undo
     - watch-debug-route
+"@weapp-sqlite/weapp-vite@0.3.1":
+  dir: packages/weapp-vite
+  intents:
+    - wicked-eggs-shout
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:
@@ -162,6 +190,10 @@
   dir: packages/web
   intents:
     - khaki-snakes-brake
+"@weapp-sqlite/web@0.2.1":
+  dir: packages/web
+  intents:
+    - wicked-eggs-shout
 weapp-sqlite@0.1.1:
   dir: packages/weapp-sqlite
   intents:
@@ -170,3 +202,7 @@ weapp-sqlite@0.2.0:
   dir: packages/weapp-sqlite
   intents:
     - purple-pumas-call
+weapp-sqlite@0.2.1:
+  dir: packages/weapp-sqlite
+  intents:
+    - wicked-eggs-shout
