@@ -50,3 +50,7 @@ examples/weapp-vite-multi-platform/src/__weapp_sqlite_debug/
 artifacts/acceptance
 playwright-report
 test-results
+
+# release automation diagnostics
+repoctl-*-progress.json
+pnpm-publish-summary.json

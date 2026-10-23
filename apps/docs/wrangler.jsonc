@@ -2,7 +2,16 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "weapp-sqlite-docs",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-25",
+  "compatibility_date": "2026-10-08",
+  "workers_dev": false,
+  "preview_urls": false,
+  "build": {
+    "command": "node --import tsx ../../scripts/docs-deployment/guard.ts stable"
+  },
+  "vars": {
+    "REPO_DOCS_CHANNEL": "stable",
+    "REPO_DOCS_URL": "https://sqlite.weapp.dev"
+  },
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",
@@ -13,5 +22,25 @@
       "pattern": "sqlite.weapp.dev",
       "custom_domain": true
     }
-  ]
+  ],
+  "env": {
+    "preview": {
+      "name": "weapp-sqlite-docs-preview",
+      "workers_dev": false,
+      "preview_urls": false,
+      "build": {
+        "command": "node --import tsx ../../scripts/docs-deployment/guard.ts preview"
+      },
+      "vars": {
+        "REPO_DOCS_CHANNEL": "preview",
+        "REPO_DOCS_URL": "https://preview.sqlite.weapp.dev"
+      },
+      "routes": [
+        {
+          "pattern": "preview.sqlite.weapp.dev",
+          "custom_domain": true
+        }
+      ]
+    }
+  }
 }

@@ -20,8 +20,11 @@ allowBuilds:
   core-js: true
   core-js-pure: true
   esbuild: true
+  lefthook: true
   msgpackr-extract: true
   sharp: true
   unrs-resolver: true
   vue-demi: true
   workerd: true
+patchedDependencies:
+  '@icebreakers/monorepo@6.0.1': patches/@icebreakers__monorepo@6.0.1.patch

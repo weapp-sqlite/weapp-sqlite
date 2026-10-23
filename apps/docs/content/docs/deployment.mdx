@@ -1,22 +1,37 @@
 ---
 title: 静态部署
-description: 将 Fumadocs 文档导出为静态文件并部署到 Cloudflare Worker
+description: 使用 repoctl 管理 Cloudflare 文档预览站和正式站
 ---
 
 ## 构建模型
 
 文档站使用 Next.js 的 `output: 'export'`。Fumadocs 在构建期读取 MDX、生成页面、搜索索引、Markdown 文本和 Open Graph 图片，部署产物位于 `apps/docs/out`。线上 Worker 只转发静态资产，不执行 React、Next SSR 或动态 API。
 
+从仓库根目录使用 Node.js 24.22.1、pnpm 12.14.0 运行：
+
 ```bash
-pnpm --filter @weapp-sqlite/docs build
+pnpm --filter @weapp-sqlite/docs dev
+pnpm docs:build
+pnpm docs:test
 pnpm --filter @weapp-sqlite/docs preview
 ```
 
-`trailingSlash: true` 会让文档页面输出为 `docs/getting-started/index.html`，Cloudflare Static Assets 可以直接按目录 URL 提供这些文件。
+`docs:build` 默认构建预览渠道。`trailingSlash: true` 让文档页面输出为 `docs/getting-started/index.html`，Cloudflare Static Assets 可以按目录 URL 提供这些文件。
 
-## Cloudflare Worker
+## 预览站与正式站
 
-`apps/docs/wrangler.jsonc` 将 `out` 绑定为 `ASSETS`，域名配置为 `sqlite.weapp.dev`。Worker 的唯一职责是：
+| 通道 | 域名 | 来源 | Worker |
+| --- | --- | --- | --- |
+| `preview` | [preview.sqlite.weapp.dev](https://preview.sqlite.weapp.dev) | `main` 最新提交 | `weapp-sqlite-docs-preview` |
+| `stable` | [sqlite.weapp.dev](https://sqlite.weapp.dev) | repoctl 完整稳定发布记录 | `weapp-sqlite-docs` |
+
+预览站展示尚未正式发布的文档，页面顶部有提示。构建通过 `REPO_DOCS_CHANNEL` 和 `REPO_DOCS_URL` 设置对应渠道的页面元数据与 Open Graph URL；预览渠道同时设置 robots metadata、`robots.txt` 和 `X-Robots-Tag`，禁止搜索引擎收录。
+
+正式站跟随完整稳定发布，不直接跟随 `main` 或 nightly。nightly 的 npm 标签是 `snapshot-nightly`，用于试用主线包；它不建立正式文档基线。迁移后的第一条完整稳定发布记录建立正式站基线，此前保持已有正式站。
+
+## Cloudflare 配置
+
+`apps/docs/wrangler.jsonc` 的顶层配置绑定正式 Worker 与 `sqlite.weapp.dev`，`env.preview` 绑定预览 Worker 与 `preview.sqlite.weapp.dev`。两者都把 `out` 绑定为 `ASSETS`，Worker 的唯一职责是：
 
 ```ts
 export default {
@@ -26,78 +41,72 @@ export default {
 }
 ```
 
-部署前先确认 Cloudflare 登录状态，然后执行 dry-run：
+站点不保存 SQLite 数据库，不需要数据库 binding。应用中的 `sql-wasm.wasm` 仍由各个小程序或 Web demo 自己打包。
+
+GitHub 的 `docs-website-preview` 和 `docs-website-stable` environments 仅允许 `main` 部署，分别使用以下配置：
+
+| 配置 | 存储位置 | 用途 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Environment secret | 部署目标账号的 Worker、静态资产和自定义域名 |
+| `CLOUDFLARE_ACCOUNT_ID` | Environment variable 或 secret | 目标 Cloudflare 账号；两者都存在时优先使用 secret |
+
+Token 需要目标 Worker 的部署权限；首次绑定域名时还需具备 `weapp.dev` 的 DNS / Custom Domain 所需权限。域名必须属于目标账号。凭据放在 GitHub environments 中，不提交到仓库。
+
+## 部署工作流
+
+repoctl 的站点名称为 `website`。`repoctl-docs.yml`（Documentation）接收主线更新或手动输入，调用 `repoctl-docs-deploy.yml` 在目标 environment 中生成计划、构建、验证产物身份并部署。稳定发布完成后也调用同一个部署工作流。
+
+根脚本 `docs:deploy:preview` 与 `docs:deploy:stable` 是 repoctl 的部署 hooks，只接受已构建并通过来源校验的产物。它们不负责重新构建；日常部署和失败恢复使用工作流入口。
+
+Wrangler 自身的 `build.command` 也会在 `deploy` 和 `versions upload` 前执行相同的来源与产物检查。配置中固定指定渠道，不能用预览身份通过正式配置的门禁；裸部署和裸 `deploy --dry-run` 均受检查。这个步骤只校验，不重复构建 Next.js；本地 `wrangler dev` 与 `wrangler types` 正常使用。
+
+只检查本地配置和资产打包时使用专用入口，不需要伪造稳定发布身份：
 
 ```bash
-pnpm --filter @weapp-sqlite/docs wrangler:types
-pnpm --filter @weapp-sqlite/docs run deploy:dry
-pnpm --filter @weapp-sqlite/docs run deploy
+pnpm docs:build
+pnpm --filter @weapp-sqlite/docs deploy:dry preview
+pnpm --filter @weapp-sqlite/docs deploy:dry stable
 ```
 
-首次部署需要当前 Cloudflare 账号对 `weapp.dev` 有 DNS / Custom Domain 权限。若账号未登录或域名不在当前账号，Wrangler 会在部署阶段明确报错；这不影响本地静态构建和预览。
+该入口用同一份本地产物分别检查预览和正式配置，在临时配置中移除上传门禁，并固定调用 `wrangler deploy --dry-run`，完成后删除临时配置。它不会上传、建立正式发布记录或证明产物符合正式发布条件，也不提供可用于真实部署的跳过门禁开关。
 
-## Cloudflare Workers Builds 自动部署
+需要检查计划时，可在具有 GitHub 只读权限、完整 Git 历史的环境中运行：
 
-生产部署由 Cloudflare Workers Builds 直接监听 GitHub 仓库完成。GitHub Actions 仍然只负责测试和验收，部署状态以 Cloudflare Dashboard 中的 Build 和 Active Deployment 为准。
+```sh
+# PREVIEW_SOURCE_SHA 为已核验的主线完整提交 SHA。
+GITHUB_REPOSITORY=weapp-sqlite/weapp-sqlite pnpm exec repo docs plan website --channel preview --source-sha "$PREVIEW_SOURCE_SHA" --json
 
-在 Cloudflare Dashboard 的 **Workers & Pages → `weapp-sqlite-docs` → Settings → Builds** 中配置：
+# STABLE_RELEASE_ID 为 repoctl 已完成的稳定发布记录 ID。
+GITHUB_REPOSITORY=weapp-sqlite/weapp-sqlite pnpm exec repo docs plan website --channel stable --release "$STABLE_RELEASE_ID" --json
+```
 
-| 配置项 | 值 |
-| --- | --- |
-| GitHub repository | `weapp-sqlite/weapp-sqlite` |
-| Production branch | `main` |
-| Root directory | `/`（仓库根目录） |
-| Build command | `pnpm install --frozen-lockfile && pnpm --filter @weapp-sqlite/docs build` |
-| Deploy command | `pnpm --filter @weapp-sqlite/docs exec wrangler deploy` |
-| Node.js | `22.13.0` 或更高的 Node 22 版本 |
-| Worker | `weapp-sqlite-docs` |
+这些命令只生成计划，不部署网站。
 
-Workers Builds 会使用 Cloudflare 控制台中自动生成或选择的 API Token。Token 由 Cloudflare 管理，不需要创建 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID` GitHub Secrets，也不应把 Token 写入仓库。
+## 从旧 Workers Builds 切换
 
-### 构建触发范围
+仓库配置不表示 Cloudflare 和 GitHub 的远端状态已完成迁移。上线按以下顺序进行：
 
-生产分支只使用 `main`。建议在 Workers Builds 的 **Build watch paths** 中包含以下路径：
+1. 配置两个 GitHub environments 的凭据，确认仅允许 `main` 部署，并确认 `weapp.dev` 在目标账号。
+2. 先在 Cloudflare Dashboard 的 **Workers & Pages → `weapp-sqlite-docs` → Settings → Builds** 中断开旧 Workers Builds Git 连接，避免主线和非生产分支绕过稳定基线更新正式站。不要只依赖 Disable builds 开关；本次迁移中启用 Disable builds 后仍发生了旧构建。断开 Git 连接不删除当前 Active Deployment 或自定义域名。
+3. 再启用预览流程，确认预览 Worker 和域名配置，验证 `preview.sqlite.weapp.dev` 的页面、搜索、未发布提示及禁止收录行为。
+4. 等待下一次完整稳定发布建立基线，由 repoctl 部署正式站，核对源码来源、渠道、域名和页面。
 
-- `apps/docs/**`
-- `packages/*/README.md`
-- `README.md`
-- `pnpm-lock.yaml`
-- `apps/docs/wrangler.jsonc`
-- `package.json`、`pnpm-workspace.yaml`
+切换后，GitHub Documentation / deployment 工作流及 Cloudflare Active Deployment 共同构成部署证据。不要重新启用旧 Builds 与新流程同时部署同一正式 Worker。
 
-这样只有会影响文档内容、依赖或 Worker 配置的提交才会触发部署。其他源码变更仍由 GitHub CI 检查，但不会重新发布文档站。
+## 失败恢复与文档修补
 
-Cloudflare 侧还需要满足两个前置条件：`weapp.dev` zone 在当前账号下，且 Worker `weapp-sqlite-docs` 已绑定 `sqlite.weapp.dev` Custom Domain。首次绑定域名可能需要在 Cloudflare 控制台确认 DNS；绑定完成后，部署结果应在 [sqlite.weapp.dev](https://sqlite.weapp.dev) 可访问。
+稳定部署失败时，使用原完整发布记录 ID 重试，无需重新发布 npm 包：
 
-### 首次部署检查
+```sh
+gh workflow run repoctl-docs.yml --repo weapp-sqlite/weapp-sqlite --ref main -f site=website -f channel=stable -f release="$STABLE_RELEASE_ID"
+```
 
-首次连接仓库后，在 Cloudflare Builds 页面确认以下步骤均成功：
+Documentation 的手动输入为 `site`、`channel`、`source-sha`、`release` 和 `commits`。预览使用 `source-sha` 指定主线提交；正式文档修补使用 `release` 选择稳定基线，`commits` 接收空格分隔的、已进入主线的单父文档提交。修补范围限于 `apps/docs/content/docs` 下的 Markdown/MDX，以及 `apps/docs/public` 下的图片，不包括配置、依赖或应用代码。repoctl 会检查修改范围，避免把未发布代码混入正式网站。缺少完整稳定基线时，应等待下一次正式发布。
 
-1. 安装依赖完成，且使用 Node.js 22.13 或更高版本。
-2. 文档静态构建生成 `apps/docs/out`。
-3. `wrangler deploy` 上传 Worker 和 Static Assets。
-4. 新版本被提升为 Worker 的 Active Deployment。
+恢复时保留工作流日志、计划和部署记录，核对来源身份后重试。凭据失败时检查对应 environment 的 secret 名称、账号和权限；不要将 Token 贴到 issue 或聊天中。
 
-如果只上传了版本但没有上线，检查 Deploy command 是否为 `wrangler deploy`，不要改成只上传版本的 `wrangler versions upload`。如果出现 404，先确认 Custom Domain 和 DNS，再检查 `apps/docs/out` 是否包含对应的 `index.html`。
+## 部署后检查
 
-## 发布后检查
+检查两个域名各自的首页、`/docs/getting-started/`、`/docs/concepts/`、`/docs/debug-workbench/`、站内搜索和不存在的路径。确认深层页面可直接访问，404 不被首页掩盖。
 
-部署完成后，在 Cloudflare Builds 运行详情确认构建、部署和 Active Deployment 均成功，然后检查：
-
-- [首页](https://sqlite.weapp.dev/)
-- [快速开始](https://sqlite.weapp.dev/docs/getting-started/)
-- [核心概念](https://sqlite.weapp.dev/docs/concepts/)
-- [调试工作台](https://sqlite.weapp.dev/docs/debug-workbench/)
-
-如果出现 404，先确认域名 Custom Domain 已绑定，再检查 `apps/docs/out` 是否包含对应的 `index.html`；如果 workflow 在认证阶段失败，检查两个 Secrets 的名称、账号 ID 和 Token 权限，不要把 Token 粘贴到 issue 或聊天中。
-
-## 静态资源检查
-
-部署前应确认以下文件存在：
-
-- `apps/docs/out/index.html`
-- `apps/docs/out/docs/index.html`
-- `apps/docs/out/docs/getting-started/index.html`
-- `apps/docs/out/api/search.json`（搜索索引的实际路径以构建输出为准）
-
-这个站点不承载 SQLite 数据库，也不需要 Worker binding。应用中的 `sql-wasm.wasm` 仍由各个小程序或 Web demo 自己打包。
+预览站应有未发布提示，HTML metadata、`robots.txt` 和响应的 `X-Robots-Tag` 应禁止收录；正式站不显示提示，元数据 URL 指向正式域名并允许收录。若页面 404，先核对 Custom Domain 和目标 Worker，再检查 `apps/docs/out` 中对应的 `index.html`。

@@ -7,10 +7,10 @@
     "dev": "next dev",
     "start": "serve out",
     "preview": "serve out",
-    "types:check": "next typegen && tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
+    "types:check": "pnpm typecheck",
     "lint": "eslint",
-    "deploy": "pnpm build && wrangler deploy",
-    "deploy:dry": "pnpm build && wrangler deploy --dry-run",
+    "deploy:dry": "node --import tsx ../../scripts/docs-deployment/dry-run.ts",
     "wrangler:types": "wrangler types"
   },
   "dependencies": {

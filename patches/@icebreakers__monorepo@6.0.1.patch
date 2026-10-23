@@ -1,0 +1,90 @@
+diff --git a/dist/commands-D1KtdxnV.mjs b/dist/commands-D1KtdxnV.mjs
+index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..025ecf0794cade243bee07f01da765ae69235ebd 100644
+--- a/dist/commands-D1KtdxnV.mjs
++++ b/dist/commands-D1KtdxnV.mjs
+@@ -1,7 +1,7 @@
+ import { t as __exportAll } from "./rolldown-runtime-8H4AJuhK.mjs";
+ import { A as referenceTarget, B as saveKnipBaseline, C as loadCompiler, D as ownershipFile, E as exists$1, Gt as getWorkspacePackages, Ht as clearWorkspaceCache, I as getKnipConfigurationSuggestions, J as getWorkspaceGraph, Jt as GitClient, K as mergeText, M as formatEnvironmentCache, O as readText, P as checkEnvironmentCache, R as planKnipCheck, S as configReader, St as localize, T as compare$1, Tt as resolveRepoctlLocale, Ut as getWorkspaceData, W as analyzeTurboRuns, Wt as getWorkspacePackageSummaries, Z as getWorkspaceImpact, _ as planTemplateLink, _t as assetsDir$1, at as record$2, b as planGenerate, c as loadTemplateInstanceRegistry$1, ct as renderCreateNewProject, dt as migrateLegacyToolingReferences, et as compareGraphValues, f as recoverTemplateUpgrade, ft as setByPath, g as applyTemplateLinkPlan, gt as validateCleanTargets, h as loadTemplateUpgradeJournal, ht as isWithin, it as readInput, j as relativeFile, jt as fs$2, k as referencePath, l as rebuildTemplateInstanceBaseline, lt as rewriteTemplateSnapshotReferences, m as planTemplateUpgrade, mt as assertSafePath, nt as workspaceDependencyTypes, o as listTemplateInstances, ot as safeFile, p as applyTemplateUpgradePlan, pt as stageFileTransaction, q as withOperationLock, qt as findWorkspacePackages, rt as hash$1, s as loadTemplateBaseline$1, tt as resolveWorkspaceGraphNode, u as relocateTemplateInstance, w as validateGraph, x as generators, xt as templatesDir, y as applyGeneratePlan, yt as packageDir$1, z as runKnipCheck } from "./workspace-tasks--x70rhb8.mjs";
+ import { a as resolveFullWorkspaceCheckPlan, c as verifyCommitMsg, d as logger, i as getKnownRepoCheckCommands, l as verifyPreCommit, n as resolveAffectedCheckContext, o as resolveRecommendedCheckPlan, r as resolveAffectedCheckPlan, s as runRecommendedCheck, t as runCheckWithReport, u as runPnpmCommand } from "./execute-BVtr43XS.mjs";
+-import { A as package_default$1, B as templateSourcePath, C as checkedFile, D as relativeFile$1, E as readOptionalSource, H as resolveNightlyConfig, I as normalizeTemplateRemoteSource, J as withLegacyHookConfig, K as appendConfigPath, L as normalizeTemplateSourceRequest, N as ConfigValidationError, O as engines$1, S as canonicalDirectory, T as readOptional$1, U as presetPackageName, W as presetVersion, Y as commandConfigDirectory, _ as listToolingCapabilities, b as presetRelativePath, d as loadMonorepoConfig, f as loadMonorepoConfigDetails, g as presetAssetTarget, j as version$2, n as defineTsconfigConfig, p as resolveCommandConfig, u as getRepoctlConfigCandidates, v as installedPresetDirectory, w as hash$2, x as readPresetFile, y as parsePresetJson, z as sourceRequestKey } from "./tsconfig-rZG7b9Ul.mjs";
++import { A as package_default$1, B as templateSourcePath, C as checkedFile, D as relativeFile$1, E as readOptionalSource, H as resolveNightlyConfig, I as normalizeTemplateRemoteSource, J as withLegacyHookConfig, withLegacyReleaseSourceConfig, K as appendConfigPath, L as normalizeTemplateSourceRequest, N as ConfigValidationError, O as engines$1, S as canonicalDirectory, T as readOptional$1, U as presetPackageName, W as presetVersion, Y as commandConfigDirectory, _ as listToolingCapabilities, b as presetRelativePath, d as loadMonorepoConfig, f as loadMonorepoConfigDetails, g as presetAssetTarget, j as version$2, n as defineTsconfigConfig, p as resolveCommandConfig, u as getRepoctlConfigCandidates, v as installedPresetDirectory, w as hash$2, x as readPresetFile, y as parsePresetJson, z as sourceRequestKey } from "./tsconfig-rZG7b9Ul.mjs";
+ import { c as selectCommandOverrides, i as rangesOverlap, l as chinaMirrorsEnvs, r as parseSpecifier, s as resolveCommandValues } from "./scan-Bg1EPIk6.mjs";
+ import { A as isRootAsset, B as toWorkspaceAssetPath, C as lockfileRecord, D as baselineDirectory, E as checkDependencyAdmission, F as getWorkspacePatterns, I as summarizeChecks, L as legacyStagedConfigNames, M as templatePackage, N as getAssetTargets, O as baselinePath, P as record$3, S as inspectPnpmRuntime, a as applyDoctorSuppressions, b as resolveReleaseBranches, c as collectSelectedDoctorChecks, d as recommendedRepoScripts, f as inspectInstallSecurity, g as isLegacyReleaseWorkflow, h as supportedVersion, i as hasTemplateDriftIssues, j as parseBaseline, k as encodeBaseline, l as getDoctorRuleIds, m as settingState, o as validateDoctorSuppressions, p as readSecuritySources, r as formatTemplateDriftReport, s as validateDoctorConfiguration, t as checkTemplateDrift, u as selectDoctorRules, v as renderReleaseWorkflow, w as parseWorkspaceLockfile, x as ReleaseCommandError, y as releasePullRequestHead } from "./template-drift-BOk4oxoR.mjs";
+ import { t as writeDependencyTransaction } from "./transaction-Cg5I2q47.mjs";
+@@ -6246,7 +6246,9 @@ function publishedSourceIsAncestor(options, tag, sourceSha) {
+ /** Only completed stable publication creates a durable documentation baseline. */
+ async function recordReleaseCompletion(options, state, checkpointKey, rule) {
+ 	if (rule.kind !== "stable" || rule.branch !== "main" || rule.distTag !== "latest") return;
+-	const config = await loadMonorepoConfig(options.cwd);
++	const config = await (getReleaseEnv(options)["REPO_RELEASE_SOURCE_SHA"]
++		? withLegacyReleaseSourceConfig(() => loadMonorepoConfig(options.cwd))
++		: loadMonorepoConfig(options.cwd));
+ 	const sites = Object.keys(config.commands?.docs?.sites ?? {}).sort();
+ 	if (!sites.length) return;
+ 	if (!state.complete || state.npm !== "complete" || !state.packages.length || state.packages.some((pkg) => !state.metadata.includes(packageKey(pkg))) || Object.values(state.hooks).some((status) => !["complete", "ignored"].includes(status))) throw new ReleaseCommandError("Documentation requires a complete stable release lifecycle");
+@@ -7253,7 +7255,7 @@ async function readSourceCandidates(options, source) {
+ /** Resolve pnpm from the historical checkout for installs and nested lifecycle scripts. */
+ async function sourcePackageManagerEnvironment(options, root) {
+ 	const directory = path$1.join(root, "package-manager");
+-	await mkdir(directory);
++	await mkdir(directory, { recursive: true });
+ 	run("corepack", [
+ 		"enable",
+ 		"--install-directory",
+@@ -7344,7 +7346,7 @@ async function recoverSource(options, source) {
+ 				env: await sourcePackageManagerEnvironment(recovery, root)
+ 			};
+ 			run("pnpm", ["install", "--frozen-lockfile"], recovery);
+-			const config = await resolveCommandConfig("release", cwd);
++			const config = await withLegacyReleaseSourceConfig(() => resolveCommandConfig("release", cwd));
+ 			recovery = {
+ 				...recovery,
+ 				config: {
+@@ -7720,7 +7722,7 @@ async function stagedSource(options, create = false, install = false) {
+ 		};
+ 		if (install) run("pnpm", ["install", "--frozen-lockfile"], recovery);
+ 		if (!create || install) {
+-			const config = await resolveCommandConfig("release", cwd);
++			const config = await withLegacyReleaseSourceConfig(() => resolveCommandConfig("release", cwd));
+ 			recovery = {
+ 				...recovery,
+ 				config: {
+diff --git a/dist/tsconfig-rZG7b9Ul.mjs b/dist/tsconfig-rZG7b9Ul.mjs
+index 4c5a70d2899594b89a3c25f91441c98c1b69c593..931f4e7dd91cbe9bf343a6e44e8baf919f3c945a 100644
+--- a/dist/tsconfig-rZG7b9Ul.mjs
++++ b/dist/tsconfig-rZG7b9Ul.mjs
+@@ -29,6 +29,9 @@ const compatibility = new AsyncLocalStorage();
+ /** Only upgrade and diagnosis may read removed hook fields, to preserve custom setups. */
+ const legacyHookConfigEnabled = () => compatibility.getStore() === true;
+ const withLegacyHookConfig = (read) => compatibility.run(true, read);
++// Frozen v5 release sources can retain lint-staged configuration. Never rewrite them.
++const legacyReleaseSourceConfigEnabled = () => compatibility.getStore() === "release-source";
++const withLegacyReleaseSourceConfig = (read) => compatibility.run("release-source", read);
+ //#endregion
+ //#region src/core/config/refresh.ts
+ /** Keep C12's resolution and merging while bypassing native ESM's immutable cache. */
+@@ -749,7 +752,8 @@ function validateMonorepoConfig(value) {
+ 		expected: "one overwrite policy",
+ 		suggestion: "Choose overwrite or noOverwrite/skipOverwrite, not both."
+ 	});
+-	return legacyHookConfigEnabled() ? diagnostics.filter((item) => !/^tooling\.(?:husky|lintStaged)(?:\.|$)/u.test(item.path)) : diagnostics;
++	if (legacyHookConfigEnabled()) return diagnostics.filter((item) => !/^tooling\.(?:husky|lintStaged)(?:\.|$)/u.test(item.path));
++	return legacyReleaseSourceConfigEnabled() ? diagnostics.filter((item) => item.path !== "tooling.lintStaged") : diagnostics;
+ }
+ function assertMonorepoConfig(value) {
+ 	const diagnostics = validateMonorepoConfig(value);
+@@ -1479,7 +1483,7 @@ function defineMonorepoConfig(config) {
+ */
+ async function loadMonorepoConfigDetails(cwd, options = {}) {
+ 	const directory = path.resolve(cwd);
+-	const key = `${directory}:${legacyHookConfigEnabled() ? "legacy-hooks" : "current"}`;
++	const key = `${directory}:${legacyHookConfigEnabled() ? "legacy-hooks" : legacyReleaseSourceConfigEnabled() ? "release-source" : "current"}`;
+ 	if (options.refresh) cache.delete(key);
+ 	if (!cache.has(key)) cache.set(key, loadConfigInternal(directory, options.refresh));
+ 	return cache.get(key);
+@@ -1583,4 +1587,4 @@ async function defineTsconfigConfig(input = {}) {
+ 	return createMonorepoTsconfig(mergeTsconfig(await loadToolingSection("tsconfig", resolved.cwd) ?? {}, resolved.options));
+ }
+ //#endregion
+-export { package_default as A, templateSourcePath as B, checkedFile as C, relativeFile as D, readOptionalSource as E, validateMonorepoConfig as F, validateSchema as G, resolveNightlyConfig as H, normalizeTemplateRemoteSource as I, withLegacyHookConfig as J, appendConfigPath as K, normalizeTemplateSourceRequest as L, mergeConfigValues as M, ConfigValidationError as N, engines as O, assertMonorepoConfig as P, registryUrl as R, canonicalDirectory as S, readOptional as T, presetPackageName as U, commandSchemas as V, presetVersion as W, commandConfigDirectory as Y, listToolingCapabilities as _, loadToolingSection as a, presetRelativePath as b, config_exports as c, loadMonorepoConfig as d, loadMonorepoConfigDetails as f, presetAssetTarget as g, resolveOrganizationPresets as h, loadMonorepoToolingConfig as i, version as j, name as k, defineMonorepoConfig as l, resolveToolingConfig as m, defineTsconfigConfig as n, resolveConfigInput as o, resolveCommandConfig as p, splitConfigPath as q, isDefineConfigWrapper as r, configExtensions as s, createMonorepoTsconfig as t, getRepoctlConfigCandidates as u, installedPresetDirectory as v, hash as w, readPresetFile as x, parsePresetJson as y, sourceRequestKey as z };
++export { withLegacyReleaseSourceConfig, package_default as A, templateSourcePath as B, checkedFile as C, relativeFile as D, readOptionalSource as E, validateMonorepoConfig as F, validateSchema as G, resolveNightlyConfig as H, normalizeTemplateRemoteSource as I, withLegacyHookConfig as J, appendConfigPath as K, normalizeTemplateSourceRequest as L, mergeConfigValues as M, ConfigValidationError as N, engines as O, assertMonorepoConfig as P, registryUrl as R, canonicalDirectory as S, readOptional as T, presetPackageName as U, commandSchemas as V, presetVersion as W, commandConfigDirectory as Y, listToolingCapabilities as _, loadToolingSection as a, presetRelativePath as b, config_exports as c, loadMonorepoConfig as d, loadMonorepoConfigDetails as f, presetAssetTarget as g, resolveOrganizationPresets as h, loadMonorepoToolingConfig as i, version as j, name as k, defineMonorepoConfig as l, resolveToolingConfig as m, defineTsconfigConfig as n, resolveConfigInput as o, resolveCommandConfig as p, splitConfigPath as q, isDefineConfigWrapper as r, configExtensions as s, createMonorepoTsconfig as t, getRepoctlConfigCandidates as u, installedPresetDirectory as v, hash as w, readPresetFile as x, parsePresetJson as y, sourceRequestKey as z };
