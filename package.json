@@ -56,7 +56,7 @@
     "release:pre": "repo release pre publish",
     "------": "--------------",
     "preinstall": "npx only-allow pnpm",
-    "prepare": "lefthook install",
+    "prepare": "node scripts/prepare-hooks.ts",
     "commit": "commit",
     "commitlint": "commitlint --edit",
     "-------": "---------------",
