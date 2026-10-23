@@ -40,6 +40,8 @@ pnpm --filter @weapp-sqlite/docs deploy:dry stable
 
 这两个 dry-run 使用同一份本地产物检查两套部署配置，不代表该产物满足正式发布条件。入口临时复制配置、移除上传门禁并固定执行 `--dry-run`，随后删除临时配置；没有关闭真实部署门禁的环境变量。
 
-GitHub environments `docs-website-preview` 和 `docs-website-stable` 仅允许 `main` 部署，各需要 `CLOUDFLARE_API_TOKEN` secret。`CLOUDFLARE_ACCOUNT_ID` 可使用 environment variable 或 secret，工作流优先读取 secret。迁移时先断开旧正式 Worker 的 Workers Builds Git 连接，再启用并验证预览流程；不要只依赖 Disable builds 开关，本次迁移中启用 Disable builds 后仍发生了旧构建。断开连接不会删除当前 Active Deployment 或域名；保留现有正式站，等待下一次完整稳定发布建立新基线。
+GitHub environments `docs-website-preview` 和 `docs-website-stable` 仅允许 `main` 部署。`CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 可来自对本仓库开放的组织级或仓库级 secrets，通过 `secrets: inherit` 传入部署工作流；也可配置在对应 environment 中，同名 environment secret 优先。`CLOUDFLARE_ACCOUNT_ID` 还支持 variable，工作流优先读取 secret。继承凭据不改变 environment 的 `main` 部署限制。
 
-远端凭据、域名和工作流首次运行需在上线时确认，已完成的切换状态记录在仓库 [RELEASE.md](../../RELEASE.md)。正式部署及文档修补应从稳定发布记录恢复，操作步骤见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。
+迁移时先断开旧正式 Worker 的 Workers Builds Git 连接，再启用并验证预览流程；不要只依赖 Disable builds 开关，本次迁移中启用 Disable builds 后仍发生了旧构建。断开连接不会删除当前 Active Deployment 或域名；保留现有正式站，等待下一次完整稳定发布建立新基线。
+
+组织级 Cloudflare secrets 已配置并对本仓库开放，预览站已完成首次受管部署及线上验收；切换状态及验收证据记录在仓库 [RELEASE.md](../../RELEASE.md)。正式部署及文档修补应从稳定发布记录恢复，操作步骤见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)。

@@ -24,32 +24,64 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/full.d.mts",
       "browser": {
-        "import": "./dist/full-browser.mjs",
-        "require": "./dist/full-browser.cjs"
+        "import": {
+          "types": "./dist/full-browser.d.mts",
+          "default": "./dist/full-browser.mjs"
+        },
+        "require": {
+          "types": "./dist/full-browser.d.cts",
+          "default": "./dist/full-browser.cjs"
+        }
       },
-      "import": "./dist/full.mjs",
-      "require": "./dist/full.cjs"
+      "import": {
+        "types": "./dist/full.d.mts",
+        "default": "./dist/full.mjs"
+      },
+      "require": {
+        "types": "./dist/full.d.cts",
+        "default": "./dist/full.cjs"
+      }
     },
     "./full": {
-      "types": "./dist/full.d.mts",
       "browser": {
-        "import": "./dist/full-browser.mjs",
-        "require": "./dist/full-browser.cjs"
+        "import": {
+          "types": "./dist/full-browser.d.mts",
+          "default": "./dist/full-browser.mjs"
+        },
+        "require": {
+          "types": "./dist/full-browser.d.cts",
+          "default": "./dist/full-browser.cjs"
+        }
       },
-      "import": "./dist/full.mjs",
-      "require": "./dist/full.cjs"
+      "import": {
+        "types": "./dist/full.d.mts",
+        "default": "./dist/full.mjs"
+      },
+      "require": {
+        "types": "./dist/full.d.cts",
+        "default": "./dist/full.cjs"
+      }
     },
     "./lite": {
-      "types": "./dist/lite.d.mts",
-      "import": "./dist/lite.mjs",
-      "require": "./dist/lite.cjs"
+      "import": {
+        "types": "./dist/lite.d.mts",
+        "default": "./dist/lite.mjs"
+      },
+      "require": {
+        "types": "./dist/lite.d.cts",
+        "default": "./dist/lite.cjs"
+      }
     },
     "./node": {
-      "types": "./dist/node.d.mts",
-      "import": "./dist/node.mjs",
-      "require": "./dist/node.cjs"
+      "import": {
+        "types": "./dist/node.d.mts",
+        "default": "./dist/node.mjs"
+      },
+      "require": {
+        "types": "./dist/node.d.cts",
+        "default": "./dist/node.cjs"
+      }
     }
   },
   "main": "./dist/full.cjs",
