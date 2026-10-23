@@ -7,6 +7,9 @@ on:
     types: [opened, synchronize]
   workflow_dispatch:
 
+env:
+  LEFTHOOK: 0
+
 permissions:
   contents: read
 
@@ -18,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [22, 24]
+        node-version: [22.23.4, 24.22.1]
     runs-on: ${{ matrix.os }}
     # Remote Caching enabled - configure TURBO_TOKEN and TURBO_TEAM in repository settings
     env:
@@ -43,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate repository automation
+        run: pnpm exec repo config validate && pnpm exec repo doctor --json && pnpm exec repo doctor --rules nightly-workflow,nightly-provider,nightly-schedule,nightly-cli --strict --json
+
       - name: Check brand assets
         run: pnpm brand:check
 
@@ -60,12 +66,12 @@ jobs:
         run: pnpm build
 
       - name: Typecheck
-        if: ${{ matrix.os != 'windows-latest' || matrix.node-version != 22 }}
+        if: ${{ matrix.os != 'windows-latest' || matrix.node-version != '22.23.4' }}
         run: pnpm typecheck
 
       - name: Typecheck (Windows Node 22)
-        if: ${{ matrix.os == 'windows-latest' && matrix.node-version == 22 }}
-        run: pnpm exec turbo run typecheck --concurrency=1
+        if: ${{ matrix.os == 'windows-latest' && matrix.node-version == '22.23.4' }}
+        run: pnpm exec turbo run typecheck --concurrency=1 && pnpm exec tsc -p tsconfig.acceptance.json
 
       - name: TSD
         run: pnpm tsd
@@ -94,7 +100,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 

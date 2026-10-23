@@ -1,19 +1,15 @@
 # Security Policy
 
-English | [简体中文](SECURITY.zh-CN.md)
-
 ## Supported versions
 
-Security fixes are provided for the latest stable major release of `repoctl` and its fixed-version core package. Upgrade to the latest release before reporting a problem that may already be resolved.
+Report security issues against the latest stable release of the affected `weapp-sqlite` package. The `snapshot-nightly` channel is intended for testing upcoming changes and does not replace a stable release.
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Use GitHub's private vulnerability reporting for `sonofmagic/repoctl`:
+Do not publish exploit details in a public issue. Use [weapp-sqlite's private vulnerability reporting](https://github.com/weapp-sqlite/weapp-sqlite/security/advisories/new).
 
-https://github.com/sonofmagic/repoctl/security/advisories/new
-
-Include the affected version, environment, impact, reproduction steps, and any suggested mitigation. Maintainers will acknowledge a complete report as soon as practical and coordinate validation, remediation, and disclosure with the reporter.
+Include the affected package and version, host and engine, impact, reproduction steps, and any proposed mitigation. Remove database contents, credentials, access tokens, and personal data from shared evidence. Maintainers will coordinate validation and disclosure with the reporter.
 
 ## Scope
 
-Reports involving repoctl command execution, generated workflow security, release credentials, dependency handling, path traversal, or unsafe template extraction are in scope. Vulnerabilities in third-party tools should also be reported upstream when appropriate.
+Reports involving SQLite adapter boundaries, persistent storage, debug tools and their authentication, unsafe query handling, package publication, or documentation deployment credentials are in scope. Vulnerabilities in upstream dependencies should also be reported to their maintainers when appropriate.

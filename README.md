@@ -9,7 +9,7 @@
 
 一个面向小程序与 Web 宿主的可插拔 SQLite driver workspace。
 
-文档站：[`sqlite.weapp.dev`](https://sqlite.weapp.dev)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，并由 Cloudflare Worker 的 Static Assets 托管。
+正式文档：[`sqlite.weapp.dev`](https://sqlite.weapp.dev)；主线预览：[`preview.sqlite.weapp.dev`](https://preview.sqlite.weapp.dev)。文档源码位于 `apps/docs`，使用 Fumadocs 构建为纯静态站点，由 repoctl 管理两个 Cloudflare Worker 的构建与部署来源。预览站跟随 `main`，正式站跟随完整稳定发布。
 
 如果你是第一次使用，建议先阅读[快速开始](https://sqlite.weapp.dev/docs/getting-started)。本项目适合把数据保存在用户设备上，不是远程数据库或线上运营后台。
 
@@ -123,6 +123,8 @@ export default defineSqliteDebugWorkspace({
 
 ## 开发
 
+仓库维护使用 Node.js **24.22.1**、pnpm **12.14.0**、repoctl **6.0.1** 和 Lefthook **2.2.2**。开发工具支持的 Node.js 范围为 `^22.23.4 || ^24.22.1 || >=26.12.1`；已发布 runtime 包的 Node.js 要求保持不变。`pnpm install` 安装 Lefthook hooks，提交时使用 repoctl 的 staged-file 和 commit-message 检查。
+
 ```bash
 pnpm install
 pnpm build
@@ -142,14 +144,24 @@ pnpm validate     # 升级后执行完整构建、类型、API 和测试门禁
 
 维护命令会保护已验证的框架边界：TypeScript 维持 6.x，Taro 维持 4.2.1 + React 18，MPX 维持 Vue 2.7 + Babel 7 + Webpack 5.110.2，uni-app 维持同一 Vue3 alpha 发布批次与 Vite 8.2.2。命令会在输出中列出每项保护原因；框架升级应先完成对应迁移和 demo 构建，再调整 `scripts/dependency-policy.ts`。
 
-文档站本地开发与部署：
+文档站本地开发与检查：
 
 ```bash
 pnpm --filter @weapp-sqlite/docs dev
-pnpm --filter @weapp-sqlite/docs build
-pnpm --filter @weapp-sqlite/docs run deploy:dry
-pnpm --filter @weapp-sqlite/docs run deploy
+pnpm docs:build
+pnpm --filter @weapp-sqlite/docs preview
+pnpm docs:test
 ```
+
+网站通过 repoctl 的 Documentation 工作流部署。`docs:deploy:preview` 和 `docs:deploy:stable` 是工作流使用的部署 hook，只部署已经构建并校验来源的产物。Cloudflare 凭据、首次上线及旧 Workers Builds 的切换顺序见[静态部署指南](https://sqlite.weapp.dev/docs/deployment/)和 [RELEASE.md](./RELEASE.md)。
+
+nightly 每天北京时间 08:00 从 `main` 构建，使用 repoctl 原生 npm dist-tag `snapshot-nightly`：
+
+```bash
+pnpm add @weapp-sqlite/weapp-vite@snapshot-nightly
+```
+
+nightly 使用独立快照版本，不消耗 changeset、不推进 `latest`。正式版本继续通过 `pnpm change` 和 release PR 发布；发布维护与恢复见 [RELEASE.md](./RELEASE.md)。
 
 当前测试使用 `sql.js` 验证 WASM adapter 的真实 SQL 链路，并使用 Playwright 对 Web 生产产物执行 IndexedDB 持久化验收。微信支持仍必须经过真实 DevTools 与 iOS/Android 真机门禁。
 

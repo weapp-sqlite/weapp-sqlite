@@ -355,7 +355,9 @@ test('the actual first DevTools release resolves all nine packages to the prepar
   git(cwd, 'config', 'user.email', 'release-regression@example.invalid')
   const config = await readFile(path.join(cwd, 'repoctl.config.ts'), 'utf8')
   assert.ok(config.includes('monorepoCommand:'))
-  await write(cwd, 'repoctl.config.ts', config.replace('monorepoCommand:', 'repoCommand:'))
+  // Historical fixtures contain the removed v5 lint-staged configuration.
+  const migratedConfig = config.replace(/ {4}lintStaged: \{[\s\S]*?\n {4}\},\n/, '')
+  await write(cwd, 'repoctl.config.ts', migratedConfig)
   commit(cwd, 'chore(deps): migrate repoctl config after the historical release')
   const { packages } = await getWorkspaceData(cwd)
   assert.equal(packages.length, 9)

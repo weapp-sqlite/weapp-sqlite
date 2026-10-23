@@ -7,6 +7,7 @@
 # test & build
 /coverage
 /.next/
+/.wrangler/
 /out/
 /build
 worker-configuration.d.ts

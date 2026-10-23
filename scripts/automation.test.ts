@@ -1,0 +1,253 @@
+/* eslint-disable test/no-import-node-test -- Automation contracts run independently of workspace builds. */
+/* eslint-disable no-template-curly-in-string -- Workflow assertions contain literal GitHub Actions expressions. */
+import type { TestContext } from 'node:test'
+import type { NightlyOptions, SnapshotReport } from 'repoctl'
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { test } from 'node:test'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createNightlyPlan, createSnapshotPlan, getWorkspaceData, releaseNightly } from 'repoctl'
+import { parse } from 'yaml'
+import config from '../repoctl.config'
+
+const repository = fileURLToPath(new URL('..', import.meta.url))
+const releaseConfig = config.commands.release
+const site = config.commands.docs.sites.website
+const require = createRequire(import.meta.url)
+
+function git(cwd: string, ...args: string[]) {
+  const result = spawnSync('git', ['-c', `core.hooksPath=${path.join(cwd, '.git/no-hooks')}`, '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout.trim()
+}
+
+async function temporaryRepository(t: TestContext) {
+  const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-automation-')))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const cwd = path.join(directory, 'source')
+  await mkdir(cwd)
+  git(cwd, 'init', '--quiet', '--initial-branch=main')
+  git(cwd, 'config', 'user.name', 'Automation regression')
+  git(cwd, 'config', 'user.email', 'automation@example.invalid')
+  return { directory, cwd }
+}
+
+async function write(cwd: string, filename: string, content: string) {
+  const destination = path.join(cwd, filename)
+  await mkdir(path.dirname(destination), { recursive: true })
+  await writeFile(destination, content)
+}
+
+async function snapshotFixture(t: TestContext) {
+  const { directory, cwd } = await temporaryRepository(t)
+  const { packages } = await getWorkspaceData(repository, { ignorePrivatePackage: false, ignoreRootPackage: false })
+  for (const filename of ['package.json', 'pnpm-workspace.yaml']) {
+    await copyFile(path.join(repository, filename), path.join(cwd, filename))
+  }
+  for (const pkg of packages) {
+    if (pkg.rootDir === repository) {
+      continue
+    }
+    await write(cwd, path.join(path.relative(repository, pkg.rootDir), 'package.json'), JSON.stringify(pkg.manifest))
+  }
+  // No intents are pending in this fixture; a registry request is a regression.
+  await write(cwd, '.npmrc', 'registry=http://127.0.0.1:9/\n')
+  git(cwd, 'add', '--all')
+  git(cwd, 'commit', '--quiet', '-m', 'test: freeze the actual workspace package graph')
+  const commit = git(cwd, 'rev-parse', 'HEAD')
+  const pnpm = process.env['npm_execpath']
+  assert.ok(pnpm, 'Run automation regressions with pnpm test:automation')
+  const pnpmCommand = /\.[cm]?js$/iu.test(pnpm) ? process.execPath : pnpm
+  const pnpmPrefix = pnpmCommand === process.execPath ? [pnpm] : []
+  const spawn: NonNullable<NightlyOptions['spawn']> = ((command: string, args: string[], options: Parameters<typeof spawnSync>[2]) => {
+    if (command === 'pnpm') {
+      const operation = args.filter(arg => !arg.startsWith('--config.')).join(' ')
+      assert.ok(operation === '--version' || operation === 'version --help'
+        || operation === 'version -r --dry-run --json --no-git-checks', `Unexpected pnpm mutation: ${args.join(' ')}`)
+      return spawnSync(pnpmCommand, [...pnpmPrefix, ...args], { ...options, stdio: ['ignore', 'pipe', 'pipe'] })
+    }
+    assert.equal(command, 'git')
+    assert.ok(['rev-parse', '--no-optional-locks'].includes(args[0] ?? ''), `Unexpected Git mutation: ${args.join(' ')}`)
+    return spawnSync(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] })
+  }) as NonNullable<NightlyOptions['spawn']>
+  return { directory, cwd, commit, spawn, packages }
+}
+
+function registry(snapshot: SnapshotReport, missing?: string): typeof fetch {
+  const byName = new Map(snapshot.packages.map(pkg => [pkg.name, pkg]))
+  return async (input, options) => {
+    assert.ok(!options?.method || options.method === 'GET', 'Nightly planning must never write to the registry')
+    const url = new URL(String(input))
+    assert.equal(url.origin, 'https://registry.npmjs.org')
+    const tags = url.pathname.match(/^\/-\/package\/([^/]+)\/dist-tags$/u)
+    const name = decodeURIComponent(tags?.[1] ?? url.pathname.split('/')[1]!)
+    const pkg = byName.get(name)
+    assert.ok(pkg, `Unexpected package registry lookup: ${name}`)
+    if (tags) {
+      return Response.json({ latest: pkg.currentVersion, ...(name === missing ? {} : { 'snapshot-nightly': pkg.version }) })
+    }
+    assert.equal(decodeURIComponent(url.pathname.split('/')[2]!), pkg.version)
+    return Response.json({
+      name,
+      version: pkg.version,
+      repoctlSnapshot: { ...snapshot.identity, identityKey: snapshot.identityKey, tag: snapshot.tag },
+      dist: { integrity: `sha512-${'a'.repeat(86)}==` },
+    })
+  }
+}
+
+test('the nightly snapshot covers the nine public packages and their complete internal dependency graph', async (t) => {
+  const { cwd, commit, spawn, packages } = await snapshotFixture(t)
+  const before = git(cwd, 'status', '--porcelain')
+  const snapshot = await createSnapshotPlan({ cwd, identity: { kind: 'nightly', commit, buildId: '101-1' }, spawn })
+  assert.equal(snapshot.status, 'planned')
+  assert.equal(snapshot.tag, 'snapshot-nightly')
+  assert.equal(snapshot.packages.length, 9)
+  assert.deepEqual(snapshot.packages.map(pkg => pkg.name).sort(), [...site.packages].sort())
+  const names = new Set(snapshot.packages.map(pkg => pkg.name))
+  const workspaceNames = new Set(packages.map(pkg => pkg.manifest.name))
+  let dependencyEdges = 0
+  for (const pkg of packages) {
+    if (pkg.manifest.private) {
+      assert.ok(!names.has(pkg.manifest.name!))
+      continue
+    }
+    const planned = snapshot.packages.find(item => item.name === pkg.manifest.name)
+    assert.ok(planned)
+    assert.equal(planned.currentVersion, pkg.manifest.version)
+    assert.ok(planned.version.endsWith(`-snapshot.nightly.c${commit}.b${snapshot.identityKey}`))
+    for (const dependency of Object.keys({ ...pkg.manifest.dependencies, ...pkg.manifest.optionalDependencies, ...pkg.manifest.peerDependencies })) {
+      if (workspaceNames.has(dependency)) {
+        assert.ok(names.has(dependency), `${pkg.manifest.name} requires ${dependency} in the same snapshot batch`)
+        dependencyEdges++
+      }
+    }
+  }
+  assert.ok(dependencyEdges > 0)
+  assert.equal(git(cwd, 'status', '--porcelain'), before)
+  assert.equal(git(cwd, 'rev-parse', 'HEAD'), commit)
+})
+
+test('the configured schedule skips a complete existing batch but manual runs plan a fresh batch', async (t) => {
+  const { cwd, directory, commit, spawn } = await snapshotFixture(t)
+  const snapshot = await createSnapshotPlan({ cwd, identity: { kind: 'nightly', commit, buildId: '101-1' }, spawn })
+  const eventFile = path.join(directory, 'event.json')
+  const event = { repository: { full_name: 'weapp-sqlite/weapp-sqlite', default_branch: 'main' }, schedule: releaseConfig.nightly.schedule }
+  await writeFile(eventFile, JSON.stringify(event))
+  const env = {
+    ...process.env,
+    CI: 'true',
+    GITHUB_ACTIONS: 'true',
+    GITHUB_REPOSITORY: event.repository.full_name,
+    GITHUB_REF: 'refs/heads/main',
+    GITHUB_SHA: commit,
+    GITHUB_RUN_ID: '102',
+    GITHUB_RUN_ATTEMPT: '1',
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventFile,
+    GITHUB_STEP_SUMMARY: '',
+    REPOCTL_NIGHTLY_PROVIDER: releaseConfig.nightly.provider,
+    REPOCTL_NIGHTLY_SCHEDULE: releaseConfig.nightly.schedule,
+  }
+  const options: NightlyOptions = { cwd, env, spawn, config: releaseConfig, outputDirectory: path.join(directory, 'reports'), registryFetch: registry(snapshot) }
+  const scheduled = await createNightlyPlan(options)
+  assert.equal(scheduled.status, 'skipped', scheduled.error ?? '')
+  assert.equal(scheduled.packages.length, 9)
+  assert.deepEqual(scheduled.latest, Object.fromEntries(snapshot.packages.map(pkg => [pkg.name, pkg.currentVersion])))
+  assert.deepEqual(scheduled.commands, [])
+
+  const partial = await createNightlyPlan({ ...options, registryFetch: registry(snapshot, snapshot.packages[0]!.name) })
+  assert.equal(partial.status, 'planned', partial.error ?? '')
+
+  await writeFile(eventFile, JSON.stringify({ repository: event.repository, inputs: { mode: 'nightly' } }))
+  const manual = await releaseNightly({ ...options, dryRun: true, env: { ...env, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ID: '103' } })
+  assert.equal(manual.status, 'planned', manual.error ?? '')
+  assert.equal(manual.buildId, '103-1')
+  assert.notEqual(manual.snapshot?.identityKey, snapshot.identityKey)
+  assert.deepEqual(manual.latest, scheduled.latest)
+  assert.deepEqual(manual.commands, [])
+
+  await writeFile(eventFile, JSON.stringify(event))
+  assert.ok(manual.snapshot)
+  const priorBatch = registry(snapshot)
+  const newBatch = registry(manual.snapshot)
+  const mixed = await createNightlyPlan({
+    ...options,
+    registryFetch: (input, init) => new URL(String(input)).pathname.split('/').map(decodeURIComponent).includes(snapshot.packages[0]!.name)
+      ? newBatch(input, init)
+      : priorBatch(input, init),
+  })
+  assert.equal(mixed.status, 'planned', mixed.error ?? '')
+  assert.equal(git(cwd, 'status', '--porcelain'), '')
+  assert.equal(git(cwd, 'rev-parse', 'HEAD'), commit)
+})
+
+test('managed workflows route main to preview and only completed stable releases to production', async () => {
+  const release = parse(await readFile(path.join(repository, '.github/workflows/release.yml'), 'utf8'))
+  const docs = parse(await readFile(path.join(repository, '.github/workflows/repoctl-docs.yml'), 'utf8'))
+  const deploy = parse(await readFile(path.join(repository, '.github/workflows/repoctl-docs-deploy.yml'), 'utf8'))
+  assert.deepEqual(release.on.schedule, [{ cron: releaseConfig.nightly.schedule }])
+  assert.ok(release.on.workflow_dispatch.inputs.mode.options.includes('nightly'))
+  assert.equal(release.jobs.nightly.env.REPOCTL_NIGHTLY_PROVIDER, releaseConfig.nightly.provider)
+  assert.equal(release.jobs.nightly.env.REPOCTL_NIGHTLY_SCHEDULE, releaseConfig.nightly.schedule)
+  assert.deepEqual(release.jobs.nightly.permissions, { 'contents': 'read', 'id-token': 'write' })
+  assert.match(release.jobs.nightly.if, /github\.event_name == 'schedule'/u)
+  assert.match(release.jobs.nightly.if, /inputs\.mode == 'nightly'/u)
+  const stages = release.jobs.release.steps.filter((step: { id?: string }) => /^release-(?:plan|verify|prepare|upload|confirm|finalize)$/u.test(step.id ?? ''))
+  assert.deepEqual(stages.map((step: { id: string }) => step.id), ['release-plan', 'release-verify', 'release-prepare', 'release-upload', 'release-confirm', 'release-finalize'])
+  assert.equal(release.jobs.release.outputs['release-record'], '${{ steps.release-finalize.outputs.release-record }}')
+  assert.equal(release.jobs.docs.needs, 'release')
+  assert.equal(release.jobs.docs.with.channel, 'stable')
+  assert.equal(release.jobs.docs.with.release, '${{ needs.release.outputs.release-record }}')
+  assert.match(release.jobs.docs.if, /needs\.release\.outputs\.release-record != ''/u)
+  assert.deepEqual(docs.on.push.branches, ['main'])
+  assert.equal(docs.jobs.deploy.with.channel, '${{ github.event_name == \'push\' && \'preview\' || inputs.channel }}')
+  assert.equal(docs.jobs.deploy.with['source-sha'], '${{ github.event_name == \'push\' && github.sha || inputs.source-sha }}')
+  assert.deepEqual(Object.keys(deploy.on), ['workflow_call'])
+  assert.equal(deploy.concurrency['cancel-in-progress'], false)
+  assert.equal(deploy.concurrency.group, 'docs-${{ inputs.site }}-${{ inputs.channel }}')
+  assert.equal(deploy.jobs.deploy.environment, deploy.concurrency.group)
+  assert.notEqual(site.preview.url, site.stable.url)
+  for (const gate of ['build', 'check:publish', 'lint', 'typecheck', 'tsd', 'test', 'test:release']) {
+    assert.ok(releaseConfig.qualityScripts.includes(gate), `Release verification must retain ${gate}`)
+  }
+})
+
+test('staged lint routes root and docs filenames intact without touching the real index', async (t) => {
+  const { directory, cwd } = await temporaryRepository(t)
+  const rootFile = 'packages/core/space \'quote.ts'
+  const docsFile = 'apps/docs/content/docs/it\'s a guide.mdx'
+  await write(cwd, rootFile, 'export const value = 1\n')
+  await write(cwd, docsFile, '# Guide\n')
+  await write(cwd, 'ignored.png', 'image')
+  git(cwd, 'add', '--all')
+  await write(cwd, 'unstaged.ts', 'export const ignored = 1\n')
+  const before = git(cwd, 'diff', '--cached', '--binary')
+  const bin = path.join(directory, 'bin')
+  const record = path.join(directory, 'commands.jsonl')
+  await mkdir(bin)
+  const shim = path.join(bin, process.platform === 'win32' ? 'pnpm.js' : 'pnpm')
+  await writeFile(shim, '#!/usr/bin/env node\nrequire("node:fs").appendFileSync(process.env.AUTOMATION_COMMAND_LOG, JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }) + "\\n")\n')
+  if (process.platform === 'win32') {
+    await writeFile(path.join(bin, 'pnpm.cmd'), `@"${process.execPath}" "${shim}" %*\r\n`)
+  }
+  else {
+    await chmod(shim, 0o755)
+  }
+  const result = spawnSync(process.execPath, ['--import', pathToFileURL(require.resolve('tsx')).href, path.join(repository, 'scripts/staged-lint.ts')], {
+    cwd,
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env['PATH']}`, AUTOMATION_COMMAND_LOG: record },
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  const commands = (await readFile(record, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+  assert.deepEqual(commands, [
+    { cwd, args: ['exec', 'eslint', '--fix', '--no-warn-ignored', '--', rootFile] },
+    { cwd: path.join(cwd, 'apps/docs'), args: ['exec', 'eslint', '--fix', '--no-warn-ignored', '--', docsFile.slice('apps/docs/'.length)] },
+  ])
+  assert.equal(git(cwd, 'diff', '--cached', '--binary'), before)
+})

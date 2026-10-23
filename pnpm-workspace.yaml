@@ -20,6 +20,7 @@ allowBuilds:
   core-js: true
   core-js-pure: true
   esbuild: true
+  lefthook: true
   msgpackr-extract: true
   sharp: true
   unrs-resolver: true

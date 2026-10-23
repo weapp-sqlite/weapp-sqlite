@@ -16,11 +16,15 @@ when a host needs native APIs, filesystem rules, or a different engine.
 
 ## Commands
 
-Use Node.js 22.22.1+ and pnpm 12:
+Use Node.js 24.22.1 and pnpm 12.14.0 for repository development. The repoctl
+6.0.1 toolchain supports `^22.23.4 || ^24.22.1 || >=26.12.1`; public runtime
+packages retain their own existing Node.js engine requirements. Git hooks are
+managed by Lefthook 2.2.2 and installed by `pnpm install`.
 
 ```bash
 pnpm install
 pnpm validate
+pnpm docs:test
 pnpm --filter @weapp-sqlite/core test
 pnpm --filter @weapp-sqlite/wasm test
 ```
@@ -28,6 +32,24 @@ pnpm --filter @weapp-sqlite/wasm test
 Run `pnpm change` for every user-visible package change. Changeset summaries
 must be written in Chinese. Do not commit `dist`, coverage, `.turbo`, or
 workspace `node_modules` output.
+
+## Release and documentation channels
+
+Use repoctl's release and documentation commands through the configured
+workflows. Stable releases retain pnpm's full workspace version calculation,
+including private dependency propagation; private workspaces are never published.
+Keep the complete Git history and the release source/checkpoint regression tests.
+
+Nightly runs from `main` daily at 00:00 UTC (08:00 Asia/Shanghai) and uses the
+native `snapshot-nightly` npm tag. Do not rename it to `nightly`, advance `latest`,
+or consume changesets for snapshots.
+
+The website site has a `preview` channel at `preview.sqlite.weapp.dev` and a
+`stable` channel at `sqlite.weapp.dev`. Preview follows `main`; stable requires
+a complete stable release baseline. `docs:build` and `docs:test` are local
+verification entrypoints. The `docs:deploy:preview` and `docs:deploy:stable`
+scripts are repoctl deployment hooks for validated artifacts, not independent
+build-and-deploy commands. See `RELEASE.md` for credentials, rollout, and recovery.
 
 ## Style
 
