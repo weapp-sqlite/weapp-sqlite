@@ -257,10 +257,10 @@ async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' |
       installationDirectory = String(settings?.cwd)
       const manifest = JSON.parse(readFileSync(path.join(installationDirectory, 'package.json'), 'utf8'))
       assert.deepEqual(manifest.dependencies, { [name]: provider === 'npm' ? 'snapshot-nightly' : report.packages[0]!.locator }, 'The consumer must exercise the published channel')
-      const expectedWorkspace = provider === 'npm' ? {
+      const expectedWorkspace = {
         packages: [],
-        minimumReleaseAgeExclude: [`${name}@${version}`],
-      } : { packages: [] }
+        ...provider === 'npm' ? { minimumReleaseAgeExclude: [`${name}@${version}`] } : {},
+      }
       assert.deepEqual(parse(readFileSync(path.join(installationDirectory, 'pnpm-workspace.yaml'), 'utf8')), expectedWorkspace, 'Only the confirmed npm batch may bypass release age; no dependency overrides or global minimumReleaseAge setting')
       if (failure === 'tarball') {
         return { status: 1, stdout: '', stderr: `${JSON.stringify({ level: 'error', code: 'ERR_PNPM_TARBALL_IO_ERROR', message: 'Fixture tarball could not be read' })}\n` }
