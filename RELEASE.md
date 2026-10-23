@@ -22,11 +22,19 @@ pnpm add @weapp-sqlite/weapp-vite@snapshot-nightly
 pnpm add -D @weapp-sqlite/devtools@snapshot-nightly
 ```
 
-nightly 不消耗 changeset、不修改仓库中的正式版本、不推进 `latest`，也不会触发正式文档发布。repoctl 根据来源提交及 CI 构建身份生成快照版本，在隔离源码中构建、校验包及内部依赖后发布公开包；私有工作区只参与构建。恢复同一次失败构建时保留原构建身份和发布证据，新的构建使用新的身份。
+pnpm 12 默认限制刚发布版本的安装，标签解析可能退回旧版本。立即试用 nightly 时，先核对发布报告中的同批版本，在项目的 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 中加入所需公开包及内部依赖的精确 `包名@版本`，再执行上述命令。不要用旧版本的安装成功代替 nightly 验收；安装后应核对实际版本中的源码 SHA 和批次身份。没有发布时间限制的 npm 可直接使用 `npm install 包名@snapshot-nightly`。
+
+nightly 不消耗 changeset、不修改仓库中的正式版本、不推进 `latest`，也不会触发正式文档发布。repoctl 根据来源提交及 CI 构建身份生成快照版本，在隔离源码中构建、校验包及内部依赖后发布公开包；私有工作区只参与构建。构建身份包含 GitHub run ID 和 attempt，因此手动触发及重新运行 Actions 都会创建新批次。定时任务仅在主线提交已有完整的同批发布时跳过。
 
 隔离源码由 Git archive 导出，不包含 `.git`。根 `prepare` 只在本地 Git checkout 中安装 Lefthook，CI、显式禁用 hooks 或源码归档会跳过安装；依赖安装和包构建仍正常执行。若 nightly 在上传前失败，先根据诊断报告和 npm registry 确认是否已有包上传，再决定重试路径。
 
 `pnpm check:publish` 除仓库元数据和文件清单外，还调用 repoctl 的实际包检查，验证 tarball、ESM/CommonJS 类型声明及独立消费者安装。CI 在 Ubuntu Node 24 中执行同一检查，避免到 nightly 上传前才发现发布产物问题。
+
+nightly 消费者使用独立的 pnpm 配置。仓库补丁仅将已确认批次的精确 `包名@版本` 加入 `minimumReleaseAgeExclude`，避免发布时间限制导致标签回退，同时保留第三方依赖的默认策略。消费者仍安装真实 `snapshot-nightly` 标签，从 npm 下载 tarball，并核对安装后的精确版本及批次身份；真实解包、类型或运行时错误会使验证失败。
+
+npm 的 dist-tags、完整版本元数据和 pnpm 使用的 install-v1 元数据可能在发布后短暂不一致。发布确认会同时检查这些视图中的标签、精确版本和 tarball 身份。消费者验证完成后再次严格核对标签；若通道已变化，当前运行失败，不等待另一个批次恢复来掩盖变化。
+
+nightly 失败后先下载诊断 artifacts，分别检查每个包的 `published`、`confirmed` 和消费者结果。九包均已上传并确认、仅消费者失败时，应先核验原批次的精确版本、完整性与内部依赖，再按报告中的版本独立安装验证。repoctl 6.0.1 没有仅重跑原批次消费者的 CLI 入口；重新运行 workflow 会发布新批次，不能当作原批次的原地恢复。保留原失败报告，工具修复合并后再显式决定是否创建新批次。
 
 首次启用前，确认所有九个公开 npm 包的可信发布配置允许本仓库的 `release.yml`。仅设置 GitHub 的 `NPM_TRUSTED_PUBLISHING` 变量不能替代 npm 侧授权。2026-10-23 已通过 npm 包设置逐项核对：九个包均绑定 `weapp-sqlite/weapp-sqlite` 的 `release.yml`，状态 Valid，允许 `npm publish`，未限制 environment。
 

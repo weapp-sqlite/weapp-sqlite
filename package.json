@@ -75,7 +75,7 @@
     "docs:deploy:preview": "tsx scripts/docs-deployment/deploy.ts preview",
     "docs:deploy:stable": "tsx scripts/docs-deployment/deploy.ts stable",
     "docs:test": "node --import tsx --test scripts/docs-deployment/*.test.ts",
-    "test:automation": "node --import tsx --test scripts/automation.test.ts",
+    "test:automation": "node --import tsx --test scripts/automation.test.ts scripts/nightly-consumer.test.ts",
     "lint:automation": "eslint scripts repoctl.config.ts .github/workflows lefthook.yml"
   },
   "devDependencies": {
