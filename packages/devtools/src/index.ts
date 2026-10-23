@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
 import type { SqliteDevtoolsBrokerOptions } from './broker'
-import type { SqliteDevtoolsInvocation, SqliteDevtoolsReleaseSession, SqliteDevtoolsResult, SqliteDevtoolsRuntimeDescriptor } from './protocol'
+import type { DevframeDefinition } from './devframe.cjs'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -13,17 +13,6 @@ import { createServer } from 'vite'
 import { createSqliteDevtoolsBroker } from './broker'
 import { SQLITE_DEVTOOLS_SCOPE } from './protocol'
 
-declare module 'devframe' {
-  interface DevframeRpcServerFunctions {
-    'weapp-sqlite:list-runtimes': (ownerId?: string) => SqliteDevtoolsRuntimeDescriptor[]
-    'weapp-sqlite:invoke': (input: SqliteDevtoolsInvocation) => Promise<SqliteDevtoolsResult>
-    'weapp-sqlite:release-session': (input: SqliteDevtoolsReleaseSession) => Promise<SqliteDevtoolsResult>
-  }
-  interface DevframeRpcClientFunctions {
-    'weapp-sqlite:state-updated': (runtimes: SqliteDevtoolsRuntimeDescriptor[]) => void
-  }
-}
-
 export interface CreateSqliteDevtoolsDevframeOptions extends SqliteDevtoolsBrokerOptions {
   readonly clientAssets?: string
 }
@@ -32,7 +21,7 @@ export function createSqliteDevtoolsDevframe(options: CreateSqliteDevtoolsDevfra
   const broker = createSqliteDevtoolsBroker(options)
   let unsubscribe: (() => void) | undefined
   let disposing: Promise<void> | undefined
-  const definition = defineDevframe({
+  const definition: DevframeDefinition = defineDevframe({
     id: SQLITE_DEVTOOLS_SCOPE,
     name: 'SQLite',
     version: '0.1.0',

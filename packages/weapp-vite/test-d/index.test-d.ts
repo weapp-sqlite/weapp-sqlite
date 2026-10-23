@@ -1,12 +1,16 @@
 import type { SqliteMigration, SqliteTransaction } from '@weapp-sqlite/core'
+import type { Plugin } from 'vite'
 // eslint-disable-next-line antfu/no-import-dist
 import type { SqliteRuntimeAdapter } from '../dist/adapter.mjs'
 // eslint-disable-next-line antfu/no-import-dist
 import type { SqliteRuntimeInfo } from '../dist/runtime.mjs'
 import { expectAssignable, expectType } from 'tsd'
-import { weappSqlite } from '..'
 // eslint-disable-next-line antfu/no-import-dist
 import { createSqliteDebugController, defineSqliteDebugWorkspace } from '../dist/debug.mjs'
+// eslint-disable-next-line antfu/no-import-dist
+import { weappSqlite as weappSqliteCommonJs } from '../dist/plugin.cjs'
+// eslint-disable-next-line antfu/no-import-dist
+import { weappSqlite } from '../dist/plugin.mjs'
 // eslint-disable-next-line antfu/no-import-dist
 import { getSqliteRuntimeInfo, getSqliteTarget, openSqlite, removeSqlite } from '../dist/runtime.mjs'
 
@@ -16,7 +20,8 @@ const migrations: readonly SqliteMigration[] = [{
   up: async (transaction: SqliteTransaction) => transaction.exec('CREATE TABLE notes (body TEXT)').then(() => undefined),
 }]
 
-expectAssignable<object>(weappSqlite())
+expectType<Plugin>(weappSqlite())
+expectType<Plugin>(weappSqliteCommonJs())
 expectAssignable<object>(weappSqlite({ debug: { enabled: true, page: { route: '__debug/index/index', configFile: './src/sqlite-debug.config.ts' } } }))
 expectAssignable<object>(weappSqlite({ wasm: { variant: 'lite', weappPackage: 'main' } }))
 expectAssignable<object>(weappSqlite({ wasm: { variant: 'full', weappPackage: { mode: 'generated-subpackage' } } }))

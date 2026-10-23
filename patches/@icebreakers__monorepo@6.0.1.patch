@@ -1,5 +1,5 @@
 diff --git a/dist/commands-D1KtdxnV.mjs b/dist/commands-D1KtdxnV.mjs
-index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..025ecf0794cade243bee07f01da765ae69235ebd 100644
+index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..58b5c3c6ef529bab313c7e1857c26fc02253928f 100644
 --- a/dist/commands-D1KtdxnV.mjs
 +++ b/dist/commands-D1KtdxnV.mjs
 @@ -1,7 +1,7 @@
@@ -49,6 +49,30 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..025ecf0794cade243bee07f01da765ae
  			recovery = {
  				...recovery,
  				config: {
+@@ -10833,12 +10835,21 @@ async function getMaintenanceWorkflow(cwd) {
+ //#endregion
+ //#region src/commands/package-check/entries.ts
+ function resolveTarget(value, conditions) {
++	if (value === null) return null;
+ 	if (typeof value === "string") return value;
+-	if (Array.isArray(value)) return value.map((item) => resolveTarget(item, conditions)).find(Boolean);
++	if (Array.isArray(value)) {
++		let fallback = value.length ? void 0 : null;
++		for (const item of value) {
++			const resolved = resolveTarget(item, conditions);
++			if (resolved === null) fallback = null;
++			else if (resolved !== void 0) return resolved;
++		}
++		return fallback;
++	}
+ 	if (value && typeof value === "object") {
+ 		for (const [key, target] of Object.entries(value)) if (conditions.has(key)) {
+ 			const resolved = resolveTarget(target, conditions);
+-			if (resolved) return resolved;
++			if (resolved !== void 0) return resolved;
+ 		}
+ 	}
+ }
 diff --git a/dist/tsconfig-rZG7b9Ul.mjs b/dist/tsconfig-rZG7b9Ul.mjs
 index 4c5a70d2899594b89a3c25f91441c98c1b69c593..931f4e7dd91cbe9bf343a6e44e8baf919f3c945a 100644
 --- a/dist/tsconfig-rZG7b9Ul.mjs

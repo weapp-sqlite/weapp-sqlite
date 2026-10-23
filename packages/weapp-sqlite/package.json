@@ -35,10 +35,12 @@
     "./runtime": {
       "import": {
         "types": "./dist/runtime.d.mts",
+        "node": null,
         "default": "./dist/runtime.mjs"
       },
       "require": {
         "types": "./dist/runtime.d.cts",
+        "node": null,
         "default": "./dist/runtime.cjs"
       }
     },
@@ -55,10 +57,12 @@
     "./debug": {
       "import": {
         "types": "./dist/debug.d.mts",
+        "node": null,
         "default": "./dist/debug.mjs"
       },
       "require": {
         "types": "./dist/debug.d.cts",
+        "node": null,
         "default": "./dist/debug.cjs"
       }
     },
@@ -75,10 +79,12 @@
     "./workspace": {
       "import": {
         "types": "./dist/workspace.d.mts",
+        "node": null,
         "default": "./dist/workspace.mjs"
       },
       "require": {
         "types": "./dist/workspace.d.cts",
+        "node": null,
         "default": "./dist/workspace.cjs"
       }
     }

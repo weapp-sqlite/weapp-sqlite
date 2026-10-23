@@ -36,20 +36,24 @@
     "./runtime": {
       "import": {
         "types": "./dist/runtime.d.mts",
+        "node": null,
         "default": "./dist/runtime.mjs"
       },
       "require": {
         "types": "./dist/runtime.d.cts",
+        "node": null,
         "default": "./dist/runtime.cjs"
       }
     },
     "./debug": {
       "import": {
         "types": "./dist/debug.d.mts",
+        "node": null,
         "default": "./dist/debug.mjs"
       },
       "require": {
         "types": "./dist/debug.d.cts",
+        "node": null,
         "default": "./dist/debug.cjs"
       }
     },
@@ -76,20 +80,24 @@
     "./workspace": {
       "import": {
         "types": "./dist/workspace.d.mts",
+        "node": null,
         "default": "./dist/workspace.mjs"
       },
       "require": {
         "types": "./dist/workspace.d.cts",
+        "node": null,
         "default": "./dist/workspace.cjs"
       }
     },
     "./devtools-runtime": {
       "import": {
         "types": "./dist/devtools-runtime.d.mts",
+        "node": null,
         "default": "./dist/devtools-runtime.mjs"
       },
       "require": {
         "types": "./dist/devtools-runtime.d.cts",
+        "node": null,
         "default": "./dist/devtools-runtime.cjs"
       }
     }
@@ -129,7 +137,8 @@
     "@weapp-sqlite/miniprogram": "workspace:*",
     "@weapp-sqlite/sqljs": "workspace:*",
     "@weapp-sqlite/wasm": "workspace:*",
-    "@weapp-sqlite/web": "workspace:*"
+    "@weapp-sqlite/web": "workspace:*",
+    "vite": "8.3.2"
   },
   "devDependencies": {
     "@types/sql.js": "^1.4.11",
@@ -139,5 +148,12 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "tsd": {
+    "compilerOptions": {
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "paths": {}
+    }
   }
 }

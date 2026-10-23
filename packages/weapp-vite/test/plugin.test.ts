@@ -1,4 +1,4 @@
-import type { Plugin } from 'weapp-vite'
+import type { Plugin } from 'vite'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -30,7 +30,7 @@ describe('weappSqlite plugin', () => {
 
   it('generates a target-specialized runtime and emits only its WASM asset', async () => {
     const plugin = weappSqlite({ debug: true })
-    hook(plugin, 'configResolved').call({}, {
+    await hook(plugin, 'configResolved').call({}, {
       weappVite: { name: 'weapp-vite', runtime: 'miniprogram', platform: 'alipay' },
     } as never)
     const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-runtime')
@@ -48,7 +48,7 @@ describe('weappSqlite plugin', () => {
 
   it('uses the browser adapter and browser-only WASM for Web builds', async () => {
     const plugin = weappSqlite()
-    hook(plugin, 'configResolved').call({}, {
+    await hook(plugin, 'configResolved').call({}, {
       weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
     } as never)
     const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-runtime')
@@ -74,7 +74,7 @@ describe('weappSqlite plugin', () => {
 
   it('keeps the Web debug file adapter opt-in', async () => {
     const plugin = weappSqlite({ debug: true })
-    hook(plugin, 'configResolved').call({}, {
+    await hook(plugin, 'configResolved').call({}, {
       weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
     } as never)
     const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-runtime')
@@ -136,7 +136,7 @@ describe('weappSqlite plugin', () => {
 
   it('selects the lite engine and asset for every target', async () => {
     const plugin = weappSqlite({ wasm: { variant: 'lite' } })
-    hook(plugin, 'configResolved').call({}, {
+    await hook(plugin, 'configResolved').call({}, {
       weappVite: { name: 'weapp-vite', runtime: 'web', platform: 'web' },
     } as never)
     const resolved = await hook(plugin, 'resolveId').call({}, 'virtual:weapp-sqlite-runtime')
@@ -424,7 +424,7 @@ describe('weappSqlite plugin', () => {
 
   it('ignores WeChat package placement for non-WeChat targets', async () => {
     const plugin = weappSqlite({ wasm: { variant: 'lite', weappPackage: { mode: 'existing-subpackage', root: 'orders' } } })
-    hook(plugin, 'configResolved').call({}, {
+    await hook(plugin, 'configResolved').call({}, {
       weappVite: { name: 'weapp-vite', runtime: 'miniprogram', platform: 'alipay' },
     } as never)
     const emitFile = vi.fn()
