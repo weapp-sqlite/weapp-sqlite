@@ -32,7 +32,14 @@ it('preserves Devframe definitions and RPC augmentation for real CJS and ESM con
     await copyFile(path.join(packageRoot, 'package.json'), path.join(installedPackage, 'package.json'))
     await symlink(path.join(packageRoot, 'node_modules'), path.join(installedPackage, 'node_modules'), 'junction')
     await symlink(await realpath(path.join(packageRoot, 'node_modules/devframe')), path.join(consumer, 'node_modules/devframe'), 'junction')
-    await symlink(path.join(workspaceRoot, 'node_modules/@types'), path.join(consumer, 'node_modules/@types'), 'junction')
+    const installedTypes = path.join(consumer, 'node_modules/@types')
+    await mkdir(installedTypes)
+    // Resolve pnpm's package link before exposing it to the consumer, including
+    // when the temporary directory is on another Windows drive.
+    await symlink(await realpath(path.join(workspaceRoot, 'node_modules/@types/node')), path.join(installedTypes, 'node'), 'junction')
+    const consumerRequire = createRequire(path.join(consumer, 'package.json'))
+    const nodeTypesPackage = consumerRequire.resolve('@types/node/package.json')
+    await readFile(path.join(path.dirname(nodeTypesPackage), 'index.d.ts'), 'utf8')
     await runNode([require.resolve('tsdown/run'), '--out-dir', path.join(installedPackage, 'dist'), '--log-level', 'silent'], packageRoot)
     await Promise.all(['index.d.cts', 'index.d.mts', 'devframe.d.cts', 'devframe-rpc.d.mts'].map(file => readFile(path.join(installedPackage, 'dist', file), 'utf8')))
     const source = await readFile(path.join(packageRoot, 'test-d/consumer.cts'), 'utf8')
