@@ -1,5 +1,14 @@
 # weapp-sqlite-demo-weapp-vite
 
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - @weapp-sqlite/debug@0.2.1
+  - @weapp-sqlite/demo-shared@0.0.1
+  - @weapp-sqlite/weapp-vite@0.3.1
+
 ## 0.0.0
 
 ### Patch Changes

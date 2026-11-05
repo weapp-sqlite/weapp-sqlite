@@ -1,7 +1,7 @@
 {
   "name": "weapp-sqlite-demo-uni-app",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "uni-app SQLite demo",
   "scripts": {
