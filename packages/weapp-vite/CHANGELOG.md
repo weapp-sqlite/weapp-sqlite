@@ -1,5 +1,11 @@
 # @weapp-sqlite/weapp-vite
 
+## 0.3.2
+
+### Patch Changes
+
+- 修复 classic 开发构建重复改写及提前清理 SQLite 分包和调试资源的问题，按配置代完整转移生成文件所有权，避免切换分包配置遗留旧目录及并发接管遗留退出监听器，并避开微信保留目录。
+
 ## 0.3.1
 
 ### Patch Changes
