@@ -52,7 +52,7 @@ export default defineConfig({
 })
 ```
 
-自动分包默认生成 `__weapp_sqlite__` 普通分包；`openSqlite()` 调用不变。lite 不支持 FTS3、normalize 和贡献扩展函数，其他受支持 SQL 与数据库文件格式保持一致。
+自动分包默认生成 `weapp-sqlite` 普通分包；`openSqlite()` 调用不变。lite 不支持 FTS3、normalize 和贡献扩展函数，其他受支持 SQL 与数据库文件格式保持一致。
 
 底层的 core、WASM、Web 和小程序 adapter 仍可供高级集成直接使用。
 

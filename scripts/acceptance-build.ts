@@ -68,7 +68,7 @@ for (const target of targets) {
   const wasmCandidates = [
     path.join(targetRoot, 'assets', asset),
     path.join(targetRoot, 'dist/assets', asset),
-    path.join(targetRoot, 'dist/__weapp_sqlite__/assets', asset),
+    path.join(targetRoot, 'dist/weapp-sqlite/assets', asset),
   ]
   let wasmFound = false
   for (const candidate of wasmCandidates) {
@@ -88,7 +88,7 @@ const weappMainPackage = path.join(demoRoot, 'dist/weapp/dist')
 const appJson = JSON.parse(await readFile(path.join(weappMainPackage, 'app.json'), 'utf8')) as {
   subPackages?: Array<{ root: string }>
 }
-const sqliteSubpackageRoot = appJson.subPackages?.find(item => item.root === '__weapp_sqlite__')?.root
+const sqliteSubpackageRoot = appJson.subPackages?.find(item => item.root === 'weapp-sqlite')?.root
 if (!sqliteSubpackageRoot) {
   throw new Error('The generated SQLite WeChat subpackage is missing from app.json.')
 }

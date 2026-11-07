@@ -3,8 +3,8 @@ import { subPackages } from 'weapp-vite/auto-routes'
 import { defineAppJson } from 'weapp-vite/json'
 
 const sqliteSubpackage = {
-  root: '__weapp_sqlite__',
-  pages: ['__entry__/index'],
+  root: 'weapp-sqlite',
+  pages: ['entry/index'],
 }
 const platformArgumentIndex = process.argv.findIndex(argument => argument === '-p' || argument === '--platform')
 const platform = platformArgumentIndex < 0 ? undefined : process.argv[platformArgumentIndex + 1]

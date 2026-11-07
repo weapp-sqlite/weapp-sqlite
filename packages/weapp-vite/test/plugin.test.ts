@@ -289,7 +289,7 @@ describe('weappSqlite plugin', () => {
     const ensureRoutesFresh = vi.fn()
     const markManifestDirty = vi.fn()
     const loadManifest = vi.fn(async () => ({
-      json: { subPackages: [{ root: '__weapp_sqlite__', pages: ['__entry__/index'] }] },
+      json: { subPackages: [{ root: 'weapp-sqlite', pages: ['entry/index'] }] },
     }))
     await hook(plugin, 'configResolved').call({}, {
       root,
@@ -306,26 +306,26 @@ describe('weappSqlite plugin', () => {
       }],
     } as never)
 
-    const loader = await readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')
-    expect(loader).toContain('require.async("../__weapp_sqlite__/runtime.ts")')
+    const loader = await readFile(path.join(root, 'src/weapp-sqlite-loader/index.ts'), 'utf8')
+    expect(loader).toContain('require.async("../weapp-sqlite/runtime.ts")')
     expect(loader).toContain('initializerPromise = attempt')
-    await expect(readFile(path.join(root, 'src/__weapp_sqlite__/runtime.ts'), 'utf8')).resolves.toContain('@weapp-sqlite/sqljs/lite')
+    await expect(readFile(path.join(root, 'src/weapp-sqlite/runtime.ts'), 'utf8')).resolves.toContain('@weapp-sqlite/sqljs/lite')
     expect(markRoutesDirty).toHaveBeenCalledOnce()
 
     const emitFile = vi.fn()
     await hook(plugin, 'buildStart').call({ emitFile })
-    expect(emitFile.mock.calls[0]?.[0]).toMatchObject({ fileName: '__weapp_sqlite__/assets/sql-wasm-lite.wasm' })
+    expect(emitFile.mock.calls[0]?.[0]).toMatchObject({ fileName: 'weapp-sqlite/assets/sql-wasm-lite.wasm' })
     const bundle = {
-      'common.js': { type: 'chunk', fileName: 'common.js', code: 'require.async("../__weapp_sqlite__/runtime.js")' },
-      'pages/index/index.js': { type: 'chunk', fileName: 'pages/index/index.js', code: 'require.async("../__weapp_sqlite__/runtime.js")' },
+      'common.js': { type: 'chunk', fileName: 'common.js', code: 'require.async("../weapp-sqlite/runtime.js")' },
+      'pages/index/index.js': { type: 'chunk', fileName: 'pages/index/index.js', code: 'require.async("../weapp-sqlite/runtime.js")' },
     }
     await hook(plugin, 'generateBundle').call({}, {}, bundle)
-    expect(bundle['common.js'].code).toBe('require.async("./__weapp_sqlite__/runtime.js")')
-    expect(bundle['pages/index/index.js'].code).toBe('require.async("../../__weapp_sqlite__/runtime.js")')
+    expect(bundle['common.js'].code).toBe('require.async("./weapp-sqlite/runtime.js")')
+    expect(bundle['pages/index/index.js'].code).toBe('require.async("../../weapp-sqlite/runtime.js")')
     await hook(plugin, 'closeBundle').call({})
-    vi.advanceTimersByTime(30_000)
-    await expect(readFile(path.join(root, 'src/__weapp_sqlite__/runtime.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
-    await expect(readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await vi.advanceTimersByTimeAsync(30_000)
+    await expect(readFile(path.join(root, 'src/weapp-sqlite/runtime.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(path.join(root, 'src/weapp-sqlite-loader/index.ts'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it.each(['reject', 'throw'] as const)('retries a generated subpackage loader after a transient %s', async (failureMode) => {
@@ -333,7 +333,7 @@ describe('weappSqlite plugin', () => {
     temporaryDirectories.push(root)
     const plugin = weappSqlite({ wasm: { weappPackage: { mode: 'generated-subpackage' } } })
     await hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })
-    const source = await readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')
+    const source = await readFile(path.join(root, 'src/weapp-sqlite-loader/index.ts'), 'utf8')
     const initializer = vi.fn()
     const failure = new Error('subpackage download failed')
     const requireAsync = vi.fn().mockImplementationOnce(() => {
@@ -376,8 +376,8 @@ describe('weappSqlite plugin', () => {
       }],
     } as never)).rejects.toThrow('missing from the resolved app.json.subPackages')
 
-    await expect(readdir(path.join(root, 'src/__weapp_sqlite__'))).rejects.toMatchObject({ code: 'ENOENT' })
-    await expect(readdir(path.join(root, 'src/__weapp_sqlite_loader__'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readdir(path.join(root, 'src/weapp-sqlite'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readdir(path.join(root, 'src/weapp-sqlite-loader'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('binds SQLite assets to an existing normal subpackage', async () => {
@@ -395,13 +395,13 @@ describe('weappSqlite plugin', () => {
         api: { ctx: { scanService: { loadAppEntry: async () => ({ json: { subPackages: [{ root: 'orders', pages: ['pages/index'] }] } }) } } },
       }],
     } as never)
-    await expect(readFile(path.join(root, 'src/orders/__weapp_sqlite__/runtime.ts'), 'utf8')).resolves.toContain('@weapp-sqlite/sqljs/full')
-    await expect(readFile(path.join(root, 'src/__weapp_sqlite_loader__/index.ts'), 'utf8')).resolves.toContain('require.async("../orders/__weapp_sqlite__/runtime.ts")')
+    await expect(readFile(path.join(root, 'src/orders/weapp-sqlite/runtime.ts'), 'utf8')).resolves.toContain('@weapp-sqlite/sqljs/full')
+    await expect(readFile(path.join(root, 'src/weapp-sqlite-loader/index.ts'), 'utf8')).resolves.toContain('require.async("../orders/weapp-sqlite/runtime.ts")')
     const emitFile = vi.fn()
     await hook(plugin, 'buildStart').call({ emitFile })
     expect(emitFile.mock.calls[0]?.[0]).toMatchObject({ fileName: 'orders/assets/sql-wasm.wasm' })
     await hook(plugin, 'closeBundle').call({})
-    vi.advanceTimersByTime(30_000)
+    await vi.advanceTimersByTimeAsync(30_000)
     await expect(readdir(path.join(root, 'src/orders/pages'))).resolves.toEqual([])
   })
 
@@ -435,8 +435,8 @@ describe('weappSqlite plugin', () => {
   it('never overwrites user files at generated SQLite WASM paths', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-wasm-conflict-'))
     temporaryDirectories.push(root)
-    await mkdir(path.join(root, 'src/__weapp_sqlite__'), { recursive: true })
-    await writeFile(path.join(root, 'src/__weapp_sqlite__/user.ts'), 'export {}')
+    await mkdir(path.join(root, 'src/weapp-sqlite'), { recursive: true })
+    await writeFile(path.join(root, 'src/weapp-sqlite/user.ts'), 'export {}')
     const plugin = weappSqlite({ wasm: { weappPackage: { mode: 'generated-subpackage' } } })
     await expect(hook(plugin, 'config').call({}, { root, weapp: { srcRoot: 'src' } })).rejects.toThrow('conflicts with user files')
   })
