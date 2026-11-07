@@ -1,5 +1,12 @@
 # weapp-sqlite
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - @weapp-sqlite/weapp-vite@0.3.2
+
 ## 0.2.1
 
 ### Patch Changes

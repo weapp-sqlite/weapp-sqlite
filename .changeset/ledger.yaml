@@ -173,6 +173,10 @@
   dir: packages/weapp-vite
   intents:
     - wicked-eggs-shout
+"@weapp-sqlite/weapp-vite@0.3.2":
+  dir: packages/weapp-vite
+  intents:
+    - tiny-cats-occur
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:
