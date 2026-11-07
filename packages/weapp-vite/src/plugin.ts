@@ -2,13 +2,13 @@ import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
 import type { WeappViteHostMeta, WeappVitePlatform } from 'weapp-vite'
 import type { WeappVitePluginApi } from 'weapp-vite/types'
 import type { SqliteWasmVariant, WeappSqlitePluginOptions, WeappSqliteWasmPackage } from './types'
-import { readFileSync, rmSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import process from 'node:process'
 import { resolveSqliteWasmAsset, sqliteWasmAssetName } from '@weapp-sqlite/sqljs/node'
 import { createSqliteDevtoolsHost } from './devtools-plugin'
+import { ensureGeneratedDirectory, ownGeneratedSources, readGeneratedText, removeGeneratedDirectory, writeGeneratedText } from './plugin/generatedSources'
 import {
   GENERATED_PAGE_MARKER,
   workspacePageJson,
@@ -25,7 +25,7 @@ const SUPPORTED_TARGETS = new Set<WeappVitePlatform>(['web', 'weapp', 'alipay', 
 const require = createRequire(import.meta.url)
 const DEFAULT_DEBUG_ROUTE = '__weapp_sqlite_debug/index/index'
 const DEFAULT_DEBUG_CONFIG = './src/sqlite-debug.config.ts'
-const DEFAULT_WASM_SUBPACKAGE_ROOT = '__weapp_sqlite__'
+const DEFAULT_WASM_SUBPACKAGE_ROOT = 'weapp-sqlite'
 const GENERATED_WASM_MARKER = 'weapp-sqlite-wasm-subpackage-v1\n'
 
 interface DebugPageState {
@@ -41,17 +41,6 @@ interface WasmSubpackageState {
   readonly root: string
   readonly runtimeImport: string
   readonly runtimeOutputPath: string
-}
-
-function cleanupWasmSubpackageSync(state: WasmSubpackageState) {
-  for (const directory of state.cleanupDirectories) {
-    try {
-      if (readFileSync(path.join(directory, '.weapp-sqlite-generated'), 'utf8') === GENERATED_WASM_MARKER) {
-        rmSync(directory, { recursive: true, force: true })
-      }
-    }
-    catch {}
-  }
 }
 
 function normalizeDebugOptions(options: WeappSqlitePluginOptions) {
@@ -77,7 +66,7 @@ function normalizeWasmOptions(options: WeappSqlitePluginOptions) {
 
 function normalizePackageRoot(root: string) {
   const normalized = root.replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
-  if (!normalized || normalized.split('/').some(segment => !segment || segment === '.' || segment === '..' || !/^[\w-]+$/.test(segment))) {
+  if (!normalized || normalized.split('/').some(segment => !segment || segment === '.' || segment === '..' || !/^[\w-]+$/.test(segment) || /^__.*__$/.test(segment))) {
     throw new Error(`Invalid weapp-sqlite WASM subpackage root: ${root}`)
   }
   return normalized
@@ -87,41 +76,19 @@ function wasmSubpackageRoot(option: Exclude<WeappSqliteWasmPackage, 'main'>) {
   return normalizePackageRoot(option.mode === 'generated-subpackage' ? option.root ?? DEFAULT_WASM_SUBPACKAGE_ROOT : option.root)
 }
 
-async function ensureOwnedDirectory(directory: string) {
-  const markerPath = path.join(directory, '.weapp-sqlite-generated')
-  const marker = await readFile(markerPath, 'utf8').catch(() => undefined)
-  if (marker !== undefined && marker !== GENERATED_WASM_MARKER) {
-    throw new Error(`The generated SQLite WASM marker is invalid: ${markerPath}`)
-  }
-  if (marker === undefined) {
-    const entries = await readdir(directory).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return []
-      }
-      throw error
-    })
-    if (entries.length > 0) {
-      throw new Error(`The generated SQLite WASM path conflicts with user files: ${directory}`)
-    }
-  }
-  await mkdir(directory, { recursive: true })
-  await writeFile(markerPath, GENERATED_WASM_MARKER)
-}
-
 async function generateWasmSubpackage(
   projectRoot: string,
   srcRoot: string,
   packageOption: Exclude<WeappSqliteWasmPackage, 'main'>,
   variant: SqliteWasmVariant,
+  prepareOwnership: (state: WasmSubpackageState) => Promise<void>,
 ): Promise<WasmSubpackageState> {
   const root = wasmSubpackageRoot(packageOption)
   const sourceRoot = path.resolve(projectRoot, srcRoot)
   const packageDirectory = packageOption.mode === 'generated-subpackage'
     ? path.join(sourceRoot, root)
-    : path.join(sourceRoot, root, '__weapp_sqlite__')
-  const loaderDirectory = path.join(sourceRoot, '__weapp_sqlite_loader__')
-  await ensureOwnedDirectory(packageDirectory)
-  await ensureOwnedDirectory(loaderDirectory)
+    : path.join(sourceRoot, root, 'weapp-sqlite')
+  const loaderDirectory = path.join(sourceRoot, 'weapp-sqlite-loader')
 
   const runtimePath = path.join(packageDirectory, 'runtime.ts')
   const loaderPath = path.join(loaderDirectory, 'index.ts')
@@ -129,12 +96,22 @@ async function generateWasmSubpackage(
   if (!runtimeImport.startsWith('.')) {
     runtimeImport = `./${runtimeImport}`
   }
-  await writeFile(runtimePath, [
+  const state: WasmSubpackageState = {
+    cleanupDirectories: [packageDirectory, loaderDirectory],
+    loaderPath,
+    root,
+    runtimeImport,
+    runtimeOutputPath: path.relative(sourceRoot, runtimePath).replaceAll('\\', '/').replace(/\.ts$/, '.js'),
+  }
+  await prepareOwnership(state)
+  await ensureGeneratedDirectory(packageDirectory, GENERATED_WASM_MARKER)
+  await ensureGeneratedDirectory(loaderDirectory, GENERATED_WASM_MARKER)
+  await writeGeneratedText(runtimePath, [
     `import initializer from '@weapp-sqlite/sqljs/${variant}'`,
     'export default initializer',
     '',
   ].join('\n'))
-  await writeFile(loaderPath, [
+  await writeGeneratedText(loaderPath, [
     'import type { SqlJsInitializer } from \'@weapp-sqlite/wasm\'',
     'let initializerPromise: Promise<SqlJsInitializer> | undefined',
     'export function loadSqliteInitializer() {',
@@ -151,23 +128,27 @@ async function generateWasmSubpackage(
   ].join('\n'))
 
   if (packageOption.mode === 'generated-subpackage') {
-    const pageDirectory = path.join(packageDirectory, '__entry__')
+    const pageDirectory = path.join(packageDirectory, 'entry')
     await mkdir(pageDirectory, { recursive: true })
     await Promise.all([
-      writeFile(path.join(pageDirectory, 'index.ts'), 'Page({})\n'),
-      writeFile(path.join(pageDirectory, 'index.wxml'), '<view />\n'),
-      writeFile(path.join(pageDirectory, 'index.scss'), ''),
-      writeFile(path.join(pageDirectory, 'index.json'), '{"navigationStyle":"custom"}\n'),
+      writeGeneratedText(path.join(pageDirectory, 'index.ts'), 'Page({})\n'),
+      writeGeneratedText(path.join(pageDirectory, 'index.wxml'), '<view />\n'),
+      writeGeneratedText(path.join(pageDirectory, 'index.scss'), ''),
+      writeGeneratedText(path.join(pageDirectory, 'index.json'), '{"navigationStyle":"custom"}\n'),
     ])
+    await rm(path.join(packageDirectory, '__entry__'), { recursive: true, force: true })
   }
 
-  return {
-    cleanupDirectories: [packageDirectory, loaderDirectory],
-    loaderPath,
-    root,
-    runtimeImport,
-    runtimeOutputPath: path.relative(sourceRoot, runtimePath).replaceAll('\\', '/').replace(/\.ts$/, '.js'),
+  const legacyDirectories = [
+    path.join(sourceRoot, '__weapp_sqlite_loader__'),
+    ...(packageOption.mode === 'existing-subpackage'
+      ? [path.join(sourceRoot, root, '__weapp_sqlite__')]
+      : packageOption.root === undefined ? [path.join(sourceRoot, '__weapp_sqlite__')] : []),
+  ]
+  for (const directory of legacyDirectories) {
+    await removeGeneratedDirectory(directory, GENERATED_WASM_MARKER)
   }
+  return state
 }
 
 function rewriteWasmSubpackageLoader(code: string, chunkFileName: string, state: WasmSubpackageState) {
@@ -192,7 +173,7 @@ function normalizeRoute(route: string) {
   return normalized
 }
 
-async function generateDebugPage(projectRoot: string, srcRoot: string, routeValue: string, configFile: string): Promise<DebugPageState> {
+async function generateDebugPage(projectRoot: string, srcRoot: string, routeValue: string, configFile: string, prepareOwnership: (state: DebugPageState) => Promise<void>): Promise<DebugPageState> {
   const route = normalizeRoute(routeValue)
   const segments = route.split('/')
   const root = segments[0] as string
@@ -204,11 +185,7 @@ async function generateDebugPage(projectRoot: string, srcRoot: string, routeValu
   await readFile(configPath, 'utf8').catch((error) => {
     throw new Error(`The weapp-sqlite debug workspace config does not exist: ${configPath}`, { cause: error })
   })
-  let marker: string | undefined
-  try {
-    marker = await readFile(markerPath, 'utf8')
-  }
-  catch {}
+  const marker = await readGeneratedText(markerPath)
   if (marker !== undefined && marker !== GENERATED_PAGE_MARKER) {
     throw new Error(`The generated debug page marker is invalid: ${markerPath}`)
   }
@@ -224,6 +201,8 @@ async function generateDebugPage(projectRoot: string, srcRoot: string, routeValu
       }
     }
   }
+  const state: DebugPageState = { directory, route, root, page }
+  await prepareOwnership(state)
   await mkdir(directory, { recursive: true })
   const scriptPath = path.join(directory, `${baseName}.ts`)
   let configImport = path.relative(directory, configPath).replaceAll('\\', '/')
@@ -231,13 +210,13 @@ async function generateDebugPage(projectRoot: string, srcRoot: string, routeValu
     configImport = `./${configImport}`
   }
   await Promise.all([
-    writeFile(markerPath, GENERATED_PAGE_MARKER),
-    writeFile(scriptPath, workspacePageScript(configImport)),
-    writeFile(path.join(directory, `${baseName}.wxml`), workspacePageTemplate),
-    writeFile(path.join(directory, `${baseName}.scss`), workspacePageStyle),
-    writeFile(path.join(directory, `${baseName}.json`), workspacePageJson),
+    writeGeneratedText(markerPath, GENERATED_PAGE_MARKER),
+    writeGeneratedText(scriptPath, workspacePageScript(configImport)),
+    writeGeneratedText(path.join(directory, `${baseName}.wxml`), workspacePageTemplate),
+    writeGeneratedText(path.join(directory, `${baseName}.scss`), workspacePageStyle),
+    writeGeneratedText(path.join(directory, `${baseName}.json`), workspacePageJson),
   ])
-  return { directory, route, root, page }
+  return state
 }
 
 function debugAutoRoutes(existing: unknown, root: string) {
@@ -319,7 +298,7 @@ async function resolveTarget(config: ResolvedConfig & { readonly weappVite?: Wea
 }
 
 async function applyDebugRoutesToCompiler(config: ResolvedConfig, state: DebugPageState) {
-  const contextPlugin = config.plugins.find(plugin => plugin.name === 'weapp-vite:context') as (Plugin & { readonly api?: WeappVitePluginApi }) | undefined
+  const contextPlugin = config.plugins?.find(plugin => plugin.name === 'weapp-vite:context') as (Plugin & { readonly api?: WeappVitePluginApi }) | undefined
   const compiler = contextPlugin?.api?.ctx
   const weapp = compiler?.configService.weappViteConfig
   if (!weapp) {
@@ -334,7 +313,7 @@ async function applyDebugRoutesToCompiler(config: ResolvedConfig, state: DebugPa
 }
 
 function compilerFromConfig(config: ResolvedConfig) {
-  const contextPlugin = config.plugins.find(plugin => plugin.name === 'weapp-vite:context') as (Plugin & { readonly api?: WeappVitePluginApi }) | undefined
+  const contextPlugin = config.plugins?.find(plugin => plugin.name === 'weapp-vite:context') as (Plugin & { readonly api?: WeappVitePluginApi }) | undefined
   return contextPlugin?.api?.ctx
 }
 function findWasmSubpackage(
@@ -504,8 +483,10 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vit
   let bytes: Uint8Array | undefined
   let debugPage: DebugPageState | undefined
   let wasmSubpackage: WasmSubpackageState | undefined
-  let cleanupWasmOnExit: (() => void) | undefined
-  let cleanupWasmTimer: ReturnType<typeof setTimeout> | undefined
+  let wasmOwner: Awaited<ReturnType<typeof ownGeneratedSources>> | undefined
+  let developmentSession = false
+  let serveSession = false
+  let debugOwner: Awaited<ReturnType<typeof ownGeneratedSources>> | undefined
   let projectRoot = process.cwd()
   let sourceRoot = 'src'
   const devtoolsHost = createSqliteDevtoolsHost()
@@ -522,34 +503,43 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vit
     return bytes ??= await readFile(assetSource(target, wasm.variant))
   }
 
-  function ownWasmSubpackage(state: WasmSubpackageState) {
+  async function ownWasmSubpackage(state: WasmSubpackageState) {
+    wasmOwner = await ownGeneratedSources(state.loaderPath, state.cleanupDirectories, GENERATED_WASM_MARKER)
     wasmSubpackage = state
-    const cleanup = () => {
-      if (wasmSubpackage) {
-        cleanupWasmSubpackageSync(wasmSubpackage)
-        wasmSubpackage = undefined
-      }
-      if (cleanupWasmTimer) {
-        clearTimeout(cleanupWasmTimer)
-        cleanupWasmTimer = undefined
-      }
-      process.off('exit', cleanup)
-      cleanupWasmOnExit = undefined
+  }
+
+  async function cleanupWasmSubpackage() {
+    const owner = wasmOwner
+    await owner?.cleanup()
+    if (wasmOwner === owner) {
+      wasmOwner = undefined
+      wasmSubpackage = undefined
     }
-    cleanupWasmOnExit = cleanup
-    process.once('exit', cleanup)
+  }
+
+  async function ownDebugPage(state: DebugPageState) {
+    debugOwner = await ownGeneratedSources(state.directory, [state.directory], GENERATED_PAGE_MARKER)
+    debugPage = state
   }
 
   async function cleanupDebugPage() {
-    if (!debugPage) {
-      return
+    const owner = debugOwner
+    await owner?.cleanup()
+    if (debugOwner === owner) {
+      debugOwner = undefined
+      debugPage = undefined
     }
-    const markerPath = path.join(debugPage.directory, '.weapp-sqlite-generated')
-    const marker = await readFile(markerPath, 'utf8').catch(() => undefined)
-    if (marker === GENERATED_PAGE_MARKER) {
-      await rm(debugPage.directory, { recursive: true, force: true })
+  }
+
+  async function closeResources(includeWasm: boolean) {
+    const results = await Promise.allSettled([devtoolsHost.close(), cleanupDebugPage(), ...(includeWasm ? [cleanupWasmSubpackage()] : [])])
+    const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason as unknown] : [])
+    if (errors.length === 1) {
+      throw errors[0]
     }
-    debugPage = undefined
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'SQLite generated resource cleanup failed.')
+    }
   }
 
   return {
@@ -568,13 +558,13 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vit
       sourceRoot = config.weapp?.srcRoot ?? 'src'
       const weapp = config.weapp ??= {}
       if (debug.enabled) {
-        debugPage = await generateDebugPage(projectRoot, sourceRoot, debug.route, debug.configFile)
+        debugPage = await generateDebugPage(projectRoot, sourceRoot, debug.route, debug.configFile, ownDebugPage)
         weapp.autoRoutes = debugAutoRoutes(weapp.autoRoutes, debugPage.root)
         weapp.subPackages = { ...weapp.subPackages, [debugPage.root]: weapp.subPackages?.[debugPage.root] ?? {} }
       }
       if (wasm.weappPackage !== 'main' && wasm.weappPackage.mode === 'generated-subpackage') {
         const root = wasmSubpackageRoot(wasm.weappPackage)
-        ownWasmSubpackage(await generateWasmSubpackage(projectRoot, sourceRoot, wasm.weappPackage, wasm.variant))
+        await generateWasmSubpackage(projectRoot, sourceRoot, wasm.weappPackage, wasm.variant, ownWasmSubpackage)
         weapp.autoRoutes = debugAutoRoutes(weapp.autoRoutes, root)
         weapp.subPackages = { ...weapp.subPackages, [root]: weapp.subPackages?.[root] ?? {} }
       }
@@ -592,17 +582,19 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vit
     },
     async configResolved(config) {
       target = await resolveTarget(config)
-      isWebServe = target === 'web' && config.command === 'serve'
+      serveSession = config.command === 'serve'
+      isWebServe = target === 'web' && serveSession
       watchBuild = Boolean(config.build?.watch)
+      developmentSession = compilerFromConfig(config)?.configService?.isDev === true || config.command === 'serve' || watchBuild
       devtoolsEnabled = debug.enabled && debug.devtools && (target === 'web' || target === 'weapp')
-        && config.mode !== 'production' && (config.command === 'serve' || watchBuild)
+        && config.mode !== 'production' && developmentSession
       asset = targetAsset(target, wasm.variant)
       emittedAssetPath = `/assets/${asset}`
       if (target === 'weapp' && wasm.weappPackage !== 'main') {
         const root = wasmSubpackageRoot(wasm.weappPackage)
         if (wasm.weappPackage.mode === 'existing-subpackage') {
           await validateExistingWasmSubpackage(config, root)
-          ownWasmSubpackage(await generateWasmSubpackage(projectRoot, sourceRoot, wasm.weappPackage, wasm.variant))
+          await generateWasmSubpackage(projectRoot, sourceRoot, wasm.weappPackage, wasm.variant, ownWasmSubpackage)
         }
         if (!wasmSubpackage) {
           throw new Error('The generated SQLite WASM subpackage was not prepared before target resolution.')
@@ -613,13 +605,13 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vit
             await registerGeneratedWasmSubpackage(config, wasmSubpackage)
           }
           catch (error) {
-            cleanupWasmOnExit?.()
+            await cleanupWasmSubpackage()
             throw error
           }
         }
       }
-      else if (wasmSubpackage && cleanupWasmOnExit) {
-        cleanupWasmOnExit()
+      else if (wasmSubpackage && wasmOwner) {
+        await cleanupWasmSubpackage()
         const compiler = compilerFromConfig(config)
         compiler?.autoRoutesService.markDirty()
         await compiler?.autoRoutesService.ensureFresh()
@@ -714,22 +706,17 @@ export function weappSqlite(options: WeappSqlitePluginOptions = {}): import('vit
       })
     },
     async closeBundle() {
-      if (!watchBuild) {
-        await devtoolsHost.close()
-        await cleanupDebugPage()
+      // classic 的一次构建结束不会终结真实开发会话；serve 的 closeBundle 则属于宿主关闭。
+      if (serveSession) {
+        await closeResources(true)
       }
-      // Rollup calls closeBundle after every rebuild in watch mode. Keep the
-      // generated route and loader alive until the watcher actually exits;
-      // removing them here makes the next rebuild lose the debug page.
-      if (!watchBuild && wasmSubpackage && cleanupWasmOnExit && !cleanupWasmTimer) {
-        cleanupWasmTimer = setTimeout(cleanupWasmOnExit, 30_000)
-        cleanupWasmTimer.unref?.()
+      else if (!developmentSession) {
+        wasmOwner?.scheduleCleanup()
+        await closeResources(false)
       }
     },
     async closeWatcher() {
-      await devtoolsHost.close()
-      await cleanupDebugPage()
-      cleanupWasmOnExit?.()
+      await closeResources(true)
     },
   }
 }
