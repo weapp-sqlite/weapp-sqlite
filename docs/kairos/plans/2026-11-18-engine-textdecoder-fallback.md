@@ -1,7 +1,7 @@
 ---
 title: 'WASM 引擎恢复 TextDecoder 降级路径 · 实施计划'
 doc-type: plan
-version: v0.12
+version: v0.13
 date: 2026-11-18
 slug: 'engine-textdecoder-fallback'
 base: 'main'
@@ -18,7 +18,7 @@ base: 'main'
 - 体积阈值变更必须显式记录，禁止为了让门禁变绿直接改数字。
 - patch 面的行尾由 `.gitattributes` 的 `*.patch text eol=lf` 钉住：`manifest.json` 的 `patches` 段记的是 LF 字节的 sha256，任何把 patch 转成 CRLF 的检出（Git for Windows 默认 `core.autocrlf=true`，CI 的 `windows-latest` 腿亦为该默认）都会让 `verify:lite` 在完好已提交产物上报 `does not match manifest.json.`；该行由 Task 4 落地。
 - 历史红基线（已消除，不是当前状态）：`verify:lite` 曾在干净 HEAD 上因 manifest 陈旧（`sqljs-reliability.patch` 记录 `e9772269…` vs 实际 `b0b4380e…`，自 `922d7e8` 起）以 exit 1 结束；该失配已由 Task 2 的重放消除，manifest 现记 `28ffe3ff…`，与 `shasum -a 256 packages/sqljs/docker/sqljs-reliability.patch` 一致，当前 HEAD 上 `verify:lite` exit 0。与 spec 的 Constraints `manifest 陈旧（历史缺陷，已由重放消除）` 与 A2 同口径——`verify:lite` 此后是常规绿门禁，不再有任何豁免。
-- 每个任务结束提交一次；提交信息用 conventional commit。
+- 每个任务只提交一次（conventional commit），该次提交就是任务的唯一落定；只读证据步骤可以排在它之后——`git clone` 只取 HEAD，留在工作树里的未提交改动在克隆内不可见，故 Task 4 的唯一提交前移到它的克隆复验之前。
 
 ### Task 1: 产物守卫断言与 `verify:engines` 入口
 
@@ -151,13 +151,13 @@ none
 
 让「已提交产物的断言」进入仓库门禁，而不只在重建路径与一次性本地跑上生效——这是 spec D3 的调用条件：`verify:engines` 与 `verify:lite` 都必须对**已提交的** vendor 产物在持续门禁上运行。只接入 `verify:engines` 会漏掉 `verify-lite.mjs` 承担的 manifest 完整性 + 体积预算这一面，而那正是「手工替换产物却不重算 manifest」在产物目录上留下的第二道痕迹。现状：`verify-engines.mjs` 的唯一自动化调用点是 `rebuild-engines.sh`（位于 manifest → engines → lite 序列中间），即它本该"越过"的那次构建，因此手工替换 vendor 产物这一被明确要防的场景从不被检查；`verify:lite` 今天只出现在重建路径和一次性本地跑里，同样不在门禁上。
 
-另有一条同族的跨平台前置：`.gitattributes` 只用 `* text=auto` 约束 `packages/sqljs/docker/*.patch`（`git check-attr text eol` 对两片 patch 报 `text: auto` / `eol: unspecified`），而 `manifest.json` 的 `patches` 段记的是 LF 字节的 sha256——`core.autocrlf=true` 的检出会把 patch 转成 CRLF，`verify-lite.mjs:18` 于是在完好已提交产物上抛 `sqljs-reliability.patch does not match manifest.json.` 并 exit 1。实测：无该 pin 时两片 patch 为 5082 B / 4530 B（`w/crlf`），与 manifest 的 `4949` B / `4409` B 不符；加 `*.patch text eol=lf` 后同一探针仍得 LF 字节、`shasum -a 256` 与 manifest 逐位一致。故本任务先钉行尾、再接线，并把「矩阵各腿为绿」纳入判据。
+另有一条同族的跨平台前置：`.gitattributes` 只用 `* text=auto` 约束 `packages/sqljs/docker/*.patch`（`git check-attr text eol` 对两片 patch 报 `text: auto` / `eol: unspecified`），而 `manifest.json` 的 `patches` 段记的是 LF 字节的 sha256——`core.autocrlf=true` 的检出会把 patch 转成 CRLF，`verify-lite.mjs:18` 于是在完好已提交产物上抛 `sqljs-reliability.patch does not match manifest.json.` 并 exit 1。实测：无该 pin 时两片 patch 为 5082 B / 4530 B（`w/crlf`），与 manifest 的 `4949` B / `4409` B 不符；加 `*.patch text eol=lf` 后同一探针仍得 LF 字节、`shasum -a 256` 与 manifest 逐位一致。故本任务先钉行尾、再接线，并把「矩阵各腿为绿」纳入判据。行尾 pin 还必须在克隆复验之前进入 HEAD：`git clone` 只取 HEAD，工作树里未提交的 pin 在克隆内不可见，克隆内得到的会是负向结果，故本任务把这唯一一次提交前移到复验之前，其余步骤都是只读证据。
 
 #### Files
 
 - `package.json`（根，`scripts.validate` 链路或其下新增的聚合脚本）
 - `packages/sqljs/package.json`（`scripts.verify:engines` 与 `scripts.verify:lite` 均已存在，本任务只消费）
-- `.gitattributes`（在 `* text=auto` 之后新增 `*.patch text eol=lf`；spec「改动面」清单之外的新落点——按本轮裁决并入本任务、不新开任务，spec 侧清单的回写属设计面，本计划不改 spec）
+- `.gitattributes`（在 `* text=auto` 之后新增 `*.patch text eol=lf`；该落点已在 spec 的「改动面」清单内——spec v0.10 由 orchestrator 按写入权回写并提交 `798f925`，归属本任务，故它是清单内改动而非清单外的新落点，本计划只引述该已成立事实）
 - `.github/workflows/ci.yml`（仅当根 `validate` 未被 CI 调用时才需要）
 
 #### Consumes
@@ -177,21 +177,21 @@ none
 #### Steps
 
 - 钉 patch 面行尾：在 `.gitattributes` 的 `* text=auto` 之后新增一行 `*.patch text eol=lf`（已入库三片 `*.patch` 当前均为 LF、无 CR 字节，故该行不改变索引内容，只是一条检出规则） — checkable: `git check-attr text eol -- $(git ls-files '*.patch')` 对三片均报 `text: set` 与 `eol: lf`，且 `git status --porcelain` 只出现 `.gitattributes` 一处、没有 patch 文件被重新规范化
-- 以模拟 CRLF 检出复验该 pin — checkable: 在 `--no-hardlinks` 克隆内 `git config core.autocrlf true` 后**强制重写**两片 patch（`rm packages/sqljs/docker/*.patch && git checkout -- packages/sqljs/docker/`；只跑 `git checkout -f` 会因 stat 缓存干净而跳过重写、给出假的 `w/lf`，本轮已实测这一陷阱），`git ls-files --eol packages/sqljs/docker` 报 `w/lf`，`wc -c` 为 `4949` / `4409` 且 `shasum -a 256` 与 `manifest.json` 的 `patches` 段逐条一致；同一探针删掉该行后必须得到 `w/crlf`（`5082` / `4530` B）作为负向对照，两向都要留证
 - 在根 `scripts.validate` 链路中挂入 spec D3 写法的那一步 `pnpm --filter @weapp-sqlite/sqljs verify:engines && pnpm --filter @weapp-sqlite/sqljs verify:lite`（放 `build` 之后，使两条断言检查的都是构建可用状态下的已提交产物） — checkable: `grep -n "verify:engines" package.json` 与 `grep -n "verify:lite" package.json` 均命中，且根 `validate` 链上出现运行这两条命令的一步（写成聚合脚本时，`validate` 链引用该脚本而脚本内含上述 `&&` 串联）
+- 若 CI 未调用根 `validate`，在 `.github/workflows/ci.yml` 增补该步骤 — checkable: 该文件中出现一条运行 vendor 断言命令的步骤（按 D3 为 `verify:engines` 与 `verify:lite`），且该步骤排在 `Build` 步骤之后——`verify-lite.mjs` 的 `publishedCombinedBytes` 读 `dist/vendor/sql-wasm-lite.js` 并以 `.catch(() => undefined)` 兜底，在 build 之前运行会静默跳过体积预算那一面且仍 exit 0；同时贴一次 CI 同款命令的真实输出，确认含 `publishedCombinedBytes` 字段（字段缺失即该面未被验证）；该步骤在矩阵各腿上须为绿，证据二选一——CI 三平台实跑结论（`windows-latest` 腿正是行尾假红的判据），或 step 5 的模拟 CRLF 检出复验（分支未推送前默认取此项，推送后以 `windows-latest` 腿的 run 结论补证）——只验「步骤存在且位置正确」验不出行尾假红；若已调用则本步记 none 并说明。**不要在该 job 内整跑 `pnpm run validate`**：Build and Test job（`.github/workflows/ci.yml`）已逐步执行 lint / build / check:publish / typecheck / tsd / test / test:release，即根 `validate` 的 7 条成员，而该 job 带 `timeout-minutes: 15`，再跑整链时长近似翻倍、红的是 timeout 而不是守卫
+- 提交（`chore(ci): 将产物守卫断言接入根门禁`）——这是本任务的唯一一次提交，也是下一步克隆复验的前提 — checkable: `git log -1 --format=%s` 输出上述提交信息，`git show --name-only --format='' HEAD` 含 `.gitattributes` 与 `package.json`（若上一步改过 CI 则另含 `.github/workflows/ci.yml`），且 `git status --porcelain` 为空
+- 在提交后的 HEAD 上以模拟 CRLF 检出复验该 pin — checkable: `git clone --no-hardlinks . "$tmpdir"`（克隆取到的就是上一步的 HEAD，pin 已在其中）内 `git config core.autocrlf true`，先 `git check-attr text eol -- packages/sqljs/docker/*.patch` 报 `text: set` / `eol: lf`，再**强制重写**两片 patch（`rm packages/sqljs/docker/*.patch && git checkout -- packages/sqljs/docker/`；只跑 `git checkout -f` 会因 stat 缓存干净而跳过重写、给出假的 `w/lf`，本轮已实测这一陷阱），`git ls-files --eol packages/sqljs/docker` 报 `w/lf`，`wc -c` 为 `4949` / `4409`、`shasum -a 256` 与 `manifest.json` 的 `patches` 段逐条一致、`node packages/sqljs/scripts/verify-lite.mjs` exit 0（克隆内无 `dist`，体积预算一面按 `.catch(() => undefined)` 跳过，故此处证明的是 manifest 完整性）；负向对照：同一克隆内删掉该行后重跑同一命令，必须得到 `w/crlf`（`5082` / `4530` B）且 `verify-lite.mjs` 以 `sqljs-reliability.patch does not match manifest.json.` exit 1，两向都要留证。在未提交的工作树上复验**不构成证据**：工作树永远带着该行，结论与 pin 在 HEAD 上是否生效无关
 - 人为破坏一处产物：把 `packages/sqljs/src/vendor/sql-wasm-lite.js` 中的守卫形态 `globalThis.TextDecoder&&` 改成 `true&&`，跑 `pnpm --filter @weapp-sqlite/sqljs verify:engines` — checkable: exit 1 且报 `sql-wasm-lite.js` 的 `text-decoder-guard-adjacent`
-- 还破坏并复绿：`git checkout -- packages/sqljs/src/vendor/sql-wasm-lite.js` 后重跑 — checkable: exit 0，且 `git status --porcelain packages/sqljs/src/vendor` 为空（证明还原彻底；此时 step 3 改的根 `package.json` 必然仍为 modified，全树干净留到 step 8 提交后判定，见 Acceptance）
-- 挂入后实跑根门禁链路 — checkable: `pnpm run validate` exit 0（这一步给的是「挂入后的链确实被执行过」的证据；Task 3 step 2 的那次 `pnpm validate` 早于本次挂入，不能顶替），且跑完后 `git status --porcelain AGENTS.md` 为空（同样只作「该文件未被改写」的常规判据：自 `3288a76` 起 `turbo.json` 的 `agentGuidance: false` 已关闭该写回，v0.8 的 `git checkout -- AGENTS.md` 不再需要），整树干净留到 step 8 提交后判定
-- 若 CI 未调用根 `validate`，在 `.github/workflows/ci.yml` 增补该步骤 — checkable: 该文件中出现一条运行 vendor 断言命令的步骤（按 D3 为 `verify:engines` 与 `verify:lite`），且该步骤排在 `Build` 步骤之后——`verify-lite.mjs` 的 `publishedCombinedBytes` 读 `dist/vendor/sql-wasm-lite.js` 并以 `.catch(() => undefined)` 兜底，在 build 之前运行会静默跳过体积预算那一面且仍 exit 0；同时贴一次 CI 同款命令的真实输出，确认含 `publishedCombinedBytes` 字段（字段缺失即该面未被验证）；该步骤在矩阵各腿上须为绿，证据二选一——CI 三平台实跑结论（`windows-latest` 腿正是本轮 F1 的判据），或 step 2 的模拟 CRLF 检出复验（分支未推送前默认取此项，推送后以 `windows-latest` 腿的 run 结论补证）——只验「步骤存在且位置正确」验不出行尾假红；若已调用则本步记 none 并说明。**不要在该 job 内整跑 `pnpm run validate`**：Build and Test job（`.github/workflows/ci.yml`）已逐步执行 lint / build / check:publish / typecheck / tsd / test / test:release，即根 `validate` 的 7 条成员，而该 job 带 `timeout-minutes: 15`，再跑整链时长近似翻倍、红的是 timeout 而不是守卫
-- 提交（`chore(ci): 将产物守卫断言接入根门禁`）
+- 还破坏并复绿：`git checkout -- packages/sqljs/src/vendor/sql-wasm-lite.js` 后重跑 — checkable: exit 0，且 `git status --porcelain` 为空（证明还原彻底；提交已在 step 4 落定，破坏与还原不留痕迹，见 Acceptance）
+- 挂入后实跑根门禁链路 — checkable: `pnpm run validate` exit 0（这一步给的是「挂入后的链确实被执行过」的证据；Task 3 step 2 的那次 `pnpm validate` 早于本次挂入，不能顶替），且跑完后 `git status --porcelain` 为空——整树干净是本次实跑后的判据，`AGENTS.md` 未被改写这一常规判据由它整体覆盖（自 `3288a76` 起 `turbo.json` 的 `agentGuidance: false` 已关闭该写回，v0.8 的 `git checkout -- AGENTS.md` 不再需要）
 
 #### Acceptance
 
 - 根门禁链路确实执行 `verify:engines` 与 `verify:lite`，且检查对象是已提交产物而非重建产物。
-- `.gitattributes` 把 `*.patch` 钉为 `text eol=lf`：`git check-attr text eol` 对三片已入库 patch 均报 `eol: lf`，`core.autocrlf=true` 的模拟检出重写后仍是 LF 字节、`shasum -a 256` 与 `manifest.json` 的 `patches` 段一致——同一探针在没有该行时得 CRLF（`5082` / `4530` B）并使 `verify:lite` 在完好产物上以 `does not match manifest.json.` 失败，两向证据都留档。
+- `.gitattributes` 把 `*.patch` 钉为 `text eol=lf`：`git check-attr text eol` 对三片已入库 patch 均报 `eol: lf`，`core.autocrlf=true` 的模拟检出重写后仍是 LF 字节、`shasum -a 256` 与 `manifest.json` 的 `patches` 段一致——同一探针在没有该行时得 CRLF（`5082` / `4530` B）并使 `verify:lite` 在完好产物上以 `does not match manifest.json.` 失败，两向证据都留档。这项复验跑在 step 4 提交后的克隆内（clone 只取 HEAD）；在未提交的工作树上重跑同样命令不构成证据。
 - 门禁在矩阵各腿上不因行尾假红：CI 步骤排在 `Build` 之后，其绿证据取 CI 三平台实跑或上述模拟 CRLF 复验，不把「步骤存在」当作「步骤通过」。
 - 挂入后 `pnpm run validate` 实跑 exit 0：链路被执行过，而不只是两个脚本各自有效。
-- 人为把守卫改成 `true&&` 时该门禁转红，还原后转绿；整树干净的最终判定在 step 8 提交之后进行（`git status --porcelain` 为空）；`AGENTS.md` 不被改写是一常规判据——该副作用自 `3288a76` 起由 `turbo.json` 的 `agentGuidance: false` 关闭，无需任何丢弃动作。
+- 人为把守卫改成 `true&&` 时该门禁转红，还原后转绿；提交已前移到 step 4（克隆复验只能看到 HEAD），整树干净的判定在 step 8 实跑根门禁之后进行（`git status --porcelain` 为空）；`AGENTS.md` 不被改写是一常规判据——该副作用自 `3288a76` 起由 `turbo.json` 的 `agentGuidance: false` 关闭，无需任何丢弃动作。
 - CI 侧只新增一条运行两条 vendor 断言的步骤，不新增整跑 `pnpm run validate` 的步骤（该 job 已含 `validate` 的 7 条成员与 15 分钟上限）。
 - 不改变 `rebuild-engines.sh` 既有的 manifest → engines → lite 调用顺序。
 
@@ -215,3 +215,4 @@ none
 | v0.10   | 2026-11-18 | 评审修复：`turbo.json` 的 `"agentGuidance": false`（提交 `3288a76`）取得文档归属——Task 3 Files 登记该回填、不清新开任务，PR 正文要素清单由五项扩为六项（新增无 spec 标注的 `turbo.json` 回填），Objective / Produces / step 4 / Acceptance 同步改判据，spec 的「改动面」同步补该落点并去掉「除此之外无预期改动」的绕对措辞（F1）；Task 3 step 2、Task 4 step 4 与 Task 4 Acceptance 中「turbo 写回托管块并丢弃」的陈述改为事实——自 `3288a76` 起 `agentGuidance: false` 已关该副作用，`git status --porcelain AGENTS.md` 降为常规判据、`git checkout -- AGENTS.md` 删除并留一行历史说明（F2）                                                                      | pi (kairos:cdd-dev docs-fix round)                     |
 | v0.11   | 2026-11-18 | 评审修复：Task 3 step 4 的 checkable 末尾 `gh pr list` 负向确认改为显式钉 `--repo weapp-sqlite/weapp-sqlite`，并在该 checkable 写明失效面——镜像 `Oscaner/weapp-sqlite` 对 PR 列表不应答 404 而以 exit 0 返回空数组，不钉 `--repo` 时判据恒为 `[]`、与跟踪仓库是否已有该分支的 PR 无关（F1）                                                                                                                                                                                                                                                                                                                                                                       | pi (kairos:cdd-dev docs-fix round)                     |
 | v0.12   | 2026-11-18 | 评审修复：`.gitattributes` 增 `*.patch text eol=lf`（Task 4 Files 登记，spec「改动面」清单之外的新落点按本轮裁决并入本任务、不新开任务），Task 4 前置两条步骤（钉行尾 + 模拟 CRLF 检出复验，含「`git checkout -f` 因 stat 缓存干净而跳过重写、须 `rm` 后 checkout」这一探针细节），CI 步骤判据补「矩阵各腿为绿」及其证据二选一，Objective / Consumes / Produces / Acceptance 与 Constraints 同步（F1）                                                                                                                                                                                                                                                            | pi (kairos:cdd-dev docs-fix round)                     |
+| v0.13   | 2026-11-18 | 评审修复：Task 4 的唯一一次提交前移为克隆复验的前提（`git clone` 只取 HEAD、未提交的 pin 在克隆内不可见，原顺序会让 step 2 得到 `w/crlf` + `verify:lite` exit 1 的反向观察），Steps 重排为 pin → 门禁接线 → CI 补步 → 提交 → 克隆正负双向复验 → 破坏转红 → 还原转绿 → 实跑根门禁，克隆复验补 `git check-attr` 正向判据与负向对照、并写明未提交工作树不构成证据，Constraints 的「每个任务结束提交一次」改为「每个任务只提交一次、只读证据步骤可排在其后」（F1）；`.gitattributes` 改述为 spec「改动面」清单内落点（spec v0.10 / `798f925` 由 orchestrator 回写并归 Task 4），删除「本计划不改 spec」这一无承接表述（F2）                                           | pi (kairos:cdd-dev docs-fix round)                     |
