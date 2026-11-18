@@ -1,7 +1,7 @@
 ---
 title: 'WASM 引擎恢复 TextDecoder 降级路径 · 实施计划'
 doc-type: plan
-version: v0.13
+version: v0.14
 date: 2026-11-18
 slug: 'engine-textdecoder-fallback'
 base: 'main'
@@ -18,7 +18,7 @@ base: 'main'
 - 体积阈值变更必须显式记录，禁止为了让门禁变绿直接改数字。
 - patch 面的行尾由 `.gitattributes` 的 `*.patch text eol=lf` 钉住：`manifest.json` 的 `patches` 段记的是 LF 字节的 sha256，任何把 patch 转成 CRLF 的检出（Git for Windows 默认 `core.autocrlf=true`，CI 的 `windows-latest` 腿亦为该默认）都会让 `verify:lite` 在完好已提交产物上报 `does not match manifest.json.`；该行由 Task 4 落地。
 - 历史红基线（已消除，不是当前状态）：`verify:lite` 曾在干净 HEAD 上因 manifest 陈旧（`sqljs-reliability.patch` 记录 `e9772269…` vs 实际 `b0b4380e…`，自 `922d7e8` 起）以 exit 1 结束；该失配已由 Task 2 的重放消除，manifest 现记 `28ffe3ff…`，与 `shasum -a 256 packages/sqljs/docker/sqljs-reliability.patch` 一致，当前 HEAD 上 `verify:lite` exit 0。与 spec 的 Constraints `manifest 陈旧（历史缺陷，已由重放消除）` 与 A2 同口径——`verify:lite` 此后是常规绿门禁，不再有任何豁免。
-- 每个任务只提交一次（conventional commit），该次提交就是任务的唯一落定；只读证据步骤可以排在它之后——`git clone` 只取 HEAD，留在工作树里的未提交改动在克隆内不可见，故 Task 4 的唯一提交前移到它的克隆复验之前。
+- 每个任务只提交一次（conventional commit），该次提交就是任务的唯一落定；只读证据与可还原探针可以排在它之后——`git clone` 只取 HEAD，留在工作树里的未提交改动在克隆内不可见，故 Task 4 的唯一提交前移到它的克隆复验之前。
 
 ### Task 1: 产物守卫断言与 `verify:engines` 入口
 
@@ -151,7 +151,7 @@ none
 
 让「已提交产物的断言」进入仓库门禁，而不只在重建路径与一次性本地跑上生效——这是 spec D3 的调用条件：`verify:engines` 与 `verify:lite` 都必须对**已提交的** vendor 产物在持续门禁上运行。只接入 `verify:engines` 会漏掉 `verify-lite.mjs` 承担的 manifest 完整性 + 体积预算这一面，而那正是「手工替换产物却不重算 manifest」在产物目录上留下的第二道痕迹。现状：`verify-engines.mjs` 的唯一自动化调用点是 `rebuild-engines.sh`（位于 manifest → engines → lite 序列中间），即它本该"越过"的那次构建，因此手工替换 vendor 产物这一被明确要防的场景从不被检查；`verify:lite` 今天只出现在重建路径和一次性本地跑里，同样不在门禁上。
 
-另有一条同族的跨平台前置：`.gitattributes` 只用 `* text=auto` 约束 `packages/sqljs/docker/*.patch`（`git check-attr text eol` 对两片 patch 报 `text: auto` / `eol: unspecified`），而 `manifest.json` 的 `patches` 段记的是 LF 字节的 sha256——`core.autocrlf=true` 的检出会把 patch 转成 CRLF，`verify-lite.mjs:18` 于是在完好已提交产物上抛 `sqljs-reliability.patch does not match manifest.json.` 并 exit 1。实测：无该 pin 时两片 patch 为 5082 B / 4530 B（`w/crlf`），与 manifest 的 `4949` B / `4409` B 不符；加 `*.patch text eol=lf` 后同一探针仍得 LF 字节、`shasum -a 256` 与 manifest 逐位一致。故本任务先钉行尾、再接线，并把「矩阵各腿为绿」纳入判据。行尾 pin 还必须在克隆复验之前进入 HEAD：`git clone` 只取 HEAD，工作树里未提交的 pin 在克隆内不可见，克隆内得到的会是负向结果，故本任务把这唯一一次提交前移到复验之前，其余步骤都是只读证据。
+另有一条同族的跨平台前置：`.gitattributes` 只用 `* text=auto` 约束 `packages/sqljs/docker/*.patch`（`git check-attr text eol` 对两片 patch 报 `text: auto` / `eol: unspecified`），而 `manifest.json` 的 `patches` 段记的是 LF 字节的 sha256——`core.autocrlf=true` 的检出会把 patch 转成 CRLF，`verify-lite.mjs:18` 于是在完好已提交产物上抛 `sqljs-reliability.patch does not match manifest.json.` 并 exit 1。实测：无该 pin 时两片 patch 为 5082 B / 4530 B（`w/crlf`），与 manifest 的 `4949` B / `4409` B 不符；加 `*.patch text eol=lf` 后同一探针仍得 LF 字节、`shasum -a 256` 与 manifest 逐位一致。故本任务先钉行尾、再接线，并把「矩阵各腿为绿」纳入判据。行尾 pin 还必须在克隆复验之前进入 HEAD：`git clone` 只取 HEAD，工作树里未提交的 pin 在克隆内不可见，克隆内得到的会是负向结果，故本任务把这唯一一次提交前移到复验之前，其余步骤对已提交内容只做读取与可还原探针（step 6 破坏、step 7 还原），不产生新的落定提交。
 
 #### Files
 
@@ -216,3 +216,4 @@ none
 | v0.11   | 2026-11-18 | 评审修复：Task 3 step 4 的 checkable 末尾 `gh pr list` 负向确认改为显式钉 `--repo weapp-sqlite/weapp-sqlite`，并在该 checkable 写明失效面——镜像 `Oscaner/weapp-sqlite` 对 PR 列表不应答 404 而以 exit 0 返回空数组，不钉 `--repo` 时判据恒为 `[]`、与跟踪仓库是否已有该分支的 PR 无关（F1）                                                                                                                                                                                                                                                                                                                                                                       | pi (kairos:cdd-dev docs-fix round)                     |
 | v0.12   | 2026-11-18 | 评审修复：`.gitattributes` 增 `*.patch text eol=lf`（Task 4 Files 登记，spec「改动面」清单之外的新落点按本轮裁决并入本任务、不新开任务），Task 4 前置两条步骤（钉行尾 + 模拟 CRLF 检出复验，含「`git checkout -f` 因 stat 缓存干净而跳过重写、须 `rm` 后 checkout」这一探针细节），CI 步骤判据补「矩阵各腿为绿」及其证据二选一，Objective / Consumes / Produces / Acceptance 与 Constraints 同步（F1）                                                                                                                                                                                                                                                            | pi (kairos:cdd-dev docs-fix round)                     |
 | v0.13   | 2026-11-18 | 评审修复：Task 4 的唯一一次提交前移为克隆复验的前提（`git clone` 只取 HEAD、未提交的 pin 在克隆内不可见，原顺序会让 step 2 得到 `w/crlf` + `verify:lite` exit 1 的反向观察），Steps 重排为 pin → 门禁接线 → CI 补步 → 提交 → 克隆正负双向复验 → 破坏转红 → 还原转绿 → 实跑根门禁，克隆复验补 `git check-attr` 正向判据与负向对照、并写明未提交工作树不构成证据，Constraints 的「每个任务结束提交一次」改为「每个任务只提交一次、只读证据步骤可排在其后」（F1）；`.gitattributes` 改述为 spec「改动面」清单内落点（spec v0.10 / `798f925` 由 orchestrator 回写并归 Task 4），删除「本计划不改 spec」这一无承接表述（F2）                                           | pi (kairos:cdd-dev docs-fix round)                     |
+| v0.14   | 2026-11-18 | 评审修复：Task 4 的排序规则句与自身步骤对齐——Constraints 的「只读证据步骤可以排在它之后」改为「只读证据与可还原探针可以排在它之后」，Objective 末句的「其余步骤都是只读证据」改为「其余步骤对已提交内容只做读取与可还原探针（step 6 破坏、step 7 还原），不产生新的落定提交」，两处同改以免同义规则分叉（F1）                                                                                                                                                                                                                                                                                                                                                     | pi (kairos:cdd-dev docs-fix round)                     |
