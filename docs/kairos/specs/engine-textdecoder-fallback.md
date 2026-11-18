@@ -1,7 +1,7 @@
 ---
 title: 'WASM 引擎恢复 TextDecoder 降级路径'
 doc-type: single-spec
-version: v0.12
+version: v0.13
 date: 2026-11-18
 slug: 'engine-textdecoder-fallback'
 author: 'pi (kairos:cdd-design session)'
@@ -51,7 +51,7 @@ issues: 'weapp-sqlite/weapp-sqlite#23'
 
 **D5 — issue #23 作为症状档案保留。** 跟踪仓库是 `weapp-sqlite/weapp-sqlite`（issues 开启）。已在其上补一条病根更正评论（贴上述三层链与判定依据，`#issuecomment-6972987823`），标题已改为 `[Bug]: -Oz 使 TEXTDECODER=2，iOS JSC 实例化即 ReferenceError`，不与实现 PR 合并关闭。该 issue 中的真机取证（2026-11-14）继续作为宿主事实的唯一记录，记录位置即 `weapp-sqlite/weapp-sqlite#23`。该评论同时公开承诺「发布后本条 issue 会补一条版本说明」，故这项义务随本设计一并承接：`@weapp-sqlite/sqljs` 发布后须在同一 issue 补一条版本说明，点名本次发布的版本号，且该 issue 保持开启直至 A6 的真机回归确认。本 clone 的 `origin` 指向 `Oscaner/weapp-sqlite`，那是关闭了 issues 的镜像，故**每条 gh 命令都必须带 `--repo weapp-sqlite/weapp-sqlite`**，否则 404。
 
-**D6 — 版本语义为 patch。** `@weapp-sqlite/sqljs` 走 patch 级 changeset（产物行为变化，无公开 API 变化），中文摘要，经 `pnpm change` 生成。该 changeset 由**实施计划 Task 3（依赖 Task 2）**落地，本 spec 不预先创建（当前 `.changeset/` 只有 `ledger.yaml`，故本文写作时它尚不存在，其存在性由 Task 3 验收）。摘要与 PR 描述各留一行写明的解码边界：非合法 UTF-8 的 ≤ 16 字节 TEXT 值不再由宿主 `TextDecoder` 展开，且这类值可能落到 U+0000，以 -1 长度绑回时被截断为空值，而 `TEXTDECODER=2` 存下 U+FFFD（见 Constraints 的「语义等价性」）。
+**D6 — 版本语义为 patch。** `@weapp-sqlite/sqljs` 走 patch 级 changeset（产物行为变化，无公开 API 变化），中文摘要，经 `pnpm change` 生成。该 changeset 由**实施计划 Task 3（依赖 Task 2）**落地，现为 `.changeset/` 下 `sharp-pears-stay.md` 这份 patch 级 changeset（提交 `08ff55b`，与 `ledger.yaml` 并存）；本 spec 不预先创建。摘要与 PR 描述各留一行写明的解码边界：非合法 UTF-8 的 ≤ 16 字节 TEXT 值不再由宿主 `TextDecoder` 展开，且这类值可能落到 U+0000，以 -1 长度绑回时被截断为空值，而 `TEXTDECODER=2` 存下 U+FFFD（见 Constraints 的「语义等价性」）。
 
 ## Acceptance
 
@@ -93,3 +93,4 @@ issues: 'weapp-sqlite/weapp-sqlite#23'
 | v0.10   | 2026-11-18 | 改动面补录 `.gitattributes` 的 `*.patch text eol=lf`（Manifest 以 LF 字节哈希两片 patch，Windows 检出会使其失配并与 Task 4 的三平台门禁冲突），归属 Task 4；由 orchestrator 按写入权回写，回应 plan review r12 的 F2                                                                                                                                                                                                                                                                                                                                               | pi (kairos:cdd-dev orchestrator, spec write authority) |
 | v0.11   | 2026-11-18 | 评审修复：`改动面` 的 `.gitattributes` 条目改为接线后的条件表述（缺该行的 Windows 腿会让 `verify:lite` 报 `does not match manifest.json.`），与 D3「调用条件」的尚未落地对齐（F1）；`文档` 条目改为交付态——`docs/kairos/.gitignore` 自 `421d5e0` 起只留运行态被忽略、`specs/` 与 `plans/` 入库，本 spec 受版本控制，修订须经评审与一次原子提交（F2）                                                                                                                                                                                                               | pi (kairos:cdd-dev docs-fix round)                     |
 | v0.12   | 2026-11-18 | 评审修复：判定依据去掉「持续门禁接线尚未落地」——改为已落地的 A1 断言并点名门禁入口 `pnpm verify:vendor`（根 `scripts.validate` 的 `build` 之后、CI 的 `Verify vendored engine artifacts` 步骤同一条命令，接线提交 `f3eef57`）；D3「调用条件」末句由「待 Task 4 落地」改为已落地并写明入口与落点；「改动面」的接线条目同改（F1）                                                                                                                                                                                                                                    | pi (kairos:cdd-dev branch-fix round)                   |
+| v0.13   | 2026-11-18 | 评审修复：D6 的 changeset 陈述改为交付态——`.changeset/` 现为 `ledger.yaml` 加 `sharp-pears-stay.md` 的 patch 级 changeset（提交 `08ff55b`），删去「本文写作时尚不存在」的旧事实，摘要边界行要求不变（F1）；其余 pin 条目按裁定驳回                                                                                                                                                                                                                                                                                                                                 | pi (kairos:cdd-dev docs-fix round)                     |
