@@ -1,0 +1,92 @@
+---
+title: 'WASM 引擎恢复 TextDecoder 降级路径'
+doc-type: single-spec
+version: v0.9
+date: 2026-11-18
+slug: 'engine-textdecoder-fallback'
+author: 'pi (kairos:cdd-design session)'
+issues: 'weapp-sqlite/weapp-sqlite#23'
+---
+
+## Background & root cause
+
+微信 iOS 的 JavaScriptCore 没有 `TextDecoder` 全局。三份 glue 产物把 `new TextDecoder()` 写在 `initSqlJs()` 的 modularize 工厂体内、无任何守卫，故产物 import 本身不抛错，`openSqlite` 一进入引擎实例化即抛 `ReferenceError: Can't find variable: TextDecoder`。开发者工具（Chromium）与 Android（V8）不受影响，故问题长期被两侧掩盖。
+
+病根不在宿主，在构建参数。三层因果链：
+
+1. 上游 sql.js v1.14.2（提交 9c4e167）的 `Makefile` 变量 `EMFLAGS_OPTIMIZED` 以 `-Oz` 产出其 `dist/sql-wasm.js` 与 `dist/sql-wasm-browser.js`。
+2. 上游 emscripten/emsdk:5.0.0 镜像内的 `tools/link.py` 在链接期执行 `default_setting('TEXTDECODER', 2)`，条件为 `settings.SHRINK_LEVEL >= 2`。`-Oz` 即 SHRINK_LEVEL 2，于是 TEXTDECODER 在无人显式指定时被静默翻成 2。
+3. 同一镜像内的 `src/lib/libstrings.js` 中 `$UTF8Decoder` 的值取决于该开关：`TEXTDECODER == 2` 展开为 `new TextDecoder()`（无守卫），`TEXTDECODER == 1` 展开为 `globalThis.TextDecoder && new TextDecoder()` 并编入 emscripten 自带 JS UTF-8 回退。
+
+上述三处（sql.js v1.14.2 的 `Makefile`、emscripten 5.0.0 镜像内的 `tools/link.py` 与 `src/lib/libstrings.js`）都是**外部 pin**：它们指向上游已固定版本的源，本仓库中检索不到属于预期形态，不构成失配；复核时以对应上游 tag 与镜像为基准。
+
+即：用 `-Oz` 换体积时，一并把宿主 `TextDecoder` 从"可选优化"变成了"硬依赖"，关掉了工具链早已提供的退路。
+
+判定依据（可复核，测量点 `6208c83`，即修复前 HEAD）：三份 vendor 产物中 `globalThis.TextDecoder` 出现次数均为 0，`new TextDecoder` 各 1 处且无守卫 —— 与 TEXTDECODER=2 的产物形态一致。交付后形态已翻转：三份产物各 1 处 `globalThis.TextDecoder` 守卫、各 1 处受该守卫保护的 `new TextDecoder`，由 A1 断言（持续门禁的接线见 D3「调用条件」，尚未落地）。`TEXTDECODER=0` 在 emscripten 5.0.0 已被删除（镜像内 `src/lib/libstrings.js` 以 `#error` 限制取值只能为 1 或 2），故"完全不引用宿主能力"不是可选项。
+
+同一份 glue 中其余宿主全局均已被上游守卫或惰性求值，验证见 Constraints 的引擎宿主面清单。
+
+## Design decisions
+
+**D1 — 构建期修复，禁止运行时垫片。** 在 `docker/sqljs-reliability.patch` **新增**一个 Makefile hunk，向 sql.js v1.14.2 `Makefile` 的 `EMFLAGS_OPTIMIZED` 追加 `-s TEXTDECODER=1`。（v0.1 编写时该 patch 只有 `src/api.js` 与 `src/exported_functions.json` 两段、没有可改的 Makefile 段；交付后该 patch 首段即 `@@ -57,6 +57,7 @@`，正是这次新增的 Makefile hunk。）`full` 与 `full-browser` 两条构建规则都把 `EMFLAGS_OPTIMIZED` 并入最终 `emcc` 参数，故一处覆盖两变体。`source` 阶段应用该 patch，`lite` 阶段在其上叠加，第三个变体由 `lite` 覆盖。
+
+- 落点：只追加进 sql.js v1.14.2 `Makefile` 的 `EMFLAGS_OPTIMIZED`，不动 `SQLITE_COMPILATION_FLAGS`，也不改 `-Oz` 本身。
+- 与 `docker/sqljs-lite.patch` 的 Makefile hunk（`SQLITE_COMPILATION_FLAGS` 段 `@@ -21,10 +21,7 @@`、`EMFLAGS_DEBUG` 段 `@@ -64,7 +61,7 @@`）**不得共享被修改的行**：lite 阶段是在 reliability patch 之上二次应用，行偏移本身无害（patch 会按偏移重新定位），失败只发生在「一方修改的行落进另一方 hunk 的上下文窗口」时——那会让二次应用找不到上下文或改错位置。故约束是**被改行不相交**，不是行距阈值。交付的 `@@ -57,6 +57,7 @@`（改 `EMFLAGS_OPTIMIZED`，新行号止于 63）与 lite 的 `@@ -64,7 +61,7 @@`（改 `EMFLAGS_DEBUG`，起于 64）相邻、间隔 0 行，而 lite 阶段仍成功应用——`packages/sqljs/src/vendor/sql-wasm-lite.js` 携带守卫构造即是该二次应用通过的直接证据。
+
+- 拒绝运行时垫片：需写入 `globalThis`，污染宿主命名空间，且自有解码器（UTF-8 非法序列、代理对、输入形状）的正确性由我们长期自负。
+- 拒绝产物字符串重写（把构造点改成"宿主优先、内置兜底"的工厂）：对压缩产物做手术，自身的失败模式（上游改名、构造点增多）比它消除的风险更难发现。
+- 代价：`TEXTDECODER=1` 会把 emscripten 的 JS 回退编入三份产物，体积略增，需实测（见 A2）。
+
+**D2 — 撤回 issue 提出的全部附加物。** 不安装 `globalThis.TextDecoder`、不新增 `@weapp-sqlite/sqljs/textdecoder` 子路径、不在 `@weapp-sqlite/debug` 增加"宿主缺 TextDecoder"诊断。理由：修复后不存在"我们安装了兜底"这一事件，emscripten 内部的降级是静默且正确的，没有可诊断的状态转移可打点。issue 的附带建议因此失效，而非被推迟。
+
+**D3 — 新增 `packages/sqljs/scripts/verify-engines.mjs`。** 断言为**结构断言**，不引入任何外部参考形态文件：产物中每一处解码器构造（`new TextDecoder` 与 `new globalThis.TextDecoder` 两种拼写都算构造点）必须与 `globalThis.TextDecoder` 守卫出现在**同一表达式内且相邻**，判据为构造点之前 200 个 UTF-16 码元内以 `globalThis.TextDecoder` 紧跟 `&&` 或 `?` 结尾——故 `globalThis.TextDecoder && new TextDecoder()` 与三元形态 `globalThis.TextDecoder ? … : …` 均通过；且每份产物至少有一处这样的守卫构造。该脚本已入库，并由 `scripts/rebuild-engines.sh` 在 manifest 更新后调用。
+
+- 用结构而非形态快照的理由：快照钉住的是 emscripten 某一版本的具体展开，升级即误报，且没有可重放的再生程序；结构断言钉住的是因果——构造点必须被守卫——没有外部参考来源可漂移。
+- 命令入口改指：`packages/sqljs/package.json` 既有的 `verify:engines` 别名已改指 `scripts/verify-engines.mjs`（改指前指向 `scripts/verify-lite.mjs`），不新增别名。
+- **调用条件（本 spec 的硬要求）：** `verify:engines` 与 `verify:lite` 必须对**已提交的** vendor 产物在持续门禁上运行——根 `pnpm validate` 链路新增一步（`pnpm --filter @weapp-sqlite/sqljs verify:engines && pnpm --filter @weapp-sqlite/sqljs verify:lite`），或 `.github/workflows/ci.yml` 中等价的一步。仅由 `scripts/rebuild-engines.sh` 调用**不满足**本要求：那只在重建路径上生效，手工替换产物后 PR 仍会绿。该接线由实施计划 Task 4（依赖 Task 3）落地，本 spec 修复后由 orchestrator 补入计划。
+- `scripts/verify-lite.mjs` 保持"lite 体积预算 + manifest 完整性"的单一职责，不接收"glue 不得硬依赖宿主 TextDecoder"这条无关断言。
+- 断言不做在 Dockerfile 内：Dockerfile 只能约束本次构建，无法约束已提交的 vendor 产物被手工替换的情况——上条「调用条件」正是为补上这一面。
+
+**D4 — 体积是显式决策，不是静默数字。** 重建后实测三份产物字节数；若突破 `verify-lite.mjs` 的 `maximumCombinedBytes`，则先记录实测值与该阈值的来源，再由作者裁决是否调整，调整需在本文 Change history 留一行。禁止为了让门禁变绿而直接改阈值。
+
+**D5 — issue #23 作为症状档案保留。** 跟踪仓库是 `weapp-sqlite/weapp-sqlite`（issues 开启）。已在其上补一条病根更正评论（贴上述三层链与判定依据，`#issuecomment-6972987823`），标题已改为 `[Bug]: -Oz 使 TEXTDECODER=2，iOS JSC 实例化即 ReferenceError`，不与实现 PR 合并关闭。该 issue 中的真机取证（2026-11-14）继续作为宿主事实的唯一记录，记录位置即 `weapp-sqlite/weapp-sqlite#23`。该评论同时公开承诺「发布后本条 issue 会补一条版本说明」，故这项义务随本设计一并承接：`@weapp-sqlite/sqljs` 发布后须在同一 issue 补一条版本说明，点名本次发布的版本号，且该 issue 保持开启直至 A6 的真机回归确认。本 clone 的 `origin` 指向 `Oscaner/weapp-sqlite`，那是关闭了 issues 的镜像，故**每条 gh 命令都必须带 `--repo weapp-sqlite/weapp-sqlite`**，否则 404。
+
+**D6 — 版本语义为 patch。** `@weapp-sqlite/sqljs` 走 patch 级 changeset（产物行为变化，无公开 API 变化），中文摘要，经 `pnpm change` 生成。该 changeset 由**实施计划 Task 3（依赖 Task 2）**落地，本 spec 不预先创建（当前 `.changeset/` 只有 `ledger.yaml`，故本文写作时它尚不存在，其存在性由 Task 3 验收）。摘要与 PR 描述各留一行写明的解码边界：非合法 UTF-8 的 ≤ 16 字节 TEXT 值不再由宿主 `TextDecoder` 展开，且这类值可能落到 U+0000，以 -1 长度绑回时被截断为空值，而 `TEXTDECODER=2` 存下 U+FFFD（见 Constraints 的「语义等价性」）。
+
+## Acceptance
+
+- **A1** `pnpm --filter @weapp-sqlite/sqljs verify:engines` 通过：三份产物中每一处解码器构造（`new TextDecoder` 与 `new globalThis.TextDecoder` 两种拼写）都紧跟在同一表达式内的 `globalThis.TextDecoder` 守卫之后（守卫以 `&&` 或 `?` 结尾），且各产物至少一处，断言全绿（命令入口由 D3 的脚本与 `package.json` 改指后的别名提供）。
+- **A2** `pnpm --filter @weapp-sqlite/sqljs verify:lite` 通过（HEAD 实况：exit 0，`wasmBytes` 546993、`sourceCombinedBytes` 594292、`publishedCombinedBytes` 641591，阈值 592569 / 674232 未动），且本次实测的三份产物字节数被记录在 PR 描述中；任何阈值调整都有一行说明与来源。manifest 陈旧基线已由 A3 重放消除（见 Constraints），A2 因此是一条常规的绿门禁，无需豁免。
+- **A3** `rebuild-engines.sh` 端到端可重放：Docker 重建 → `scripts/update-lite-manifest.mjs` 重算 → `scripts/verify-engines.mjs` → `scripts/verify-lite.mjs` 全链路无人工干预通过。
+- **A4** `pnpm --filter @weapp-sqlite/sqljs test` 与 `pnpm --filter @weapp-sqlite/wasm test` 全绿；本次不改连接层与适配层，无需新增单测，但任何因产物变化暴露的既有测试失败必须追到根因而非放宽断言。
+- **A5** `pnpm validate` 全绿（含 lint、typecheck、tsd）。
+- **A6** 真机 iOS 回归由 `weapp-sqlite/weapp-sqlite` 仓库 issue #23 的报告方在快照 kernel 中确认；此项为**人工确认项**，不进入 CI 门禁，在 PR 描述中标注待确认而非标记为通过。
+- **A7** issue #23 已按 D5 更新，PR 描述引用该评论。可核命令（`--repo` 显式钉到跟踪仓库，本 clone 的 `origin` 是关闭了 issues 的镜像 `Oscaner/weapp-sqlite`，省略 `--repo` 会得到 404）：`gh api repos/weapp-sqlite/weapp-sqlite/issues/23 --jq '.title'` 返回 `[Bug]: -Oz 使 TEXTDECODER=2，iOS JSC 实例化即 ReferenceError`，且 `gh api repos/weapp-sqlite/weapp-sqlite/issues/23/comments --jq '.[].id'` 含 `6972987823`（病根更正评论）。发布后另需核一项：`gh api repos/weapp-sqlite/weapp-sqlite/issues/23/comments --jq '.[].body'` 含本次发布的 `@weapp-sqlite/sqljs` 版本号（D5 承接的版本说明义务），且该 issue 在 A6 真机回归确认前保持 open。
+
+## Constraints
+
+- **引擎宿主面清单（本次范围的边界）。** 三份 glue 中，宿主全局依赖的清单是：修复前（`6208c83`）`TextDecoder` 是引擎实例化时唯一无守卫读取的宿主全局（本次修复对象），且 import 产物本身不构造解码器；交付后三份产物各 1 处 `globalThis.TextDecoder` 守卫、各 1 处受该守卫保护的 `new TextDecoder`（与「判定依据」一节的交付后形态同源）；`fetch` / `XMLHttpRequest` 位于 `try` 内并有 ArrayBuffer 回退；`crypto.getRandomValues` 与 `performance.now` 仅在 wasm 回调路径上惰性求值。**后三者不在本次范围**，若未来某宿主缺失它们，症状与本次不同（崩点在 wasm 回调路径上而非 `initSqlJs()` 实例化阶段），需另立条目。
+- **改动面（实现者的落点清单）。** 构建输入 `packages/sqljs/docker/sqljs-reliability.patch`；新脚本 `packages/sqljs/scripts/verify-engines.mjs`（已入库并接线）；编排 `packages/sqljs/scripts/rebuild-engines.sh`；脚本入口 `packages/sqljs/package.json` 的 `scripts.verify:engines`（已改指）；根门禁或 CI 中调用 `verify:engines` / `verify:lite` 的一步（见 D3「调用条件」，由实施计划 Task 4 落地）；重建产物 `packages/sqljs/src/vendor/sql-wasm{,-lite,-browser}.js` 与 `packages/sqljs/src/vendor/manifest.json`；changeset 一处（由实施计划 Task 3 落地）；仓库环境回填 `turbo.json` 的 `"agentGuidance": false`（提交 `3288a76`，关闭 turbo 对 `AGENTS.md` 托管块的自动写入，由实施计划 Task 3 登记进 PR 正文要素清单）。清单之外的改动须先回写本节并说明归属，再由对应任务承接。
+- **manifest 陈旧（历史缺陷，已由重放消除）。** 历史形态：`packages/sqljs/src/vendor/manifest.json` 记录 `sqljs-reliability.patch` 的 sha256 为 `e9772269…`，工作区文件实际为 `b0b4380e…`，该失配自 922d7e8（PR #11）起存在，干净 HEAD 上 `verify:lite` 以 exit 1 结束（`sqljs-reliability.patch does not match manifest.json`）。当前形态：A3 的重放已重算 manifest，现记 sha256 `28ffe3ff…`，与 `shasum -a 256 packages/sqljs/docker/sqljs-reliability.patch` 一致，HEAD 上 `packages/sqljs` 的 `verify:lite` exit 0。因此 A2 是常规绿门禁；该条保留为「失配曾存在、至本次重放修正」的历史说明。
+- **manifest 只能重算，禁止手改。** 修正途径只有一条：`scripts/rebuild-engines.sh` 重放后由 `scripts/update-lite-manifest.mjs` 重新计算。**禁止手工编辑 `packages/sqljs/src/vendor/manifest.json` 的 sha256 或 bytes**——手改即绕过「产物只能由 Docker 重建」这一唯一产物来源。A3 的重放已顺带修正该失配；D3「调用条件」接入门禁后，同类失配将不再能随 PR 沉默通过。
+- **产物只能由 Docker 重建。** `src/vendor/*` 为构建产物，禁止手工编辑；全部变更经 `scripts/rebuild-engines.sh`（镜像 `weapp-sqlite-sqljs:1.14.2-emscripten-5.0.0`）。
+- **patch 是唯一构建输入改动点。** 不在 Dockerfile 中追加 `sed`/`cat` 式产物后处理，保持"Dockerfile 只编排、patch 只表达差异"。
+- **`@weapp-sqlite/core` 不引入宿主 API。** 本次不触碰 core；引擎宿主差异全部留在 `packages/sqljs`。
+- **断言以符号与运算符结构为据，不以行号、Minified 名称或展开字面量为据。** A1 只依赖「构造点紧跟在以 `&&` 或 `?` 结尾的 `globalThis.TextDecoder` 守卫之后」这一相邻结构（`&&` 与三元两种形态都算通过，`new TextDecoder` 与 `new globalThis.TextDecoder` 都是构造点），不比对 emscripten 展开后的具体字面量；上游 emscripten 5.0.0 镜像内 `src/lib/libstrings.js` 的具体展开仅供人工复核参考，不是断言输入。若上游改变守卫结构，A1 失败即**期望行为**：先按 D3 判读是否仍为「守卫相邻」，再更新本 spec 与断言，而不是放宽为"只要出现 `TextDecoder` 字样就算过"。
+- **上游升级的两种失效面。** emscripten 升级可能改变镜像内 `src/lib/libstrings.js` 在 `TEXTDECODER == 1` 下的展开结构，由 A1 捕获；sql.js 升级可能使 patch 的 Makefile hunk 冲突，由 Docker 构建失败捕获。两者都不应通过放宽断言或手工改产物绕过，正确动作是重放 patch 并更新本 spec。
+- **语义等价性（含一处已实测的边界）。** `-s TEXTDECODER=1` 不改变 `locateFile`、不改变导出面，也不改变合法输入的 SQL 语义；它改变的是解码路径的归属：宿主 `TextDecoder` 只保留在 emscripten 划定的长字节缓冲区快速路径上，更短的值在**所有宿主**（含 Node / Chromium）上都同样走内置 JS 循环，只有完全缺失该全局的宿主才整体失去快速路径（判据见下方实测边界）。**已实测的边界**：emscripten 5.0.0 在 `TEXTDECODER == 1` 下生成的解码器只在字节长度 > 16 且缓冲区带 `ArrayBuffer` 时才调用宿主 `TextDecoder`，长度 ≤ 16 的串一律走内置 JS 循环。因此相对 origin/main 的 `TEXTDECODER=2` 产物（守卫缺失、任意长度都由宿主展开）存在一处差异：在**本身具备 `TextDecoder` 的普通宿主**（Node / Chromium / V8）上，短串的解码改由内置循环决定——`TEXTDECODER=2` 对所有长度给出 U+FFFD，`-s TEXTDECODER=1` 对 ≤ 16 字节给出内置循环的结果（如 `cast(x'80' as text)` 得 U+0000，而 `cast(x'eda080' as text)` 得孤立代理 U+D800）。带 NUL 的值再写回时会被 -1 长度在 NUL 处截断——这条截断规则未变，但「值是否带 NUL」现在取决于解码器选择：内置循环可为短的非合法 UTF-8 值产出 U+0000（`cast(x'80' as text)` 得 U+0000），该值以 -1 长度绑回时被截断为空值（0 字节），而 `TEXTDECODER=2` 在同一写入下存下 `EF BF BD`（U+FFFD，长度 1）。实测如实：`read="\u0000"` / `writeback=["",0]` 对交付产物，`read="\uFFFD"` / `writeback=["EFBFBD",1]` 对 `6208c83` 产物。合法 UTF-8 的短串与长串在两侧逐字相同（实测），故该边界只落在「TEXT 值自身不是合法 UTF-8」这一类输入上。不复刻也不钉住该展开（见上条「断言以符号与运算符结构为据」）：钉住它就是钉住 emscripten 某一版本的内部循环，升级即误报，且没有可重放的再生程序。该边界按 D6 在 changeset 摘要与 PR 描述各记一行。
+- **文档。** 本 spec 位于 `docs/kairos/specs/`，该目录被 `docs/kairos/.gitignore` 的 `*` 忽略，按作者裁决**不入库**；因此本文是会话级设计产物，可在后续会话中被重写或废止，仓库内的持久契约由 README 与代码断言承担。
+
+## Change history
+
+| Version | date       | summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | author                             |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| v0.1    | 2026-11-18 | 首版：确立 -Oz → TEXTDECODER=2 病根链，以 `-s TEXTDECODER=1` 取代运行时垫片，新增产物守卫断言与体积显式决策                                                                                                                                                                                                                                                                                                                                                                                                                                                        | pi (kairos:cdd-design session)     |
+| v0.2    | 2026-11-18 | 评审修复：D1 改为在 reliability.patch 新增 Makefile hunk（落点 EMFLAGS_OPTIMIZED）并声明与 lite patch 上下文不重叠；D3 改为结构断言并写明 verify:engines 别名改指；补 manifest 陈旧基线与禁止手改 sha256；外部 pin 加来源标签，规划脚本标注未入库                                                                                                                                                                                                                                                                                                                  | pi (kairos:cdd-dev docs-fix round) |
+| v0.3    | 2026-11-18 | 评审修复：禁令条目的裸文件名为完整路径 `packages/sqljs/src/vendor/manifest.json`；`verify-lite` 报错原文与外部/规划中 pin 经裁定保留                                                                                                                                                                                                                                                                                                                                                                                                                               | pi (kairos:cdd-dev docs-fix round) |
+| v0.4    | 2026-11-18 | 评审修复：「语义等价性」改为如实记录 `TEXTDECODER == 1` 下 > 16 字节才走宿主 `TextDecoder` 的实测边界（非合法 UTF-8 的短 TEXT 值展开随之改变），并由 D6 把该边界落到 changeset 摘要与 PR 描述；旗标拼写全文统一为 patch 实际使用的 `-s TEXTDECODER=1`                                                                                                                                                                                                                                                                                                              | pi (kairos:cdd-dev wave-fix round) |
+| v0.5    | 2026-11-18 | 评审修复：issue 跟踪仓库钉为 `weapp-sqlite/weapp-sqlite`（`issues` 字段、D5、A6、A7 均带 `--repo` 与可核命令）；判定依据、D1、D3、Constraints 的现在时陈述改以 `6208c83` 为测量点并补交付后形态；manifest 基线记为已重放（`28ffe3ff…`、`verify:lite` 绿），A2 去掉豁免；D1 的「行距 > 3 行」代理规则换成「被改行不相交」不变量并注明交付 hunk 相邻仍通过；D3 补调用条件（根门禁或 CI 持续运行 `verify:engines`/`verify:lite`，Task 4 落地）；D6 标注 changeset 由 Task 3 落地                                                                                      | pi (kairos:cdd-dev docs-fix round) |
+| v0.6    | 2026-11-18 | 评审修复：判定依据的「由 A1 持续判定」改为「由 A1 断言（持续门禁接线见 D3，尚未落地）」；「语义等价性」去掉「两侧皆然」的无关性断言，改为如实记录内置循环可为短非合法 UTF-8 值产出 U+0000、以 -1 长度绑回时截断为空值（`TEXTDECODER=2` 存 `EF BF BD`），并把该写回面一并落到 D6 的 changeset 摘要；D5/A7 承接评论公开承诺的发布后版本说明义务（点名发布版本、issue 保持开启直至 A6 真机确认）；D3/A1 与符号结构条目把守卫判据写成交付形态（构造点前 200 码元内 `globalThis.TextDecoder` 后接 `&&` 或 `?`，覆盖 `new TextDecoder` 与 `new globalThis.TextDecoder`） | pi (kairos:cdd-dev docs-fix round) |
+| v0.7    | 2026-11-18 | 评审修复：「引擎宿主面清单」首项补修复前测量点（`6208c83`）与交付后形态（三份产物各 1 处 `globalThis.TextDecoder` 守卫、各 1 处受守卫保护的 `new TextDecoder`），其余三项标注为交付形态上仍成立；「语义等价性」去掉「仅在缺该全局时才用 JS 回退」的排他性断言，改为如实说明宿主 `TextDecoder` 仅服务于长字节缓冲区快速路径、更短的值在所有宿主上都走内置 JS 循环、只有缺失该全局的宿主才整体失去快速路径                                                                                                                                                           | pi (kairos:cdd-dev docs-fix round) |
+| v0.8    | 2026-11-18 | 评审修复：解码器构造阶段由「模块求值」更正为「`initSqlJs()` modularize 工厂体内、引擎实例化时」——Background 与「引擎宿主面清单」首项同步改写，并补「import 产物本身不抛错 / 不构造解码器」；out-of-scope 一句的崩点对照随之改为「wasm 回调路径而非 `initSqlJs()` 实例化阶段」；判定依据的静态计数与修复方案不变，其余 pin 相关条目按裁定驳回                                                                                                                                                                                                                       | pi (kairos:cdd-dev docs-fix round) |
+| v0.9    | 2026-11-18 | 评审修复：「改动面」清单补 `turbo.json` 的 `"agentGuidance": false`（提交 `3288a76`）落点，并把「除此之外无预期改动」的绝对措辞改为「清单之外的改动须先回写本节并说明归属」（F1）                                                                                                                                                                                                                                                                                                                                                                                  | pi (kairos:cdd-dev docs-fix round) |
