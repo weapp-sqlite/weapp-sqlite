@@ -1,7 +1,7 @@
 ---
 title: 'WASM 引擎恢复 TextDecoder 降级路径'
 doc-type: single-spec
-version: v0.11
+version: v0.12
 date: 2026-11-18
 slug: 'engine-textdecoder-fallback'
 author: 'pi (kairos:cdd-design session)'
@@ -22,7 +22,7 @@ issues: 'weapp-sqlite/weapp-sqlite#23'
 
 即：用 `-Oz` 换体积时，一并把宿主 `TextDecoder` 从"可选优化"变成了"硬依赖"，关掉了工具链早已提供的退路。
 
-判定依据（可复核，测量点 `6208c83`，即修复前 HEAD）：三份 vendor 产物中 `globalThis.TextDecoder` 出现次数均为 0，`new TextDecoder` 各 1 处且无守卫 —— 与 TEXTDECODER=2 的产物形态一致。交付后形态已翻转：三份产物各 1 处 `globalThis.TextDecoder` 守卫、各 1 处受该守卫保护的 `new TextDecoder`，由 A1 断言（持续门禁的接线见 D3「调用条件」，尚未落地）。`TEXTDECODER=0` 在 emscripten 5.0.0 已被删除（镜像内 `src/lib/libstrings.js` 以 `#error` 限制取值只能为 1 或 2），故"完全不引用宿主能力"不是可选项。
+判定依据（可复核，测量点 `6208c83`，即修复前 HEAD）：三份 vendor 产物中 `globalThis.TextDecoder` 出现次数均为 0，`new TextDecoder` 各 1 处且无守卫 —— 与 TEXTDECODER=2 的产物形态一致。交付后形态已翻转：三份产物各 1 处 `globalThis.TextDecoder` 守卫、各 1 处受该守卫保护的 `new TextDecoder`，由 A1 断言，且该断言已在持续门禁上运行——门禁入口为 `pnpm verify:vendor`，挂在根 `scripts.validate` 的 `build` 之后，`.github/workflows/ci.yml` 的 `Verify vendored engine artifacts` 步骤以同一条命令运行（接线提交 `f3eef57`，见 D3「调用条件」）。`TEXTDECODER=0` 在 emscripten 5.0.0 已被删除（镜像内 `src/lib/libstrings.js` 以 `#error` 限制取值只能为 1 或 2），故"完全不引用宿主能力"不是可选项。
 
 同一份 glue 中其余宿主全局均已被上游守卫或惰性求值，验证见 Constraints 的引擎宿主面清单。
 
@@ -43,7 +43,7 @@ issues: 'weapp-sqlite/weapp-sqlite#23'
 
 - 用结构而非形态快照的理由：快照钉住的是 emscripten 某一版本的具体展开，升级即误报，且没有可重放的再生程序；结构断言钉住的是因果——构造点必须被守卫——没有外部参考来源可漂移。
 - 命令入口改指：`packages/sqljs/package.json` 既有的 `verify:engines` 别名已改指 `scripts/verify-engines.mjs`（改指前指向 `scripts/verify-lite.mjs`），不新增别名。
-- **调用条件（本 spec 的硬要求）：** `verify:engines` 与 `verify:lite` 必须对**已提交的** vendor 产物在持续门禁上运行——根 `pnpm validate` 链路新增一步（`pnpm --filter @weapp-sqlite/sqljs verify:engines && pnpm --filter @weapp-sqlite/sqljs verify:lite`），或 `.github/workflows/ci.yml` 中等价的一步。仅由 `scripts/rebuild-engines.sh` 调用**不满足**本要求：那只在重建路径上生效，手工替换产物后 PR 仍会绿。该接线由实施计划 Task 4（依赖 Task 3）落地，本 spec 修复后由 orchestrator 补入计划。
+- **调用条件（本 spec 的硬要求，已落地）：** `verify:engines` 与 `verify:lite` 必须对**已提交的** vendor 产物在持续门禁上运行——根 `pnpm validate` 链路新增一步（`pnpm --filter @weapp-sqlite/sqljs verify:engines && pnpm --filter @weapp-sqlite/sqljs verify:lite`），或 `.github/workflows/ci.yml` 中等价的一步。仅由 `scripts/rebuild-engines.sh` 调用**不满足**本要求：那只在重建路径上生效，手工替换产物后 PR 仍会绿。该接线已由提交 `f3eef57` 落地，门禁入口是 `pnpm verify:vendor` 这一条命令：根 `package.json` 的 `scripts.validate` 在 `build` 之后调用该别名（其值即上述两条命令的 `&&` 串联），`.github/workflows/ci.yml` 的 Build and Test job 在 `Build` 步骤之后以同一条 `pnpm verify:vendor` 运行（步骤名 `Verify vendored engine artifacts`）。
 - `scripts/verify-lite.mjs` 保持"lite 体积预算 + manifest 完整性"的单一职责，不接收"glue 不得硬依赖宿主 TextDecoder"这条无关断言。
 - 断言不做在 Dockerfile 内：Dockerfile 只能约束本次构建，无法约束已提交的 vendor 产物被手工替换的情况——上条「调用条件」正是为补上这一面。
 
@@ -66,7 +66,7 @@ issues: 'weapp-sqlite/weapp-sqlite#23'
 ## Constraints
 
 - **引擎宿主面清单（本次范围的边界）。** 三份 glue 中，宿主全局依赖的清单是：修复前（`6208c83`）`TextDecoder` 是引擎实例化时唯一无守卫读取的宿主全局（本次修复对象），且 import 产物本身不构造解码器；交付后三份产物各 1 处 `globalThis.TextDecoder` 守卫、各 1 处受该守卫保护的 `new TextDecoder`（与「判定依据」一节的交付后形态同源）；`fetch` / `XMLHttpRequest` 位于 `try` 内并有 ArrayBuffer 回退；`crypto.getRandomValues` 与 `performance.now` 仅在 wasm 回调路径上惰性求值。**后三者不在本次范围**，若未来某宿主缺失它们，症状与本次不同（崩点在 wasm 回调路径上而非 `initSqlJs()` 实例化阶段），需另立条目。
-- **改动面（实现者的落点清单）。** 构建输入 `packages/sqljs/docker/sqljs-reliability.patch`；新脚本 `packages/sqljs/scripts/verify-engines.mjs`（已入库并接线）；编排 `packages/sqljs/scripts/rebuild-engines.sh`；脚本入口 `packages/sqljs/package.json` 的 `scripts.verify:engines`（已改指）；根门禁或 CI 中调用 `verify:engines` / `verify:lite` 的一步（见 D3「调用条件」，由实施计划 Task 4 落地）；重建产物 `packages/sqljs/src/vendor/sql-wasm{,-lite,-browser}.js` 与 `packages/sqljs/src/vendor/manifest.json`；changeset 一处（由实施计划 Task 3 落地）；`.gitattributes` 的 `*.patch text eol=lf` 行（跨平台字节稳定：`manifest.json` 以 LF 字节的 sha256 记录两片 patch；接入门禁后，缺该行的 Windows 腿会让 `verify:lite` 报 `does not match manifest.json.`，由实施计划 Task 4 承接）；仓库环境回填 `turbo.json` 的 `"agentGuidance": false`（提交 `3288a76`，关闭 turbo 对 `AGENTS.md` 托管块的自动写入，由实施计划 Task 3 登记进 PR 正文要素清单）。清单之外的改动须先回写本节并说明归属，再由对应任务承接。
+- **改动面（实现者的落点清单）。** 构建输入 `packages/sqljs/docker/sqljs-reliability.patch`；新脚本 `packages/sqljs/scripts/verify-engines.mjs`（已入库并接线）；编排 `packages/sqljs/scripts/rebuild-engines.sh`；脚本入口 `packages/sqljs/package.json` 的 `scripts.verify:engines`（已改指）；根门禁或 CI 中调用 `verify:engines` / `verify:lite` 的一步（已由提交 `f3eef57` 落为 `verify:vendor`，见 D3「调用条件」）；重建产物 `packages/sqljs/src/vendor/sql-wasm{,-lite,-browser}.js` 与 `packages/sqljs/src/vendor/manifest.json`；changeset 一处（由实施计划 Task 3 落地）；`.gitattributes` 的 `*.patch text eol=lf` 行（跨平台字节稳定：`manifest.json` 以 LF 字节的 sha256 记录两片 patch；接入门禁后，缺该行的 Windows 腿会让 `verify:lite` 报 `does not match manifest.json.`，由实施计划 Task 4 承接）；仓库环境回填 `turbo.json` 的 `"agentGuidance": false`（提交 `3288a76`，关闭 turbo 对 `AGENTS.md` 托管块的自动写入，由实施计划 Task 3 登记进 PR 正文要素清单）。清单之外的改动须先回写本节并说明归属，再由对应任务承接。
 - **manifest 陈旧（历史缺陷，已由重放消除）。** 历史形态：`packages/sqljs/src/vendor/manifest.json` 记录 `sqljs-reliability.patch` 的 sha256 为 `e9772269…`，工作区文件实际为 `b0b4380e…`，该失配自 922d7e8（PR #11）起存在，干净 HEAD 上 `verify:lite` 以 exit 1 结束（`sqljs-reliability.patch does not match manifest.json`）。当前形态：A3 的重放已重算 manifest，现记 sha256 `28ffe3ff…`，与 `shasum -a 256 packages/sqljs/docker/sqljs-reliability.patch` 一致，HEAD 上 `packages/sqljs` 的 `verify:lite` exit 0。因此 A2 是常规绿门禁；该条保留为「失配曾存在、至本次重放修正」的历史说明。
 - **manifest 只能重算，禁止手改。** 修正途径只有一条：`scripts/rebuild-engines.sh` 重放后由 `scripts/update-lite-manifest.mjs` 重新计算。**禁止手工编辑 `packages/sqljs/src/vendor/manifest.json` 的 sha256 或 bytes**——手改即绕过「产物只能由 Docker 重建」这一唯一产物来源。A3 的重放已顺带修正该失配；D3「调用条件」接入门禁后，同类失配将不再能随 PR 沉默通过。
 - **产物只能由 Docker 重建。** `src/vendor/*` 为构建产物，禁止手工编辑；全部变更经 `scripts/rebuild-engines.sh`（镜像 `weapp-sqlite-sqljs:1.14.2-emscripten-5.0.0`）。
@@ -92,3 +92,4 @@ issues: 'weapp-sqlite/weapp-sqlite#23'
 | v0.9    | 2026-11-18 | 评审修复：「改动面」清单补 `turbo.json` 的 `"agentGuidance": false`（提交 `3288a76`）落点，并把「除此之外无预期改动」的绝对措辞改为「清单之外的改动须先回写本节并说明归属」（F1）                                                                                                                                                                                                                                                                                                                                                                                  | pi (kairos:cdd-dev docs-fix round)                     |
 | v0.10   | 2026-11-18 | 改动面补录 `.gitattributes` 的 `*.patch text eol=lf`（Manifest 以 LF 字节哈希两片 patch，Windows 检出会使其失配并与 Task 4 的三平台门禁冲突），归属 Task 4；由 orchestrator 按写入权回写，回应 plan review r12 的 F2                                                                                                                                                                                                                                                                                                                                               | pi (kairos:cdd-dev orchestrator, spec write authority) |
 | v0.11   | 2026-11-18 | 评审修复：`改动面` 的 `.gitattributes` 条目改为接线后的条件表述（缺该行的 Windows 腿会让 `verify:lite` 报 `does not match manifest.json.`），与 D3「调用条件」的尚未落地对齐（F1）；`文档` 条目改为交付态——`docs/kairos/.gitignore` 自 `421d5e0` 起只留运行态被忽略、`specs/` 与 `plans/` 入库，本 spec 受版本控制，修订须经评审与一次原子提交（F2）                                                                                                                                                                                                               | pi (kairos:cdd-dev docs-fix round)                     |
+| v0.12   | 2026-11-18 | 评审修复：判定依据去掉「持续门禁接线尚未落地」——改为已落地的 A1 断言并点名门禁入口 `pnpm verify:vendor`（根 `scripts.validate` 的 `build` 之后、CI 的 `Verify vendored engine artifacts` 步骤同一条命令，接线提交 `f3eef57`）；D3「调用条件」末句由「待 Task 4 落地」改为已落地并写明入口与落点；「改动面」的接线条目同改（F1）                                                                                                                                                                                                                                    | pi (kairos:cdd-dev branch-fix round)                   |
