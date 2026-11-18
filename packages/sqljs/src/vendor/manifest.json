@@ -33,24 +33,24 @@
   },
   "artifacts": {
     "sql-wasm-lite.js": {
-      "bytes": 46915,
-      "sha256": "adbda97ca7e03edf6bdf33c8ca3694bc67da5803aaea1458f759d8b543ea6c96"
+      "bytes": 47299,
+      "sha256": "1934b6dea2e0b51955f6fd7f16987cc774f8d99fc95e53512612df88cf40b06d"
     },
     "sql-wasm-lite.wasm": {
       "bytes": 546993,
       "sha256": "bd1e11a26f9e89f15b389d5f346329b78f6565256964468c6475c2607aea1558"
     },
     "sql-wasm.js": {
-      "bytes": 47265,
-      "sha256": "80019b7435e900c6cbb1c250682f51f29c889dfcb0a15f39040095c8ce693307"
+      "bytes": 47671,
+      "sha256": "774f0c1cf6e7f1193478f7f3221103cfc7d45f05e226e642a01ceead352a387d"
     },
     "sql-wasm.wasm": {
       "bytes": 659329,
       "sha256": "57988c1aee5e6193f07789492e1967f52ebaa4b8e4d8e77e81cf2894ae42362f"
     },
     "sql-wasm-browser.js": {
-      "bytes": 45859,
-      "sha256": "bbf60e2c67ccf6ae1d09c6073934a3b62a6dc036b63c5defebf22fa209bdc7de"
+      "bytes": 46264,
+      "sha256": "17beb3900f6628e3a2069302cddb0d240373921532cc4a7d6a51ee494539a72f"
     },
     "sql-wasm-browser.wasm": {
       "bytes": 659329,
@@ -105,8 +105,8 @@
   },
   "patches": {
     "sqljs-reliability.patch": {
-      "bytes": 4824,
-      "sha256": "e9772269d3590b4bf7e43784bf312f143cff013c61fba151fb04bf9455c2bfae"
+      "bytes": 4949,
+      "sha256": "28ffe3ffe7c3c112e22cc1e0cd7fd5d222f7e47595e4d2696e8bc3410036e1a1"
     },
     "sqljs-lite.patch": {
       "bytes": 4409,
