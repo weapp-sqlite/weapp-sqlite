@@ -68,7 +68,7 @@
     "@weapp-sqlite/wasm": "workspace:*"
   },
   "devDependencies": {
-    "fake-indexeddb": "^6.2.5"
+    "fake-indexeddb": "^6.2.8"
   },
   "publishConfig": {
     "access": "public",

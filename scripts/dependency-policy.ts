@@ -6,6 +6,10 @@ export interface DependencyPin {
 export const dependencyPins: Record<string, DependencyPin[]> = {
   '.': [
     {
+      name: 'repoctl',
+      reason: 'repoctl 6.6.3 的隔离消费者误执行 node: null 入口，且未通过历史发布恢复和 nightly 回归',
+    },
+    {
       name: 'typescript',
       reason: '@typescript-eslint 8.x 仅支持 TypeScript <6.1，且 weapp-vite 7 仍使用 TypeScript 6',
     },
@@ -87,6 +91,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
   'examples/uni-app': [
     ...[
       '@dcloudio/uni-app',
+      '@dcloudio/uni-app-harmony',
       '@dcloudio/uni-components',
       '@dcloudio/uni-mp-weixin',
       '@dcloudio/vite-plugin-uni',

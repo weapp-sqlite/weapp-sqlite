@@ -16,6 +16,8 @@
   `default`。现在条件对象中的 `null` 会终止匹配；数组遵循 Node 的回退规则，
   空数组及最终只匹配到 `null` 的数组阻止该入口，`[null, "./valid.js"]` 仍选择
   后面的有效目标。包检查、快照准备和 nightly 发布后的消费者验证共用此解析。
+- `repo package check` 优先使用工作区的 TypeScript 检查隔离消费者的声明文件。
+  未安装工作区 TypeScript 时沿用工具内置版本，两个路径都保持严格声明检查。
 - nightly 的隔离消费者使用 pnpm 默认发布时间限制，可能将新发布的标签
   回退到旧版本。现在仅为已确认批次的精确 `包名@版本` 设置
   `minimumReleaseAgeExclude`，保留第三方依赖的默认策略。
