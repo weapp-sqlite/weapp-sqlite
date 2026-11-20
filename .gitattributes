@@ -16,6 +16,11 @@
 ##   This will handle all files NOT defined below.
 *                 text=auto
 
+# Patch files are hashed byte-for-byte as LF by
+# packages/sqljs/src/vendor/manifest.json, so a CRLF checkout would make the
+# vendor verification gate reject an intact committed artifact.
+*.patch           text eol=lf
+
 # Source code
 *.bash            text eol=lf
 *.bat             text eol=crlf

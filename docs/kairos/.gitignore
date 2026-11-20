@@ -1,0 +1,7 @@
+# 运行态留在本地，设计产物入库
+*
+!.gitignore
+!specs/
+!specs/**
+!plans/
+!plans/**

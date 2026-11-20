@@ -1,3 +1,13 @@
+--- a/Makefile
++++ b/Makefile
+@@ -57,6 +57,7 @@
+ 
+ EMFLAGS_OPTIMIZED= \
+ 	-Oz \
++	-s TEXTDECODER=1 \
+ 	-flto \
+ 	--closure 1
+ 
 --- a/src/api.js
 +++ b/src/api.js
 @@ -1,6 +1,7 @@
