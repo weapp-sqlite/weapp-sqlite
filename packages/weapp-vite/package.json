@@ -138,12 +138,12 @@
     "@weapp-sqlite/sqljs": "workspace:*",
     "@weapp-sqlite/wasm": "workspace:*",
     "@weapp-sqlite/web": "workspace:*",
-    "vite": "8.3.2"
+    "vite": "8.3.8"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11",
+    "@types/sql.js": "^1.16.0",
     "@weapp-sqlite/devtools": "workspace:*",
-    "weapp-vite": "^7.4.0"
+    "weapp-vite": "^7.11.1"
   },
   "publishConfig": {
     "access": "public",

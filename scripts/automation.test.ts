@@ -368,6 +368,8 @@ test('package consumers match Node null export boundaries while retaining types 
   }
   await mkdir(path.join(cwd, 'node_modules'))
   await symlink(pkg, path.join(cwd, 'node_modules', name), 'junction')
+  const typeScriptRoot = path.dirname(require.resolve('typescript/package.json'))
+  await symlink(typeScriptRoot, path.join(cwd, 'node_modules/typescript'), 'junction')
   for (const subpath of Object.keys(targets)) {
     const specifier = `${name}${subpath === '.' ? '' : subpath.slice(1)}`
     for (const format of ['module', 'commonjs']) {
@@ -399,6 +401,10 @@ test('package consumers match Node null export boundaries while retaining types 
   assert.equal(runtimeChecks.length, 4, 'Only the two supported Node subpaths should execute in both formats')
   const typeChecks = valid.commands.filter(command => command.args.includes('--noEmit'))
   assert.equal(typeChecks.length, 10, 'Both type declaration formats remain checked for all five subpaths')
+  const workspaceTsc = createRequire(path.join(cwd, 'package.json')).resolve('typescript/bin/tsc')
+  for (const command of typeChecks) {
+    assert.equal(command.args[0], workspaceTsc)
+  }
   const invalid = report.packages.find(result => result.name === 'fixture-runtime-failure')
   assert.equal(invalid?.status, 'failed')
   assert.ok(invalid?.diagnostics.some(diagnostic => diagnostic.code === 'RUNTIME_IMPORT' && diagnostic.message.includes('Genuine runtime failure')))
