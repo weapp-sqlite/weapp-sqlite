@@ -73,6 +73,10 @@
   dir: packages/devtools
   intents:
     - wicked-eggs-shout
+"@weapp-sqlite/devtools@0.1.2":
+  dir: packages/devtools
+  intents:
+    - new-roses-shake
 "@weapp-sqlite/docs@0.1.0":
   dir: apps/docs
   intents:
@@ -117,6 +121,10 @@
   dir: packages/sqljs
   intents:
     - wicked-eggs-shout
+"@weapp-sqlite/sqljs@0.3.2":
+  dir: packages/sqljs
+  intents:
+    - sharp-pears-stay
 "@weapp-sqlite/wasm@0.1.0":
   dir: packages/wasm
   intents:
@@ -177,6 +185,10 @@
   dir: packages/weapp-vite
   intents:
     - tiny-cats-occur
+"@weapp-sqlite/weapp-vite@0.3.3":
+  dir: packages/weapp-vite
+  intents:
+    - new-roses-shake
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:

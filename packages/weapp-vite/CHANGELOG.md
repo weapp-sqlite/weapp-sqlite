@@ -1,5 +1,15 @@
 # @weapp-sqlite/weapp-vite
 
+## 0.3.3
+
+### Patch Changes
+
+- 升级 Vite、Devframe 与 DevTools 依赖，保持现有小程序和 Web 集成兼容。
+
+- Updated dependencies:
+  - @weapp-sqlite/devtools@0.1.2
+  - @weapp-sqlite/sqljs@0.3.2
+
 ## 0.3.2
 
 ### Patch Changes
