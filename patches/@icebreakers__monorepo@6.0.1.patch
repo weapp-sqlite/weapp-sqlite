@@ -1,5 +1,5 @@
 diff --git a/dist/commands-D1KtdxnV.mjs b/dist/commands-D1KtdxnV.mjs
-index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e403d4244 100644
+index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..02d6109e015b8ac40c15588b00841d163c4d5cc2 100644
 --- a/dist/commands-D1KtdxnV.mjs
 +++ b/dist/commands-D1KtdxnV.mjs
 @@ -1,7 +1,7 @@
@@ -73,7 +73,33 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  		}
  	}
  }
-@@ -12625,10 +12636,14 @@ async function verifyNightlyConsumer(report, options) {
+@@ -11133,7 +11144,15 @@ async function consumeTarball(pkg, packages, results, entries, directory, timeou
+ 	const installed = await realpath(path$1.join(directory, "node_modules", String(pkg.manifest.name)));
+ 	const relative = path$1.relative(await realpath(directory), installed);
+ 	if (relative.startsWith("..") || path$1.isAbsolute(relative)) throw new Error("Consumer resolved a package outside its isolated directory.");
+-	const tsc = createRequire(import.meta.resolve("@arethetypeswrong/core/package.json")).resolve("typescript/bin/tsc");
++	let tsc;
++	if (options.typeScriptWorkspace) {
++		try {
++			tsc = createRequire(path$1.join(options.typeScriptWorkspace, "package.json")).resolve("typescript/bin/tsc");
++		} catch (error) {
++			if (error.code !== "MODULE_NOT_FOUND") throw error;
++		}
++	}
++	tsc ??= createRequire(import.meta.resolve("@arethetypeswrong/core/package.json")).resolve("typescript/bin/tsc");
+ 	for (const [index, entry] of entries.entries()) {
+ 		const specifier = `${pkg.manifest.name}${entry.subpath === "." ? "" : entry.subpath.slice(1)}`;
+ 		if (entry.runtime) {
+@@ -11343,7 +11362,7 @@ async function checkPackages(options) {
+ 			});
+ 		}
+ 		for (const [index, item] of packed.entries()) try {
+-			await consumeTarball(item, packed, results, consumerEntries(item.manifest, item.result.files), path$1.join(directory, "consumers", String(index)), timeout);
++			await consumeTarball(item, packed, results, consumerEntries(item.manifest, item.result.files), path$1.join(directory, "consumers", String(index)), timeout, { typeScriptWorkspace: workspaceDir });
+ 		} catch (error) {
+ 			item.result.diagnostics.push({
+ 				source: "repoctl",
+@@ -12625,10 +12644,14 @@ async function verifyNightlyConsumer(report, options) {
  				private: true,
  				type: "module",
  				packageManager: source.packageManager,
@@ -90,7 +116,7 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  			writeFile(path$1.join(directory, "user.npmrc"), ""),
  			writeFile(path$1.join(directory, "global.npmrc"), "")
  		]);
-@@ -12641,7 +12656,7 @@ async function verifyNightlyConsumer(report, options) {
+@@ -12641,7 +12664,7 @@ async function verifyNightlyConsumer(report, options) {
  			const relative = path$1.relative(directory, installed);
  			if (!relative || relative === ".." || relative.startsWith(`..${path$1.sep}`) || path$1.isAbsolute(relative)) throw new Error(`Nightly consumer resolved ${pkg.name} outside its isolated directory.`);
  			const manifest = JSON.parse(await readFile(path$1.join(installed, "package.json"), "utf8"));
@@ -99,7 +125,7 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  			const files = report.snapshot.checks?.find((check) => check.name === pkg.name)?.files;
  			if (!files) throw new Error(`Nightly consumer has no checked artifact manifest for ${pkg.name}.`);
  			validated.push({
-@@ -12747,13 +12762,13 @@ function object$1(value) {
+@@ -12747,13 +12770,13 @@ function object$1(value) {
  	return value !== null && typeof value === "object" && !Array.isArray(value);
  }
  function createNightlyRegistry(options) {
@@ -115,7 +141,7 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  				signal: AbortSignal.timeout(Math.max(1, Math.floor(timeout)))
  			});
  		} catch {
-@@ -12765,7 +12780,11 @@ function createNightlyRegistry(options) {
+@@ -12765,7 +12788,11 @@ function createNightlyRegistry(options) {
  		if (!object$1(value)) throw new Error(`Nightly registry returned invalid metadata for ${pathname}.`);
  		return value;
  	}
@@ -128,7 +154,7 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  		const tags = await request(`-/package/${encodeURIComponent(name)}/dist-tags`, deadline);
  		if (tags && Object.values(tags).some((value) => typeof value !== "string" || !value)) throw new Error(`Nightly registry returned invalid dist-tags for ${name}.`);
  		const version = tags?.[tag];
-@@ -12819,7 +12838,7 @@ async function inspectNpmNightly(report, options) {
+@@ -12819,7 +12846,7 @@ async function inspectNpmNightly(report, options) {
  	}
  	return complete;
  }
@@ -137,7 +163,7 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  	const snapshot = report.snapshot;
  	const client = createNightlyRegistry(options);
  	const deadline = Date.now() + 9e5;
-@@ -12833,11 +12852,19 @@ async function confirmNpmNightly(report, options) {
+@@ -12833,11 +12860,19 @@ async function confirmNpmNightly(report, options) {
  				continue;
  			}
  			if (publication.metadata.dist?.integrity !== pkg.integrity || !validPublishedIdentity(publication.metadata) || !matchesSnapshotMetadata(publication.metadata.repoctlSnapshot, snapshot)) throw new Error(`Nightly registry evidence conflicts with the published artifact for ${pkg.name}.`);
@@ -157,7 +183,7 @@ index 79b651dba83031ed6f414bbc9d7afe77d49ab0a1..7292b7b8fb89d70a8c0bfb5b8b6b635e
  		if (Date.now() >= deadline || attempt === 179) throw new Error(`Nightly tags did not become visible: ${pending.join(", ")}.`);
  		await (options.sleep ?? setTimeout$1)(Math.min(5e3, Math.max(0, deadline - Date.now())));
  	}
-@@ -13109,6 +13136,7 @@ async function nightly(options, execute) {
+@@ -13109,6 +13144,7 @@ async function nightly(options, execute) {
  			updatePackages(report);
  			await checkpoint();
  			await verifyNightlyConsumer(report, options);

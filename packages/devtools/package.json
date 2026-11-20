@@ -96,12 +96,12 @@
     }
   },
   "dependencies": {
-    "@vitejs/devtools": "0.7.6",
-    "@vitejs/devtools-kit": "0.7.6",
+    "@vitejs/devtools": "0.8.3",
+    "@vitejs/devtools-kit": "0.8.3",
     "@weapp-sqlite/debug": "workspace:*",
-    "devframe": "1.2.0",
-    "vite": "8.3.2",
-    "ws": "^8.22.0"
+    "devframe": "1.4.0",
+    "vite": "8.3.8",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2"

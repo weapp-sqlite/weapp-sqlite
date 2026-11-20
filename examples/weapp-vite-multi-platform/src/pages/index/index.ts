@@ -59,7 +59,7 @@ function serializeError(error: unknown) {
   return { phase: 'failed' as const, error: { code: 'SQLITE_ACCEPTANCE_FAILED', message } }
 }
 
-Page<AcceptancePageData, AcceptancePageMethods>({
+Page<AcceptancePageData>({
   data: { platform: targetPlatform, acceptance: initialAcceptance(), report: '' },
   async resetAcceptance() {
     this.setData({ acceptance: { ...initialAcceptance(), phase: 'running' }, report: '' })
@@ -98,4 +98,4 @@ Page<AcceptancePageData, AcceptancePageMethods>({
     }
   },
   async copyReport() { await copyAcceptanceReport(this.data.report) },
-})
+} satisfies { data: AcceptancePageData } & AcceptancePageMethods & ThisType<WeappPageThis<AcceptancePageData>>)
