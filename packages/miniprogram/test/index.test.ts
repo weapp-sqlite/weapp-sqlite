@@ -148,6 +148,45 @@ describe('mini-program storage', () => {
     await expect(probeMiniProgramSqliteCapabilities(options)).resolves.toEqual({ platform: 'weapp', supported: true })
   })
 
+  it('does not read package assets while probing path-based WASM', async () => {
+    const { runtime } = createRuntime()
+    const fileSystem = runtime.getFileSystemManager()
+    const readPackageFile = vi.spyOn(fileSystem, 'readFile').mockImplementation(({ fail }) => {
+      fail({ errMsg: 'readFile:fail code package files are not readable on device' })
+    })
+    const pathRuntime = { ...runtime, getFileSystemManager: () => fileSystem }
+
+    await expect(probeMiniProgramSqliteCapabilities({
+      platform: 'weapp',
+      runtime: pathRuntime,
+      packageBinaryPath: 'sqlite/assets/sql-wasm-lite.wasm',
+      webAssembly: createWebAssemblyRuntime(),
+    })).resolves.toEqual({ platform: 'weapp', supported: true })
+    expect(readPackageFile).not.toHaveBeenCalled()
+  })
+
+  it('still reads package assets while probing binary-based WASM', async () => {
+    const { runtime } = createRuntime()
+    const fileSystem = runtime.getFileSystemManager()
+    const readFile = vi.spyOn(fileSystem, 'readFile').mockImplementation(({ fail }) => {
+      fail({ errMsg: 'readFile:fail missing package asset' })
+    })
+    const binaryRuntime = { ...runtime, getFileSystemManager: () => fileSystem }
+
+    await expect(probeMiniProgramSqliteCapabilities({
+      platform: 'tt',
+      runtime: binaryRuntime,
+      packageBinaryPath: 'sqlite/assets/sql-wasm-lite.wasm',
+      webAssembly: createWebAssemblyRuntime(),
+    })).resolves.toMatchObject({
+      platform: 'tt',
+      supported: false,
+      capability: 'package-binary',
+      code: 'MINIPROGRAM_SQLITE_PACKAGE_BINARY_UNAVAILABLE',
+    })
+    expect(readFile).toHaveBeenCalledOnce()
+  })
+
   it('probes built-in platform adapters without falling back', async () => {
     const options = { platform: 'alipay' as const, runtime: {} }
     expect(() => createMiniProgramSqliteWasmStorage(options)).toThrow(MiniProgramSqliteUnsupportedError)
@@ -310,19 +349,31 @@ describe('mini-program storage', () => {
     })
   })
 
-  it('runs sql.js through a package-path WebAssembly runtime and persists transactions', async () => {
+  it('opens sql.js through a package path when code-package reads are unavailable', async () => {
     vi.stubGlobal('WebAssembly', undefined)
     const { runtime } = createRuntime()
+    const fileSystem = runtime.getFileSystemManager()
+    const readPackageFile = vi.spyOn(fileSystem, 'readFile').mockImplementation(({ fail }) => {
+      fail({ errMsg: 'readFile:fail code package files are not readable on device' })
+    })
+    const pathRuntime = { ...runtime, getFileSystemManager: () => fileSystem }
+    const wasmPath = '/assets/sql-wasm.wasm'
     const wasmBinary = await readFile(new URL('../../sqljs/src/vendor/sql-wasm.wasm', import.meta.url))
-    const webAssembly = createWebAssemblyRuntime(async (_path, imports) => {
+    const webAssembly = createWebAssemblyRuntime(async (source, imports) => {
+      expect(source).toBe(wasmPath)
       const result = await nativeWebAssembly.instantiate(wasmBinary, imports as WebAssembly.Imports)
       return result.instance as unknown as { exports: Readonly<Record<string, unknown>> }
     })
-    const initializer = createMiniProgramSqlJsInitializer({
+    const options: MiniProgramSqliteOptions = {
       platform: 'weapp',
-      runtime,
-      packageBinaryPath: '/assets/sql-wasm.wasm',
+      runtime: pathRuntime,
+      packageBinaryPath: wasmPath,
       webAssembly,
+    }
+    await expect(probeMiniProgramSqliteCapabilities(options)).resolves.toEqual({ platform: 'weapp', supported: true })
+    const initializer = createMiniProgramSqlJsInitializer({
+      ...options,
+      packageBinaryPath: wasmPath,
       initializer: initSqlJsFull,
     })
     let databaseFile: Uint8Array | undefined
@@ -357,5 +408,6 @@ describe('mini-program storage', () => {
     rawDatabase.create_function('double_value', value => value * 2)
     expect(rawDatabase.exec('SELECT double_value(21) AS value')[0]?.values[0]?.[0]).toBe(42)
     rawDatabase.close()
+    expect(readPackageFile).not.toHaveBeenCalled()
   })
 })
