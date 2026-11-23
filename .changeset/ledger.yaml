@@ -105,6 +105,10 @@
   dir: packages/miniprogram
   intents:
     - wicked-eggs-shout
+"@weapp-sqlite/miniprogram@0.2.2":
+  dir: packages/miniprogram
+  intents:
+    - quiet-paths-read
 "@weapp-sqlite/sqljs@0.2.0":
   dir: packages/sqljs
   intents:
@@ -189,6 +193,10 @@
   dir: packages/weapp-vite
   intents:
     - new-roses-shake
+"@weapp-sqlite/weapp-vite@0.3.4":
+  dir: packages/weapp-vite
+  intents:
+    - quiet-paths-read
 "@weapp-sqlite/web@0.1.0":
   dir: packages/web
   intents:

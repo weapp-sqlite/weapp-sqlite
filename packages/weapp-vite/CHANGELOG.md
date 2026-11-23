@@ -1,5 +1,14 @@
 # @weapp-sqlite/weapp-vite
 
+## 0.3.4
+
+### Patch Changes
+
+- 修复微信小程序 WASM path 模式的能力探测，避免读取真机不可访问的代码包二进制文件。
+
+- Updated dependencies:
+  - @weapp-sqlite/miniprogram@0.2.2
+
 ## 0.3.3
 
 ### Patch Changes
