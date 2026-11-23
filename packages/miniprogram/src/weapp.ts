@@ -200,7 +200,7 @@ export function createMiniProgramHostAdapter(
           throw failure(options, 'typed-array', 'MINIPROGRAM_SQLITE_TYPED_ARRAY_UNAVAILABLE')
         }
         resolveWebAssembly(options)
-        if (options.packageBinaryPath) {
+        if (factoryOptions.wasmSource !== 'path' && options.packageBinaryPath) {
           await this.loadPackageBinary(options.packageBinaryPath, options)
         }
         return { platform: options.platform, supported: true }
