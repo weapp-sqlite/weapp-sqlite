@@ -387,15 +387,14 @@ const key = createHash('sha256').update(JSON.stringify({
 })).digest('hex')
 const commands = []
 const systemEnvironment = Object.fromEntries(
-  ['PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP'].flatMap(key => {
-    const value = process.env[key]
-    return value === undefined ? [] : [[key, value]]
-  }),
+  Object.entries(process.env)
+    .filter(([key]) => ['path', 'systemroot', 'windir', 'comspec', 'pathext', 'temp', 'tmp'].includes(key.toLowerCase()))
+    .map(([key, value]) => [key.toUpperCase(), value]),
 )
 const forbidden = async () => { throw new Error('Remote mutation forbidden in release regression') }
 globalThis.fetch = forbidden
 function git(cwd, ...args) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: systemEnvironment })
   assert.equal(result.status, 0, cwd + ' ' + args.join(' ') + ': ' + (result.error?.message ?? result.stderr))
   return result.stdout.trim()
 }
