@@ -471,6 +471,10 @@ test('nightly snapshot package validation uses the source workspace TypeScript',
   mkdirSync(workspaceNodeModules, { recursive: true })
   const workspaceTypeScript = realpathSync(path.dirname(require.resolve('typescript/package.json')))
   symlinkSync(workspaceTypeScript, path.join(workspaceNodeModules, 'typescript'), 'junction')
+  const pnpm = process.env['npm_execpath']
+  assert.ok(pnpm, 'Run automation regressions with pnpm test:automation')
+  const pnpmCommand = /\.[cm]?js$/iu.test(pnpm) ? process.execPath : pnpm
+  const pnpmPrefix = pnpmCommand === process.execPath ? [pnpm] : []
 
   const report = {
     schemaVersion: 1,
@@ -489,6 +493,9 @@ test('nightly snapshot package validation uses the source workspace TypeScript',
 
     if (command === 'pnpm' && commandArgs.includes('run') && commandArgs.includes('build')) {
       return { status: 0, stdout: '', stderr: '' }
+    }
+    if (command === 'pnpm') {
+      return spawnSync(pnpmCommand, [...pnpmPrefix, ...commandArgs], { ...settings, stdio: ['ignore', 'pipe', 'pipe'] })
     }
     return spawnSync(command, commandArgs, { ...settings, stdio: ['ignore', 'pipe', 'pipe'] })
   }) as NonNullable<NightlyOptions['spawn']>
