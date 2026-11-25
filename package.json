@@ -96,7 +96,7 @@
     "only-allow": "^1.2.2",
     "pathe": "^2.0.3",
     "pkg-types": "^2.4.0",
-    "repoctl": "6.6.5",
+    "repoctl": "6.6.7",
     "sharp": "0.35.5",
     "stylelint": "^18.1.0",
     "tailwindcss": "^4.3.5",

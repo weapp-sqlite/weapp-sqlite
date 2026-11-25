@@ -39,5 +39,3 @@ allowBuilds:
   unrs-resolver: true
   vue-demi: true
   workerd: true
-patchedDependencies:
-  '@icebreakers/monorepo@6.6.5': patches/@icebreakers__monorepo@6.6.5.patch
