@@ -141,9 +141,9 @@
     "vite": "8.3.8"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.16.0",
+    "@types/sql.js": "^1.16.1",
     "@weapp-sqlite/devtools": "workspace:*",
-    "weapp-vite": "^7.11.1"
+    "weapp-vite": "^7.12.2"
   },
   "publishConfig": {
     "access": "public",

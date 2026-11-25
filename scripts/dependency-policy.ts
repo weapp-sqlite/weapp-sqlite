@@ -6,8 +6,16 @@ export interface DependencyPin {
 export const dependencyPins: Record<string, DependencyPin[]> = {
   '.': [
     {
+      name: 'lefthook',
+      reason: 'lefthook 2.2.3 的 npm registry 缺少 macOS arm64 可选二进制，postinstall 无法安装',
+    },
+    {
       name: 'repoctl',
       reason: 'repoctl 6.6.3 的隔离消费者误执行 node: null 入口，且未通过历史发布恢复和 nightly 回归',
+    },
+    {
+      name: 'stylelint',
+      reason: 'repoctl、@icebreakers/monorepo 和当前 Stylelint 配置 peer 要求 ^17.16.0',
     },
     {
       name: 'typescript',
@@ -38,16 +46,8 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       reason: '与 MPX 的 Babel 7 工具链保持一致',
     },
     {
-      name: '@mpxjs/core',
-      reason: 'MPX 2.11.1 的 peer dependency 要求 Vue 2.7；升级到其他主版本前需完成 MPX 构建兼容性验证',
-    },
-    {
-      name: '@mpxjs/webpack-plugin',
-      reason: '与 @mpxjs/core 同步维护',
-    },
-    {
       name: 'vue',
-      reason: '@mpxjs/core 2.11.1 的 peer dependency 是 Vue ^2.7.10',
+      reason: '@mpxjs/core 2.11.3 的 peer dependency 是 Vue ^2.7.10',
     },
     {
       name: 'webpack',
@@ -63,21 +63,10 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       name: '@babel/preset-react',
       reason: 'Taro webpack runner 的 peer dependency 要求 Babel 7',
     },
-    ...[
-      '@tarojs/cli',
-      '@tarojs/components',
-      '@tarojs/plugin-framework-react',
-      '@tarojs/plugin-platform-weapp',
-      '@tarojs/react',
-      '@tarojs/runtime',
-      '@tarojs/shared',
-      '@tarojs/taro',
-      '@tarojs/webpack5-runner',
-      'babel-preset-taro',
-    ].map(name => ({
-      name,
-      reason: 'Taro 依赖必须整组同版；当前保持 4.2.1，升级到 4.3.x 前需完成示例构建和 peer 兼容性验证',
-    })),
+    {
+      name: 'vite',
+      reason: 'Taro 4.3.3 plugin-framework-react 的 peer dependency 要求 Vite ^4',
+    },
     ...[
       '@types/react',
       '@types/react-dom',
@@ -85,10 +74,14 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       'react-dom',
     ].map(name => ({
       name,
-      reason: '当前 Taro 4.2.1 的 peer dependency 要求 React ^18；升级 Taro 或 React 前需完成整组验证',
+      reason: 'Taro 4.3.3 的 peer dependency 要求 React ^18；升级 React 前需完成整组验证',
     })),
   ],
   'examples/uni-app': [
+    {
+      name: '@dcloudio/types',
+      reason: 'uni-app 当前发布批次的 peer dependency 精确要求 3.4.31',
+    },
     ...[
       '@dcloudio/uni-app',
       '@dcloudio/uni-app-harmony',

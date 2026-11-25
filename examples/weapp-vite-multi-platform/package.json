@@ -29,6 +29,6 @@
   },
   "devDependencies": {
     "@weapp-sqlite/devtools": "workspace:*",
-    "weapp-vite": "^7.11.1"
+    "weapp-vite": "^7.12.2"
   }
 }

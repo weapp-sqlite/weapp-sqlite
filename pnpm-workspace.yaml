@@ -6,8 +6,21 @@ packages:
   - '!**/test/**'
 minimumReleaseAge: 0
 overrides:
+  '@csstools/css-tokenizer@>=4.0.0 <5.0.0': ^4.0.3
   '@tarojs/cli>axios': 1.20.0
-  hono: 4.13.7
+  '@intlify/core-base@>=9.0.0 <10.0.0': ^9.1.11
+  '@intlify/message-resolver@>=9.0.0 <10.0.0': ^9.1.11
+  axios@>=1.0.0 <1.20.0: ^1.20.0
+  body-parser@<1.20.9: ^1.20.9
+  brace-expansion@<1.1.21: ^1.1.21
+  brace-expansion@>=2.0.0 <2.1.7: ^2.1.7
+  decode-uri-component@<=0.5.0: ^0.5.1
+  hono: 4.13.16
+  jpeg-js@<0.4.4: ^0.4.4
+  path-to-regexp@<0.1.13: ^0.1.13
+  source-map-js@>=1.0.0 <1.2.2: ^1.2.2
+  tinypool@<2.1.2: ^2.1.2
+  ws@>=8.0.0 <8.21.0: ^8.21.0
 versioning:
   changelog:
     storage: repository
