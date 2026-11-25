@@ -26,11 +26,23 @@ interface NativeNightly {
   verifyNightlyConsumer: (report: NightlyReport, options: NightlyOptions) => Promise<void>
 }
 
+interface TarCreateOptions {
+  gzip: boolean
+  cwd: string
+  prefix: string
+  file: string
+}
+
+interface TarPackage {
+  c: (options: TarCreateOptions, files: string[]) => Promise<void>
+}
+
 const require = createRequire(import.meta.url)
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const nativeRequire = createRequire(require.resolve('repoctl'))
 const nativeEntry = nativeRequire.resolve('@icebreakers/monorepo')
 const packageRequire = createRequire(nativeEntry)
+const tar = packageRequire('tar') as TarPackage
 
 async function loadNativeNightly(): Promise<NativeNightly> {
   const directory = path.dirname(nativeEntry)
@@ -282,6 +294,23 @@ test('the post-consumer check rejects publication, full and abbreviated tag chan
   }
 })
 
+async function addCheckedTarball(report: NightlyReport, directory: string) {
+  const packageDirectory = path.join(directory, 'artifact')
+  mkdirSync(packageDirectory, { recursive: true })
+  writeFileSync(path.join(packageDirectory, 'package.json'), JSON.stringify({
+    name,
+    version,
+    repoctlSnapshot,
+  }))
+  const archive = path.join(directory, 'nightly-consumer.tgz')
+  await tar.c({ gzip: true, cwd: packageDirectory, prefix: 'package', file: archive }, ['package.json'])
+  const bytes = readFileSync(archive)
+  const checkedIntegrity = `sha512-${createHash('sha512').update(bytes).digest('base64')}`
+  report.packages[0]!.integrity = checkedIntegrity
+  report.snapshot!.packages[0]!.integrity = checkedIntegrity
+  report.snapshot!.packages[0]!.tarball = archive
+}
+
 async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' | 'types' | 'stale', provider: NightlyReport['provider'] = 'npm') {
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-nightly-consumer-')))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -292,6 +321,7 @@ async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' |
   if (provider === 'pkg-pr-new') {
     report.packages[0]!.locator = `https://pkg.pr.new/fixture/nightly/${name}@${identity.commit}`
   }
+  await addCheckedTarball(report, directory)
   const commands: string[][] = []
   let installationDirectory = ''
   let installs = 0
@@ -337,10 +367,16 @@ async function consumerFixture(t: TestContext, failure?: 'tarball' | 'runtime' |
       for (const extension of ['mts', 'cts']) {
         writeFileSync(path.join(installed, `index.d.${extension}`), `export declare const value: ${failure === 'types' ? 'MissingNightlyConsumerType' : 'number'}\n`)
       }
-      // Use repoctl's real Node declaration dependency and its own dependency graph.
-      const typesDirectory = path.join(installationDirectory, 'node_modules/@types')
-      mkdirSync(typesDirectory, { recursive: true })
-      symlinkSync(path.dirname(packageRequire.resolve('@types/node/package.json')), path.join(typesDirectory, 'node'), 'junction')
+      // Copy the exact toolchain versions repoctl resolves, keeping them inside the isolated consumer.
+      const consumerTypeScriptPackage = createRequire(packageRequire.resolve('@arethetypeswrong/core/package.json'))
+        .resolve('typescript/package.json')
+      const consumerTypeScript = path.join(installationDirectory, 'node_modules/repoctl-consumer-typescript')
+      cpSync(path.dirname(consumerTypeScriptPackage), consumerTypeScript, { recursive: true })
+      const nodeTypesPackage = packageRequire.resolve('@types/node/package.json')
+      const consumerNodeTypes = path.join(installationDirectory, 'node_modules/repoctl-consumer-node-types')
+      cpSync(path.dirname(nodeTypesPackage), consumerNodeTypes, { recursive: true })
+      const undiciTypesPackage = createRequire(nodeTypesPackage).resolve('undici-types/package.json')
+      cpSync(path.dirname(undiciTypesPackage), path.join(installationDirectory, 'node_modules/undici-types'), { recursive: true })
       return { status: 0, stdout: '', stderr: '' }
     }) as NonNullable<NightlyOptions['spawn']>,
   }
@@ -435,6 +471,10 @@ test('nightly snapshot package validation uses the source workspace TypeScript',
   mkdirSync(workspaceNodeModules, { recursive: true })
   const workspaceTypeScript = realpathSync(path.dirname(require.resolve('typescript/package.json')))
   symlinkSync(workspaceTypeScript, path.join(workspaceNodeModules, 'typescript'), 'junction')
+  const pnpm = process.env['npm_execpath']
+  assert.ok(pnpm, 'Run automation regressions with pnpm test:automation')
+  const pnpmCommand = /\.[cm]?js$/iu.test(pnpm) ? process.execPath : pnpm
+  const pnpmPrefix = pnpmCommand === process.execPath ? [pnpm] : []
 
   const report = {
     schemaVersion: 1,
@@ -453,6 +493,9 @@ test('nightly snapshot package validation uses the source workspace TypeScript',
 
     if (command === 'pnpm' && commandArgs.includes('run') && commandArgs.includes('build')) {
       return { status: 0, stdout: '', stderr: '' }
+    }
+    if (command === 'pnpm') {
+      return spawnSync(pnpmCommand, [...pnpmPrefix, ...commandArgs], { ...settings, stdio: ['ignore', 'pipe', 'pipe'] })
     }
     return spawnSync(command, commandArgs, { ...settings, stdio: ['ignore', 'pipe', 'pipe'] })
   }) as NonNullable<NightlyOptions['spawn']>

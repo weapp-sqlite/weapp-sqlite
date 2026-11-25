@@ -23,7 +23,7 @@ Use Conventional Commits. Create a change intent with `pnpm change` for every us
 
 ## Repository tooling
 
-repoctl 6.0.1 manages shared tooling, release orchestration, and preview/stable documentation channels. Review `repo upgrade --dry-run --json` before applying managed asset updates. Preserve the project's dependency compatibility policy, custom CI checks, and release recovery tests when merging template changes. Use ESLint for formatting; do not introduce Prettier.
+repoctl 6.6.5 manages shared tooling, release orchestration, and preview/stable documentation channels. Review `repo upgrade --dry-run --json` before applying managed asset updates. Preserve the project's dependency compatibility policy, custom CI checks, and release recovery tests when merging template changes. Use ESLint for formatting; do not introduce Prettier.
 
 Stable versions are prepared through release PRs. The daily snapshot uses the npm tag `snapshot-nightly`; it does not consume change intents or replace `latest`. See [RELEASE.md](./RELEASE.md) for channel behavior, website rollout, and recovery.
 

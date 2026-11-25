@@ -10,30 +10,18 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       reason: 'lefthook 2.2.3 的 npm registry 缺少 macOS arm64 可选二进制，postinstall 无法安装',
     },
     {
-      name: 'repoctl',
-      reason: 'repoctl 6.6.3 的隔离消费者误执行 node: null 入口，且未通过历史发布恢复和 nightly 回归',
-    },
-    {
-      name: 'stylelint',
-      reason: 'repoctl、@icebreakers/monorepo 和当前 Stylelint 配置 peer 要求 ^17.16.0',
-    },
-    {
       name: 'typescript',
-      reason: '@typescript-eslint 8.x 仅支持 TypeScript <6.1，且 weapp-vite 7 仍使用 TypeScript 6',
-    },
-    {
-      name: 'tsdown',
-      reason: 'tsdown 0.23 要求 Node.js >=22.18；仓库已将最低版本提升至 22.22.1',
+      reason: 'tsdown 0.23.7 的 rolldown-plugin-dts 依赖 Volar 2，当前要求 TypeScript <7',
     },
   ],
   'apps/docs': [
     {
       name: 'eslint',
-      reason: 'eslint-config-next 16 的 react/import/jsx-a11y 插件尚不兼容 ESLint 10',
+      reason: 'eslint-config-next 16 当前依赖的 react/import/jsx-a11y 插件仍要求 ESLint 9',
     },
     {
       name: 'typescript',
-      reason: 'repoctl 与 typescript-eslint 当前要求 TypeScript 6.x',
+      reason: '文档站 Volar 2 当前要求 TypeScript <7，升级前需等待上游支持',
     },
   ],
   'examples/mpx': [
@@ -65,7 +53,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     },
     {
       name: 'vite',
-      reason: 'Taro 4.3.3 plugin-framework-react 的 peer dependency 要求 Vite ^4',
+      reason: 'Taro 4.3.3 plugin-framework-react 的 peer dependency 要求 Vite ^4，当前使用该主版本的最新安全补丁',
     },
     ...[
       '@types/react',
@@ -85,12 +73,27 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
     ...[
       '@dcloudio/uni-app',
       '@dcloudio/uni-app-harmony',
+      '@dcloudio/uni-app-plus',
       '@dcloudio/uni-components',
+      '@dcloudio/uni-h5',
+      '@dcloudio/uni-mp-alipay',
+      '@dcloudio/uni-mp-baidu',
+      '@dcloudio/uni-mp-harmony',
+      '@dcloudio/uni-mp-jd',
+      '@dcloudio/uni-mp-kuaishou',
+      '@dcloudio/uni-mp-lark',
+      '@dcloudio/uni-mp-qq',
+      '@dcloudio/uni-mp-toutiao',
       '@dcloudio/uni-mp-weixin',
+      '@dcloudio/uni-mp-xhs',
+      '@dcloudio/uni-quickapp-webview',
+      '@dcloudio/uni-automator',
+      '@dcloudio/uni-cli-shared',
+      '@dcloudio/uni-stacktracey',
       '@dcloudio/vite-plugin-uni',
     ].map(name => ({
       name,
-      reason: 'uni-app 使用官方 vue3 通道，四个包必须保持同一发布批次',
+      reason: 'uni-app 使用官方 vue3 通道，所有 @dcloudio 包必须保持同一发布批次',
     })),
     ...[
       '@vitejs/plugin-vue',
@@ -102,7 +105,7 @@ export const dependencyPins: Record<string, DependencyPin[]> = {
       'vue',
     ].map(name => ({
       name,
-      reason: 'uni-app 使用固定的 Vue 3 alpha 批次，要求 Vite 8.2.2、plugin-vue 6.0.7 和 Vue 3.4.21；升级需切换并验证完整发布批次',
+      reason: 'uni-app 当前 alpha 批次固定使用 Vite 5.2.8、Vue 3.4.21 和对应的 plugin-vue；升级需切换并验证完整发布批次',
     })),
   ],
 }

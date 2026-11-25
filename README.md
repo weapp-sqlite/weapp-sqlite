@@ -123,7 +123,7 @@ export default defineSqliteDebugWorkspace({
 
 ## 开发
 
-仓库维护使用 Node.js **24.22.1**、pnpm **12.14.0**、repoctl **6.0.1** 和 Lefthook **2.2.2**。开发工具支持的 Node.js 范围为 `^22.23.4 || ^24.22.1 || >=26.12.1`；已发布 runtime 包的 Node.js 要求保持不变。`pnpm install` 安装 Lefthook hooks，提交时使用 repoctl 的 staged-file 和 commit-message 检查。
+仓库维护使用 Node.js **24.22.1**、pnpm **12.14.0**、repoctl **6.6.5** 和 Lefthook **2.2.2**。开发工具支持的 Node.js 范围为 `^22.23.4 || ^24.22.1 || >=26.12.1`；已发布 runtime 包的 Node.js 要求保持不变。`pnpm install` 安装 Lefthook hooks，提交时使用 repoctl 的 staged-file 和 commit-message 检查。
 
 ```bash
 pnpm install
@@ -142,7 +142,7 @@ pnpm deps:update  # 升级可安全升级的直接依赖并刷新 pnpm-lock.yaml
 pnpm validate     # 升级后执行完整构建、类型、API 和测试门禁
 ```
 
-维护命令会保护已验证的框架边界：TypeScript 维持 6.x，Taro 维持 4.2.1 + React 18，MPX 维持 Vue 2.7 + Babel 7 + Webpack 5.110.2，uni-app 维持同一 Vue3 alpha 发布批次与 Vite 8.2.2。命令会在输出中列出每项保护原因；框架升级应先完成对应迁移和 demo 构建，再调整 `scripts/dependency-policy.ts`。
+维护命令会保护已验证的框架边界：根工具链和文档站维持 TypeScript 6，文档站维持 ESLint 9；Taro 维持 4.3.3 + React 18 + Babel 7，并使用 Vite 4.5.14；MPX 维持 Vue 2.7 + Babel 7 + Webpack 5.110.2；uni-app 维持同一 Vue 3 alpha 发布批次、Vue 3.4.21 和 Vite 5.2.8。命令会在输出中列出每项保护原因；框架升级应先完成对应迁移和 demo 构建，再调整 `scripts/dependency-policy.ts`。
 
 文档站本地开发与检查：
 
