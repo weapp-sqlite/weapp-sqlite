@@ -386,6 +386,12 @@ const key = createHash('sha256').update(JSON.stringify({
   packages: input.packages.map(pkg => pkg.name + '@' + pkg.version).sort(),
 })).digest('hex')
 const commands = []
+const systemEnvironment = Object.fromEntries(
+  ['PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP'].flatMap(key => {
+    const value = process.env[key]
+    return value === undefined ? [] : [[key, value]]
+  }),
+)
 const forbidden = async () => { throw new Error('Remote mutation forbidden in release regression') }
 globalThis.fetch = forbidden
 function git(cwd, ...args) {
@@ -454,7 +460,7 @@ try {
   const result = await releaseCi({
     cwd: input.cwd, branch: 'main', mode: 'publish', stage: input.stage, sourceSha: input.sourceSha,
     config: { qualityScripts: [] }, github, spawn,
-    env: { ...process.env,
+    env: { ...systemEnvironment,
       GITHUB_REPOSITORY: 'release-fixture/repository', GITHUB_REF_NAME: 'main',
       GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ID: '101', GITHUB_RUN_ATTEMPT: '1' },
   })
