@@ -376,6 +376,7 @@ const sourceRecoveryRunner = String.raw`
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -395,7 +396,10 @@ const forbidden = async () => { throw new Error('Remote mutation forbidden in re
 globalThis.fetch = forbidden
 function git(cwd, ...args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: systemEnvironment })
-  assert.equal(result.status, 0, cwd + ' ' + args.join(' ') + ': ' + (result.error?.message ?? result.stderr))
+  const gitExecutable = process.platform === 'win32' ? 'git.exe' : 'git'
+  const gitOnPath = (systemEnvironment.PATH ?? '').split(path.delimiter)
+    .some(directory => existsSync(path.join(directory, gitExecutable)))
+  assert.equal(result.status, 0, cwd + ' (cwd exists: ' + existsSync(cwd) + ', Git on PATH: ' + gitOnPath + ') ' + args.join(' ') + ': ' + (result.error?.message ?? result.stderr))
   return result.stdout.trim()
 }
 const original = git(input.cwd, 'show', input.sourceSha + ':repoctl.config.ts')
