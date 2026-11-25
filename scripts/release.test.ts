@@ -454,7 +454,7 @@ try {
   const result = await releaseCi({
     cwd: input.cwd, branch: 'main', mode: 'publish', stage: input.stage, sourceSha: input.sourceSha,
     config: { qualityScripts: [] }, github, spawn,
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => ['path', 'systemroot', 'windir', 'comspec', 'pathext', 'temp', 'tmp'].includes(key.toLowerCase()))),
+    env: { ...process.env,
       GITHUB_REPOSITORY: 'release-fixture/repository', GITHUB_REF_NAME: 'main',
       GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ID: '101', GITHUB_RUN_ATTEMPT: '1' },
   })

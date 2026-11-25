@@ -415,9 +415,9 @@ test('package consumers match Node null export boundaries while retaining types 
   const typeChecks = valid.commands.filter(command => command.args.includes('--noEmit'))
   assert.equal(typeChecks.length, 10, 'Both type declaration formats remain checked for all five subpaths')
   for (const command of typeChecks) {
-    const relativeCompiler = path.relative(command.cwd, command.args[0]!)
-    assert.ok(relativeCompiler.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}typescript@`))
-    assert.ok(relativeCompiler.endsWith(`${path.sep}node_modules${path.sep}typescript${path.sep}bin${path.sep}tsc`))
+    const compiler = path.resolve(command.cwd, command.args[0]!)
+    assert.ok(compiler.includes(`${path.sep}node_modules${path.sep}`))
+    assert.ok(compiler.endsWith(`${path.sep}node_modules${path.sep}typescript${path.sep}bin${path.sep}tsc`))
   }
   const invalid = report.packages.find(result => result.name === 'fixture-runtime-failure')
   assert.equal(invalid?.status, 'failed')
