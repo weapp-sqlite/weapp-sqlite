@@ -437,6 +437,7 @@ const frozenChecks = []
 const spawn = (command, args, options) => {
   if (command === 'corepack' && args[0] === 'enable') {
     commands.push([command, ...args])
+    commands.push(['corepack-cwd', options.cwd])
     frozenChecks.push(assertFrozen(options.cwd))
     return { status: 0, stdout: '', stderr: '' }
   }
@@ -473,6 +474,7 @@ try {
     const stageDirectory = path.resolve(input.cwd, gitDirectory, 'repoctl-release-ci')
     const recoveryKey = createHash('sha256').update(JSON.stringify([stageDirectory, input.sourceSha, '101', '1'])).digest('hex')
     const frozen = path.join(await realpath(tmpdir()), 'repoctl-release-source-' + recoveryKey, 'checkout')
+    commands.push(['staged-cwd', frozen])
     await assertFrozen(frozen)
     // Historical loading must not poison the strict current-config cache.
     await assert.rejects(loadMonorepoConfigDetails(frozen), /tooling\.lintStaged/)
