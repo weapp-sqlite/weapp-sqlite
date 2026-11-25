@@ -71,7 +71,8 @@ async function snapshotFixture(t: TestContext) {
       return spawnSync(pnpmCommand, [...pnpmPrefix, ...args], { ...options, stdio: ['ignore', 'pipe', 'pipe'] })
     }
     assert.equal(command, 'git')
-    assert.ok(['rev-parse', '--no-optional-locks'].includes(args[0] ?? ''), `Unexpected Git mutation: ${args.join(' ')}`)
+    const readsTrackedTree = args[0] === 'ls-tree' && args[1] === '-rz' && args[2] === '--full-tree' && args.length === 4
+    assert.ok(['rev-parse', '--no-optional-locks'].includes(args[0] ?? '') || readsTrackedTree, `Unexpected Git mutation: ${args.join(' ')}`)
     return spawnSync(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] })
   }) as NonNullable<NightlyOptions['spawn']>
   return { directory, cwd, commit, spawn, packages }
@@ -89,6 +90,18 @@ function registry(snapshot: SnapshotReport, missing?: string): typeof fetch {
     assert.ok(pkg, `Unexpected package registry lookup: ${name}`)
     if (tags) {
       return Response.json({ latest: pkg.currentVersion, ...(name === missing ? {} : { 'snapshot-nightly': pkg.version }) })
+    }
+    if (!url.pathname.split('/')[2]) {
+      return Response.json({
+        name,
+        versions: {
+          [pkg.version]: {
+            name,
+            version: pkg.version,
+            dist: { integrity: `sha512-${'a'.repeat(86)}==` },
+          },
+        },
+      })
     }
     assert.equal(decodeURIComponent(url.pathname.split('/')[2]!), pkg.version)
     return Response.json({
@@ -401,9 +414,10 @@ test('package consumers match Node null export boundaries while retaining types 
   assert.equal(runtimeChecks.length, 4, 'Only the two supported Node subpaths should execute in both formats')
   const typeChecks = valid.commands.filter(command => command.args.includes('--noEmit'))
   assert.equal(typeChecks.length, 10, 'Both type declaration formats remain checked for all five subpaths')
-  const workspaceTsc = createRequire(path.join(cwd, 'package.json')).resolve('typescript/bin/tsc')
   for (const command of typeChecks) {
-    assert.equal(command.args[0], workspaceTsc)
+    const relativeCompiler = path.relative(command.cwd, command.args[0]!)
+    assert.ok(relativeCompiler.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}typescript@`))
+    assert.ok(relativeCompiler.endsWith(`${path.sep}node_modules${path.sep}typescript${path.sep}bin${path.sep}tsc`))
   }
   const invalid = report.packages.find(result => result.name === 'fixture-runtime-failure')
   assert.equal(invalid?.status, 'failed')

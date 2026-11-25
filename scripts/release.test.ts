@@ -3,8 +3,9 @@ import type { TestContext } from 'node:test'
 import type { GitHubOperations, ReleaseCiOptions } from 'repoctl'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -375,7 +376,8 @@ const sourceRecoveryRunner = String.raw`
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, realpath, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 const input = JSON.parse(process.argv[1])
 const { releaseCi, loadMonorepoConfigDetails, validateMonorepoConfig } = await import(input.module)
@@ -388,7 +390,7 @@ const forbidden = async () => { throw new Error('Remote mutation forbidden in re
 globalThis.fetch = forbidden
 function git(cwd, ...args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
-  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.status, 0, cwd + ' ' + args.join(' ') + ': ' + (result.error?.message ?? result.stderr))
   return result.stdout.trim()
 }
 const original = git(input.cwd, 'show', input.sourceSha + ':repoctl.config.ts')
@@ -458,7 +460,10 @@ try {
   })
   await Promise.all(frozenChecks)
   if (['plan', 'verify', 'prepare', 'upload', 'confirm'].includes(input.stage)) {
-    const frozen = path.join(input.cwd, '.git/repoctl-release-ci/source/checkout')
+    const gitDirectory = git(input.cwd, 'rev-parse', '--git-dir')
+    const stageDirectory = path.resolve(input.cwd, gitDirectory, 'repoctl-release-ci')
+    const recoveryKey = createHash('sha256').update(JSON.stringify([stageDirectory, input.sourceSha, '101', '1'])).digest('hex')
+    const frozen = path.join(await realpath(tmpdir()), 'repoctl-release-source-' + recoveryKey, 'checkout')
     await assertFrozen(frozen)
     // Historical loading must not poison the strict current-config cache.
     await assert.rejects(loadMonorepoConfigDetails(frozen), /tooling\.lintStaged/)
@@ -533,6 +538,13 @@ function runSourceRecovery(fixture: SourceRecoveryFixture, stage: NonNullable<Re
   }
 }
 
+async function stagedRecoveryCheckout(cwd: string, sourceSha: string) {
+  const gitDirectory = git(cwd, 'rev-parse', '--git-dir')
+  const stageDirectory = path.resolve(cwd, gitDirectory, 'repoctl-release-ci')
+  const recoveryKey = createHash('sha256').update(JSON.stringify([stageDirectory, sourceSha, '101', '1'])).digest('hex')
+  return path.join(await realpath(tmpdir()), `repoctl-release-source-${recoveryKey}`, 'checkout')
+}
+
 test('actual unmodified v5 release source resumes through every managed stage in fresh processes', async (t) => {
   const sourceSha = git(repository, 'log', '--format=%H', '--diff-filter=A', '--', 'packages/devtools/CHANGELOG.md').split('\n').at(-1)!
   const cwd = await temporaryDirectory(t)
@@ -541,7 +553,7 @@ test('actual unmodified v5 release source resumes through every managed stage in
   const stages = ['plan', 'verify', 'prepare', 'upload', 'confirm', 'finalize'] as const
   for (const [index, stage] of stages.entries()) {
     const result = runSourceRecovery(fixture, stage)
-    assert.equal(result.ok, true, `${stage}: ${result.message}`)
+    assert.equal(result.ok, true, `${stage}: ${JSON.stringify(result)}`)
     assert.equal(result.count, 9)
     assert.deepEqual(result.done, stages.slice(0, index + 1))
     assert.deepEqual(result.commands.filter(command => command[0] === 'pnpm'), stage === 'verify'
@@ -552,7 +564,7 @@ test('actual unmodified v5 release source resumes through every managed stage in
       assert.equal(runSourceRecovery(fixture, stage).ok, true)
     }
   }
-  await assert.rejects(readFile(path.join(cwd, '.git/repoctl-release-ci/source/checkout/repoctl.config.ts')), { code: 'ENOENT' })
+  await assert.rejects(readFile(path.join(await stagedRecoveryCheckout(cwd, sourceSha), 'repoctl.config.ts')), { code: 'ENOENT' })
   assert.equal(git(cwd, 'diff', '--binary', 'HEAD'), '')
 })
 
