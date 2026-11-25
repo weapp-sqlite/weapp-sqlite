@@ -1,25 +1,33 @@
 /* eslint-disable test/no-import-node-test -- Native release regressions run independently of workspace builds. */
 import type { TestContext } from 'node:test'
-import type { NightlyOptions, NightlyReport } from 'repoctl'
+import type { NightlyOptions, NightlyReport, SnapshotReport } from 'repoctl'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { createRequire, registerHooks } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 
 interface NativeNightly {
   confirmNpmNightly: (report: NightlyReport, options: NightlyOptions, allowPending?: boolean) => Promise<void>
+  prepareSnapshotArtifacts: (
+    source: string,
+    report: SnapshotReport,
+    options: NightlyOptions,
+    target: { provider: 'npm', repository: string },
+    references: Map<string, Map<string, string>>,
+  ) => Promise<void>
   verifyNightlyConsumer: (report: NightlyReport, options: NightlyOptions) => Promise<void>
 }
 
 const require = createRequire(import.meta.url)
+const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const nativeRequire = createRequire(require.resolve('repoctl'))
 const nativeEntry = nativeRequire.resolve('@icebreakers/monorepo')
 const packageRequire = createRequire(nativeEntry)
@@ -40,7 +48,7 @@ async function loadNativeNightly(): Promise<NativeNightly> {
       }
       assert.ok(loaded.source)
       const source = typeof loaded.source === 'string' ? loaded.source : Buffer.from(loaded.source as Uint8Array).toString('utf8')
-      return { ...loaded, source: `${source}\nexport { confirmNpmNightly, verifyNightlyConsumer };\n` }
+      return { ...loaded, source: `${source}\nexport { confirmNpmNightly, prepareSnapshotArtifacts, verifyNightlyConsumer };\n` }
     },
   })
   try {
@@ -376,5 +384,93 @@ test('the native nightly consumer preserves stale-version, tarball, runtime and 
       assert.equal(fixture.installation().installs, 1)
       await assert.rejects(readdir(fixture.installation().directory), { code: 'ENOENT' })
     })
+  }
+})
+
+test('nightly snapshot package validation uses the source workspace TypeScript', async (t) => {
+  const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'weapp-sqlite-nightly-snapshot-types-')))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  const source = path.join(directory, 'source')
+  const packageDirectory = path.join(source, 'packages/devtools')
+  const outputDirectory = path.join(directory, 'snapshot')
+  const packageName = '@weapp-sqlite/devtools'
+  const manifestPath = path.join(repository, 'packages/devtools/package.json')
+  const devtoolsDirectory = path.dirname(manifestPath)
+  mkdirSync(packageDirectory, { recursive: true })
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    [key: string]: unknown
+    dependencies: Record<string, string>
+    optionalDependencies?: Record<string, string>
+    peerDependencies?: Record<string, string>
+    publishConfig?: Record<string, unknown>
+    version: string
+  }
+  const snapshotIdentity = { kind: 'nightly' as const, commit: 'c'.repeat(40), buildId: '202-1' }
+  const snapshotIdentityKey = createHash('sha256').update(JSON.stringify(snapshotIdentity)).digest('hex')
+  const snapshotVersion = `0.1.2-snapshot.nightly.c${snapshotIdentity.commit}.b${snapshotIdentityKey}`
+  const snapshotRegistry = 'https://registry.npmjs.org/'
+  const snapshotTag = 'snapshot-nightly'
+
+  manifest.version = snapshotVersion
+  manifest['repoctlSnapshot'] = { ...snapshotIdentity, identityKey: snapshotIdentityKey, tag: snapshotTag }
+  manifest.publishConfig = { ...manifest.publishConfig, tag: snapshotTag, registry: snapshotRegistry }
+  for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
+    const dependencies = manifest[section]
+    if (dependencies) {
+      for (const [dependency, version] of Object.entries(dependencies)) {
+        if (version.startsWith('workspace:')) {
+          dependencies[dependency] = '*'
+        }
+      }
+    }
+  }
+
+  await writeFile(path.join(source, 'package.json'), JSON.stringify({ private: true, packageManager: 'pnpm@12.14.0' }))
+  await writeFile(path.join(source, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
+  await writeFile(path.join(packageDirectory, 'package.json'), JSON.stringify(manifest))
+  cpSync(path.join(devtoolsDirectory, 'dist'), path.join(packageDirectory, 'dist'), { recursive: true })
+
+  const workspaceNodeModules = path.join(source, 'node_modules')
+  mkdirSync(workspaceNodeModules, { recursive: true })
+  const workspaceTypeScript = realpathSync(path.dirname(require.resolve('typescript/package.json')))
+  symlinkSync(workspaceTypeScript, path.join(workspaceNodeModules, 'typescript'), 'junction')
+
+  const report = {
+    schemaVersion: 1,
+    identity: snapshotIdentity,
+    identityKey: snapshotIdentityKey,
+    source,
+    tag: snapshotTag,
+    registry: snapshotRegistry,
+    status: 'prepared',
+    outputDirectory,
+    packages: [{ name: packageName, version: snapshotVersion, currentVersion: '0.1.2', directory: 'packages/devtools', reasons: ['snapshot-workspace'] }],
+    checks: [],
+  } as unknown as SnapshotReport
+  const spawn: NonNullable<NightlyOptions['spawn']> = ((command, args, settings) => {
+    const commandArgs = args ?? []
+
+    if (command === 'pnpm' && commandArgs.includes('run') && commandArgs.includes('build')) {
+      return { status: 0, stdout: '', stderr: '' }
+    }
+    return spawnSync(command, commandArgs, { ...settings, stdio: ['ignore', 'pipe', 'pipe'] })
+  }) as NonNullable<NightlyOptions['spawn']>
+
+  await (await native).prepareSnapshotArtifacts(
+    source,
+    report,
+    { cwd: source, outputDirectory, env: process.env, spawn },
+    { provider: 'npm', repository: 'weapp-sqlite/weapp-sqlite' },
+    new Map(),
+  )
+
+  const check = report.checks?.find(item => item.name === packageName)
+  assert.equal(check?.status, 'passed', JSON.stringify(check?.diagnostics))
+  const typeChecks = check?.commands?.filter(command => command.args?.includes('--noEmit')) ?? []
+  assert.ok(typeChecks.length > 0)
+  for (const command of typeChecks) {
+    assert.equal(command.args?.[0], require.resolve('typescript/bin/tsc'))
+    assert.equal(command.exitCode, 0, command.output)
   }
 })
