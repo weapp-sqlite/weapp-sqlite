@@ -81,6 +81,10 @@
   dir: apps/docs
   intents:
     - bright-docs-workbench
+"@weapp-sqlite/docs@0.1.1":
+  dir: apps/docs
+  intents:
+    - hungry-houses-grow
 "@weapp-sqlite/miniprogram@0.1.0":
   dir: packages/miniprogram
   intents:
